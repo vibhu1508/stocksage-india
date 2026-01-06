@@ -40,10 +40,19 @@
     "zone.js": "^0.16.0"
   },
   "devDependencies": {
+    "@angular-devkit/build-angular": "^21.0.4",
     "@angular/build": "^21.0.4",
     "@angular/cli": "^21.0.4",
     "@angular/compiler-cli": "^21.0.0",
     "@ngx-env/builder": "^21.0.1",
+    "@types/jasmine": "^5.1.13",
+    "jasmine-core": "^5.13.0",
+    "karma": "^6.4.4",
+    "karma-chrome-launcher": "^3.2.0",
+    "karma-coverage": "^2.2.1",
+    "karma-jasmine": "^5.1.0",
+    "karma-jasmine-html-reporter": "^2.1.0",
+    "puppeteer": "^24.34.0",
     "typescript": "~5.9.2"
   }
 }
