@@ -1,0 +1,138 @@
+@use '../../../../styles/variables' as *;
+@use '../../../../styles/mixins' as *;
+
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 260px;
+  height: 100vh;
+  background: linear-gradient(180deg, $secondary-dark 0%, $tertiary-dark 100%);
+  border-right: 1px solid $glass-border;
+  display: flex;
+  flex-direction: column;
+  z-index: $z-fixed;
+
+  @media (max-width: $breakpoint-lg) {
+    transform: translateX(-100%);
+    transition: transform $transition-normal;
+
+    &.open {
+      transform: translateX(0);
+    }
+  }
+}
+
+.sidebar-header {
+  padding: $spacing-lg;
+  border-bottom: 1px solid $glass-border;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+
+  .logo-icon {
+      font-size: 48px;
+      display: inline-block;
+
+      img {
+        max-width: 60px;
+        max-height: 60px;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+      }
+    }
+
+  .logo-text {
+    font-size: 1.25rem;
+    font-weight: 700;
+    @include gradient-text;
+  }
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: $spacing-md;
+  overflow-y: auto;
+  @include custom-scrollbar;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+  padding: $spacing-md;
+  margin-bottom: $spacing-xs;
+  border-radius: $radius-md;
+  color: $text-secondary;
+  text-decoration: none;
+  transition: all $transition-fast;
+
+  &:hover {
+    background: $glass-bg;
+    color: $text-primary;
+  }
+
+  &.active {
+    background: $accent-gradient;
+    color: $text-primary;
+    box-shadow: $shadow-glow;
+
+    .nav-icon {
+      color: $text-primary;
+    }
+  }
+}
+
+.nav-icon {
+  font-size: 22px;
+  width: 24px;
+  text-align: center;
+}
+
+.nav-label {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.sidebar-footer {
+  padding: $spacing-md;
+  border-top: 1px solid $glass-border;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  padding: $spacing-sm;
+  border-radius: $radius-md;
+  background: $glass-bg;
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.user-details {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.user-name {
+  font-weight: 600;
+  font-size: 14px;
+  @include truncate;
+}
+
+.user-email {
+  font-size: 12px;
+  color: $text-muted;
+  @include truncate;
+}

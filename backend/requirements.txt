@@ -1,0 +1,27 @@
+# Backend dependencies for NSE Platform API
+
+# FastAPI and server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# Database
+sqlalchemy==2.0.25
+aiosqlite==0.19.0
+
+# Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+authlib==1.3.0
+httpx==0.26.0
+itsdangerous==2.1.2
+
+# Data processing (existing dependencies)
+pandas==2.1.4
+requests==2.31.0
+beautifulsoup4==4.12.3
+
+# CORS
+python-multipart==0.0.6
+
+# Environment variables
+python-dotenv==1.0.0

@@ -1,0 +1,232 @@
+@use '../../../styles/variables' as *;
+@use '../../../styles/mixins' as *;
+
+.fo-analysis {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: $spacing-lg;
+
+  h1 {
+    font-size: 1.75rem;
+    margin-bottom: $spacing-xs;
+  }
+
+  p {
+    color: $text-secondary;
+    margin: 0;
+  }
+}
+
+// Main Tabs
+.main-tabs {
+  display: flex;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-lg;
+}
+
+.main-tab {
+  @include glass-card;
+  padding: $spacing-md $spacing-lg;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  background: transparent;
+  border: 1px solid $glass-border;
+  color: $text-secondary;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all $transition-normal;
+
+  .tab-icon {
+    font-size: 20px;
+  }
+
+  &:hover {
+    background: $glass-bg;
+    color: $text-primary;
+  }
+
+  &.active {
+    background: $accent-gradient;
+    border-color: transparent;
+    color: $text-primary;
+    box-shadow: $shadow-glow;
+  }
+
+  @media (max-width: $breakpoint-md) {
+    padding: $spacing-sm $spacing-md;
+    font-size: 13px;
+
+    .tab-icon {
+      font-size: 18px;
+    }
+  }
+}
+
+// Filters
+.filters-section {
+  margin-bottom: $spacing-lg;
+}
+
+.filters-card {
+  @include glass-card;
+  padding: $spacing-lg;
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-md;
+  align-items: flex-end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+
+  label {
+    font-size: 12px;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+}
+
+.date-input,
+.text-input,
+.select-input {
+  @include input-style;
+  min-width: 160px;
+}
+
+.select-input {
+  cursor: pointer;
+}
+
+.btn-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: $spacing-xs;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Error Alert
+.error-alert {
+  @include glass-card;
+  padding: $spacing-md;
+  margin-bottom: $spacing-lg;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  border-color: $danger;
+  color: $danger;
+}
+
+// Loading State
+.loading-state {
+  @include glass-card;
+  padding: $spacing-xxl;
+  text-align: center;
+  @include flex-center;
+  flex-direction: column;
+  gap: $spacing-md;
+
+  p {
+    color: $text-secondary;
+    margin: 0;
+  }
+}
+
+// Summary Grid
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: $spacing-md;
+  margin-bottom: $spacing-lg;
+}
+
+.summary-card {
+  @include glass-card;
+  padding: $spacing-lg;
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+
+  .summary-icon {
+    font-size: 32px;
+  }
+
+  .summary-content {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .summary-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+  }
+
+  .summary-label {
+    font-size: 13px;
+    color: $text-secondary;
+  }
+}
+
+.section-title {
+  font-size: 1.1rem;
+  margin-bottom: $spacing-md;
+  color: $text-secondary;
+}
+
+// Table
+.table-container {
+  @include glass-card;
+  overflow-x: auto;
+  @include custom-scrollbar;
+}
+
+.data-table {
+  min-width: 800px;
+
+  th {
+    background: rgba(255, 255, 255, 0.02);
+  }
+}
+
+.symbol-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  background: $accent-gradient;
+  border-radius: $radius-sm;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.option-type {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: $radius-sm;
+  font-size: 12px;
+  font-weight: 600;
+
+  &.call {
+    background: $success-light;
+    color: $success;
+  }
+
+  &.put {
+    background: $danger-light;
+    color: $danger;
+  }
+}

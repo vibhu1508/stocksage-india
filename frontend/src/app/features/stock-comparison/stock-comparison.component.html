@@ -1,0 +1,152 @@
+<div class="stock-comparison fade-in">
+  <header class="page-header">
+    <div class="header-content">
+      <h1>Stock Comparison</h1>
+      <p>Compare stock price changes between two dates</p>
+    </div>
+  </header>
+
+  <!-- Filters Section -->
+  <section class="filters-section">
+    <div class="filters-card">
+      <div class="filter-group">
+        <label>From Date</label>
+        <input type="date" [(ngModel)]="date1" class="date-input" />
+      </div>
+
+      <div class="filter-group">
+        <label>To Date</label>
+        <input type="date" [(ngModel)]="date2" class="date-input" />
+      </div>
+
+      <div class="filter-group filter-symbols">
+        <label>Symbols (optional)</label>
+        <div class="autocomplete-container">
+          <input type="text" [(ngModel)]="symbols" placeholder="e.g., RELIANCE,TCS,INFY" class="text-input"
+            (input)="onSymbolInput($event)" (focus)="showSuggestions = suggestions.length > 0"
+            (blur)="hideSuggestions()" autocomplete="off" />
+          @if (showSuggestions && suggestions.length > 0) {
+          <div class="suggestions-dropdown">
+            @for (suggestion of suggestions; track suggestion.symbol) {
+            <div class="suggestion-item" (mousedown)="selectSuggestion(suggestion)">
+              <span class="symbol-name">{{ suggestion.symbol }}</span>
+              <span class="company-name">{{ suggestion.name }}</span>
+            </div>
+            }
+          </div>
+          }
+        </div>
+      </div>
+
+      <button class="btn compare-btn" (click)="compareStocks()" [disabled]="loading">
+        @if (loading) {
+        <span class="btn-spinner"></span>
+        Comparing...
+        } @else {
+        Compare Stocks
+        }
+      </button>
+    </div>
+  </section>
+
+  <!-- Error Message -->
+  @if (error) {
+  <div class="error-alert">
+    <span class="error-icon">⚠️</span>
+    {{ error }}
+  </div>
+  }
+
+  <!-- Results Section -->
+  @if (comparison) {
+  <section class="results-section">
+    <!-- Summary Cards -->
+    <div class="summary-grid">
+      <div class="summary-card">
+        <span class="summary-icon">📊</span>
+        <div class="summary-content">
+          <span class="summary-value">{{ comparison.count }}</span>
+          <span class="summary-label">Total Stocks</span>
+        </div>
+      </div>
+      <div class="summary-card gainers">
+        <span class="summary-icon">📈</span>
+        <div class="summary-content">
+          <span class="summary-value positive">{{ comparison.gainers.length }}</span>
+          <span class="summary-label">Top Gainers</span>
+        </div>
+      </div>
+      <div class="summary-card losers">
+        <span class="summary-icon">📉</span>
+        <div class="summary-content">
+          <span class="summary-value negative">{{ comparison.losers.length }}</span>
+          <span class="summary-label">Top Losers</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab" [class.active]="activeTab === 'all'" (click)="activeTab = 'all'">
+        All Stocks
+      </button>
+      <button class="tab" [class.active]="activeTab === 'gainers'" (click)="activeTab = 'gainers'">
+        Top Gainers
+      </button>
+      <button class="tab" [class.active]="activeTab === 'losers'" (click)="activeTab = 'losers'">
+        Top Losers
+      </button>
+    </div>
+
+    <!-- Table Search Box -->
+    <div class="table-search-container">
+      <span class="search-icon">🔍</span>
+      <input type="text" [(ngModel)]="tableSearchQuery" placeholder="Search stocks by symbol..."
+        class="table-search-input" />
+    </div>
+
+    <!-- Data Table -->
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Instrument Name</th>
+            <th class="text-right">Old Price (₹)</th>
+            <th class="text-right">New Price (₹)</th>
+            <th class="text-right">Change (%)</th>
+            <th class="text-right">Vol Ratio</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of displayedData; track item.Symbol + item.InstrumentName) {
+          <tr>
+            <td>
+              <span class="symbol-badge">{{ item.Symbol }}</span>
+            </td>
+            <td class="instrument-name">{{ item.InstrumentName }}</td>
+            <td class="text-right">{{ item.OldPrice | number:'1.2-2' }}</td>
+            <td class="text-right">{{ item.NewPrice | number:'1.2-2' }}</td>
+            <td class="text-right">
+              <span class="change-badge" [class]="getChangeClass(item.PctChange)">
+                @if (item.PctChange > 0) { ▲ }
+                @if (item.PctChange < 0) { ▼ } {{ item.PctChange | number:'1.2-2' }}% </span>
+            </td>
+            <td class="text-right">{{ item.VolumeRatio | number:'1.2-2' }}x</td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+  }
+
+  <!-- Empty State -->
+  @if (!comparison && !loading && !error) {
+  <div class="empty-state">
+    <span class="empty-icon">📊</span>
+    <h3>Select Dates to Compare</h3>
+    <p>Choose a date range and click "Compare Stocks" to see price changes</p>
+  </div>
+  }
+</div>

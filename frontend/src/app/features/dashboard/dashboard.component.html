@@ -1,0 +1,73 @@
+<div class="dashboard fade-in">
+  <!-- Welcome Section -->
+  <section class="welcome-section">
+    <div class="welcome-content">
+      <h1>{{ greeting }}, {{ (user?.name ?? 'Trader').split(' ')[0] }}!</h1>
+      <p>Here's your market overview for today</p>
+    </div>
+    <div class="welcome-time">
+      <span class="time">{{ currentTime | date:'h:mm a' }}</span>
+      <span class="date">{{ currentTime | date:'EEEE, MMMM d' }}</span>
+    </div>
+  </section>
+
+  <!-- Stats Grid -->
+  <section class="stats-section">
+    <div class="stats-grid">
+      @for (stat of stats; track stat.label) {
+      <div class="stat-card">
+        <div class="stat-icon">{{ stat.icon }}</div>
+        <div class="stat-content">
+          <span class="stat-label">{{ stat.label }}</span>
+          <span class="stat-value">{{ stat.value }}</span>
+          @if (stat.change) {
+          <span class="stat-change" [class.positive]="stat.change.startsWith('+')"
+            [class.negative]="stat.change.startsWith('-')">
+            {{ stat.change }}
+          </span>
+          }
+        </div>
+      </div>
+      }
+    </div>
+  </section>
+
+  <!-- Quick Actions -->
+  <section class="actions-section">
+    <h2>Quick Actions</h2>
+    <div class="actions-grid">
+      @for (action of quickActions; track action.label) {
+      <a [routerLink]="action.route" class="action-card">
+        <span class="action-icon">{{ action.icon }}</span>
+        <div class="action-content">
+          <h3>{{ action.label }}</h3>
+          <p>{{ action.description }}</p>
+        </div>
+        <span class="action-arrow">→</span>
+      </a>
+      }
+    </div>
+  </section>
+
+  <!-- Recent Activity (Placeholder) -->
+  <section class="activity-section">
+    <h2>Market Hours</h2>
+    <div class="market-hours-card">
+      <div class="market-row">
+        <span class="market-name">NSE / BSE</span>
+        <span class="market-time">9:15 AM - 3:30 PM IST</span>
+        <span class="market-status status-open">Open</span>
+      </div>
+      <div class="market-row">
+        <span class="market-name">F&O Segment</span>
+        <span class="market-time">9:15 AM - 3:30 PM IST</span>
+        <span class="market-status status-open">Open</span>
+      </div>
+      <div class="market-row">
+        <span class="market-name">Currency Derivatives</span>
+        <span class="market-time">9:00 AM - 5:00 PM IST</span>
+        <span class="market-status status-open">Open</span>
+      </div>
+    </div>
+  </section>
+</div>

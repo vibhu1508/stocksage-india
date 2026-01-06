@@ -1,0 +1,186 @@
+<div class="announcements fade-in">
+  <header class="page-header">
+    <div class="header-content">
+      <h1>Corporate Announcements</h1>
+      <p>Stay updated with the latest corporate filings from NSE and BSE</p>
+    </div>
+  </header>
+
+  <!-- Main Tabs -->
+  <div class="main-tabs">
+    <button class="main-tab" [class.active]="activeTab === 'nse'" (click)="onTabChange('nse')">
+      <span class="tab-icon">🏛️</span>
+      NSE Announcements
+    </button>
+    <button class="main-tab" [class.active]="activeTab === 'bse'" (click)="onTabChange('bse')">
+      <span class="tab-icon">🏦</span>
+      BSE Announcements
+    </button>
+  </div>
+
+  <!-- NSE Tab -->
+  @if (activeTab === 'nse') {
+  <section class="filters-section">
+    <div class="filters-card">
+      <div class="filter-group">
+        <label>Symbol</label>
+        <input type="text" [(ngModel)]="nseSymbol" placeholder="Enter symbol" class="text-input" />
+      </div>
+
+      <div class="filter-group">
+        <label>From Date</label>
+        <input type="date" [(ngModel)]="nseFromDate" class="date-input" />
+      </div>
+
+      <div class="filter-group">
+        <label>To Date</label>
+        <input type="date" [(ngModel)]="nseToDate" class="date-input" />
+      </div>
+
+      <button class="btn" (click)="loadNSEAnnouncements()" [disabled]="loading">
+        @if (loading) {
+        <span class="btn-spinner"></span>
+        }
+        Search
+      </button>
+    </div>
+
+    <!-- Popular Symbols -->
+    <div class="popular-symbols">
+      <span class="popular-label">Popular:</span>
+      @for (symbol of popularSymbols; track symbol) {
+      <button class="symbol-chip" [class.active]="nseSymbol === symbol" (click)="selectSymbol(symbol)">
+        {{ symbol }}
+      </button>
+      }
+    </div>
+  </section>
+  }
+
+  <!-- BSE Tab -->
+  @if (activeTab === 'bse') {
+  <section class="filters-section">
+    <div class="filters-card">
+      <div class="filter-group">
+        <label>From Date</label>
+        <input type="date" [(ngModel)]="bseFromDate" class="date-input" />
+      </div>
+
+      <div class="filter-group">
+        <label>To Date</label>
+        <input type="date" [(ngModel)]="bseToDate" class="date-input" />
+      </div>
+
+      <div class="filter-group filter-company">
+        <label>Company (Optional)</label>
+        <select [(ngModel)]="bseScripCode" class="select-input">
+          <option value="">All Companies</option>
+          @for (scrip of bseScripCodes; track scrip['Scrip Code']) {
+          <option [value]="scrip['Scrip Code']">{{ scrip['Company Name'] }}</option>
+          }
+        </select>
+      </div>
+
+      <button class="btn" (click)="loadBSEAnnouncements()" [disabled]="loading">
+        @if (loading) {
+        <span class="btn-spinner"></span>
+        }
+        Search
+      </button>
+    </div>
+  </section>
+  }
+
+  <!-- Error -->
+  @if (error) {
+  <div class="error-alert">
+    <span>⚠️</span> {{ error }}
+  </div>
+  }
+
+  <!-- Loading -->
+  @if (loading) {
+  <div class="loading-state">
+    <div class="spinner"></div>
+    <p>Loading announcements...</p>
+  </div>
+  }
+
+  <!-- NSE Results -->
+  @if (activeTab === 'nse' && nseAnnouncements.length > 0 && !loading) {
+  <section class="results-section">
+    <div class="results-header">
+      <h3>{{ nseAnnouncements.length }} Announcements for {{ nseSymbol }}</h3>
+    </div>
+
+    <div class="announcements-list">
+      @for (item of nseAnnouncements; track $index) {
+      <div class="announcement-card">
+        <div class="announcement-header">
+          <span class="company-badge">{{ item.symbol }}</span>
+          <span class="announcement-date">{{ item.broadcast_date }}</span>
+        </div>
+        <div class="announcement-body">
+          <h4 class="announcement-subject">{{ item.subject }}</h4>
+          <p class="announcement-company">{{ item.company_name }}</p>
+        </div>
+        <div class="announcement-footer">
+          @if (item.category) {
+          <span class="category-badge">{{ item.category }}</span>
+          }
+          @if (item.attachment_link) {
+          <button class="view-btn" (click)="openAttachment(item.attachment_link)">
+            📎 View Attachment
+          </button>
+          }
+        </div>
+      </div>
+      }
+    </div>
+  </section>
+  }
+
+  <!-- BSE Results -->
+  @if (activeTab === 'bse' && bseAnnouncements.length > 0 && !loading) {
+  <section class="results-section">
+    <div class="results-header">
+      <h3>{{ bseAnnouncements.length }} Announcements</h3>
+    </div>
+
+    <div class="announcements-list">
+      @for (item of bseAnnouncements; track $index) {
+      <div class="announcement-card">
+        <div class="announcement-header">
+          <span class="company-badge bse">{{ item.scrip_code }}</span>
+          <span class="announcement-date">{{ item.news_date }}</span>
+        </div>
+        <div class="announcement-body">
+          <h4 class="announcement-subject">{{ item.subject }}</h4>
+          <p class="announcement-company">{{ item.company_name }}</p>
+        </div>
+        <div class="announcement-footer">
+          @if (item.category) {
+          <span class="category-badge">{{ item.category }}</span>
+          }
+          @if (item.attachment_url) {
+          <button class="view-btn" (click)="openAttachment(item.attachment_url)">
+            📎 View Attachment
+          </button>
+          }
+        </div>
+      </div>
+      }
+    </div>
+  </section>
+  }
+
+  <!-- Empty State -->
+  @if (!loading && ((activeTab === 'nse' && nseAnnouncements.length === 0) || (activeTab === 'bse' &&
+  bseAnnouncements.length === 0))) {
+  <div class="empty-state">
+    <span class="empty-icon">📰</span>
+    <h3>No Announcements Found</h3>
+    <p>Try adjusting your search filters</p>
+  </div>
+  }
+</div>

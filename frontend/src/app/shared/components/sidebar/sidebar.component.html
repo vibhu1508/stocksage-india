@@ -1,0 +1,29 @@
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <span class="logo-icon"><img src="logo.png" alt="StockSage India"></span>
+      <span class="logo-text">StockSage India</span>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    @for (item of menuItems; track item.path) {
+    <a [routerLink]="item.path" routerLinkActive="active" class="nav-item">
+      <span class="nav-icon material-icons">{{ item.icon }}</span>
+      <span class="nav-label">{{ item.label }}</span>
+    </a>
+    }
+  </nav>
+
+  <div class="sidebar-footer">
+    @if (authService.currentUser$ | async; as user) {
+    <div class="user-info">
+      <img [src]="user.picture || 'assets/default-avatar.png'" alt="User" class="user-avatar" />
+      <div class="user-details">
+        <span class="user-name">{{ user.name }}</span>
+        <span class="user-email">{{ user.email }}</span>
+      </div>
+    </div>
+    }
+  </div>
+</aside>

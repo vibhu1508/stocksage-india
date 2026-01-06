@@ -1,0 +1,333 @@
+@use '../../../styles/variables' as *;
+@use '../../../styles/mixins' as *;
+
+.announcements {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: $spacing-lg;
+
+  h1 {
+    font-size: 1.75rem;
+    margin-bottom: $spacing-xs;
+  }
+
+  p {
+    color: $text-secondary;
+    margin: 0;
+  }
+}
+
+// Main Tabs
+.main-tabs {
+  display: flex;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-lg;
+}
+
+.main-tab {
+  @include glass-card;
+  padding: $spacing-md $spacing-lg;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  background: transparent;
+  border: 1px solid $glass-border;
+  color: $text-secondary;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all $transition-normal;
+
+  .tab-icon {
+    font-size: 20px;
+  }
+
+  &:hover {
+    background: $glass-bg;
+    color: $text-primary;
+  }
+
+  &.active {
+    background: $accent-gradient;
+    border-color: transparent;
+    color: $text-primary;
+    box-shadow: $shadow-glow;
+  }
+}
+
+// Filters
+.filters-section {
+  margin-bottom: $spacing-lg;
+}
+
+.filters-card {
+  @include glass-card;
+  padding: $spacing-lg;
+  display: flex;
+  flex-wrap: wrap;
+  gap: $spacing-md;
+  align-items: flex-end;
+  margin-bottom: $spacing-md;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: $spacing-xs;
+
+  label {
+    font-size: 12px;
+    color: $text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+}
+
+.date-input,
+.text-input {
+  @include input-style;
+  min-width: 160px;
+}
+
+.select-input {
+  @include input-style;
+  min-width: 200px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+
+  // Dark theme for dropdown options (browser support varies)
+  option {
+    background-color: #1a1c2e;
+    color: #ffffff;
+    padding: 10px;
+  }
+
+  // Firefox specific styling
+  @-moz-document url-prefix() {
+    option {
+      background-color: #1a1c2e;
+      color: #ffffff;
+    }
+  }
+}
+
+// Filter company dropdown with more width
+.filter-company {
+  flex: 1;
+  min-width: 250px;
+
+  .select-input {
+    width: 100%;
+  }
+}
+
+.btn-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: $spacing-xs;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Popular Symbols
+.popular-symbols {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.popular-label {
+  font-size: 13px;
+  color: $text-muted;
+}
+
+.symbol-chip {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid $glass-border;
+  border-radius: 20px;
+  color: $text-secondary;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    background: $glass-bg;
+    color: $text-primary;
+  }
+
+  &.active {
+    background: $accent-gradient;
+    border-color: transparent;
+    color: $text-primary;
+  }
+}
+
+// Error & Loading
+.error-alert {
+  @include glass-card;
+  padding: $spacing-md;
+  margin-bottom: $spacing-lg;
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  border-color: $danger;
+  color: $danger;
+}
+
+.loading-state {
+  @include glass-card;
+  padding: $spacing-xxl;
+  text-align: center;
+  @include flex-center;
+  flex-direction: column;
+  gap: $spacing-md;
+
+  p {
+    color: $text-secondary;
+    margin: 0;
+  }
+}
+
+// Results
+.results-header {
+  margin-bottom: $spacing-md;
+
+  h3 {
+    font-size: 1.1rem;
+    color: $text-secondary;
+    margin: 0;
+  }
+}
+
+.announcements-list {
+  display: grid;
+  gap: $spacing-md;
+}
+
+.announcement-card {
+  @include glass-card;
+  padding: $spacing-lg;
+  transition: all $transition-normal;
+
+  &:hover {
+    border-color: $accent-primary;
+  }
+}
+
+.announcement-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: $spacing-md;
+}
+
+.company-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: $accent-gradient;
+  border-radius: $radius-sm;
+  font-size: 12px;
+  font-weight: 700;
+
+  &.bse {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+  }
+}
+
+.announcement-date {
+  font-size: 13px;
+  color: $text-muted;
+}
+
+.announcement-body {
+  margin-bottom: $spacing-md;
+}
+
+.announcement-subject {
+  font-size: 1rem;
+  font-weight: 500;
+  margin-bottom: $spacing-xs;
+  line-height: 1.4;
+}
+
+.announcement-company {
+  font-size: 13px;
+  color: $text-secondary;
+  margin: 0;
+}
+
+.announcement-footer {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  flex-wrap: wrap;
+}
+
+.category-badge {
+  padding: 4px 10px;
+  background: rgba($info, 0.15);
+  color: $info;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.view-btn {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid $glass-border;
+  border-radius: $radius-sm;
+  color: $text-secondary;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    background: $glass-bg;
+    color: $text-primary;
+    border-color: $accent-primary;
+  }
+}
+
+// Empty State
+.empty-state {
+  @include glass-card;
+  padding: $spacing-xxl;
+  text-align: center;
+
+  .empty-icon {
+    font-size: 64px;
+    display: block;
+    margin-bottom: $spacing-md;
+  }
+
+  h3 {
+    font-size: 1.25rem;
+    margin-bottom: $spacing-sm;
+  }
+
+  p {
+    color: $text-secondary;
+    margin: 0;
+  }
+}

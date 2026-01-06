@@ -1,0 +1,68 @@
+// Core color palette
+$primary-dark: #0f0f23;
+$secondary-dark: #1a1a2e;
+$tertiary-dark: #16213e;
+$card-dark: rgba(26, 26, 46, 0.8);
+
+// Accent colors
+$accent-primary: #667eea;
+$accent-secondary: #764ba2;
+$accent-gradient: linear-gradient(135deg, $accent-primary 0%, $accent-secondary 100%);
+
+// Status colors
+$success: #00d084;
+$success-light: rgba(0, 208, 132, 0.15);
+$danger: #ff4757;
+$danger-light: rgba(255, 71, 87, 0.15);
+$warning: #ffa502;
+$info: #54a0ff;
+
+// Text colors
+$text-primary: #ffffff;
+$text-secondary: rgba(255, 255, 255, 0.7);
+$text-muted: rgba(255, 255, 255, 0.5);
+
+// Spacing
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+$spacing-xxl: 48px;
+
+// Border radius
+$radius-sm: 8px;
+$radius-md: 12px;
+$radius-lg: 16px;
+$radius-xl: 24px;
+
+// Shadows
+$shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.15);
+$shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
+$shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.25);
+$shadow-glow: 0 0 20px rgba(102, 126, 234, 0.3);
+
+// Glassmorphism
+$glass-bg: rgba(255, 255, 255, 0.05);
+$glass-border: rgba(255, 255, 255, 0.1);
+$glass-blur: blur(10px);
+
+// Transitions
+$transition-fast: 0.15s ease;
+$transition-normal: 0.25s ease;
+$transition-slow: 0.4s ease;
+
+// Breakpoints
+$breakpoint-sm: 576px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 992px;
+$breakpoint-xl: 1200px;
+
+// Z-index
+$z-dropdown: 1000;
+$z-sticky: 1020;
+$z-fixed: 1030;
+$z-modal-backdrop: 1040;
+$z-modal: 1050;
+$z-popover: 1060;
+$z-tooltip: 1070;

@@ -1,0 +1,118 @@
+@use '../../../../styles/variables' as *;
+@use '../../../../styles/mixins' as *;
+
+.header {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 260px;
+  height: 64px;
+  background: rgba($primary-dark, 0.8);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid $glass-border;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 $spacing-lg;
+  z-index: $z-sticky;
+
+  @media (max-width: $breakpoint-lg) {
+    left: 0;
+  }
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: $spacing-md;
+}
+
+.page-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: $spacing-lg;
+}
+
+.header-date {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+
+  .date-label {
+    font-size: 11px;
+    color: $text-muted;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .date-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: $text-primary;
+  }
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.btn-icon {
+  @include flex-center;
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: $radius-md;
+  color: $text-secondary;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    background: $glass-bg;
+    border-color: $glass-border;
+    color: $text-primary;
+  }
+
+  .material-icons {
+    font-size: 20px;
+  }
+}
+
+.logout-btn {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  padding: $spacing-sm $spacing-md;
+  background: transparent;
+  border: 1px solid $glass-border;
+  border-radius: $radius-md;
+  color: $text-secondary;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    background: rgba($danger, 0.1);
+    border-color: $danger;
+    color: $danger;
+  }
+
+  .material-icons {
+    font-size: 18px;
+  }
+
+  @media (max-width: $breakpoint-md) {
+    .logout-text {
+      display: none;
+    }
+  }
+}
