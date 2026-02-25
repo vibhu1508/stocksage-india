@@ -288,10 +288,11 @@ async def get_bse_scrip_codes(
     import os
     
     # Try multiple possible locations for the CSV file
+    _backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     possible_paths = [
-        'bse_scrip_codes.csv',           # Current directory
-        '../bse_scrip_codes.csv',         # Parent directory (project root)
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'bse_scrip_codes.csv')
+        os.path.join(_backend_dir, 'bse_scrip_codes.csv'),  # backend/ dir (primary — works on Render)
+        'bse_scrip_codes.csv',                               # Current working directory
+        os.path.join(_backend_dir, '..', 'bse_scrip_codes.csv'),  # Project root fallback
     ]
     
     df = None

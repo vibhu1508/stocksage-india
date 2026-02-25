@@ -1,3 +1,10 @@
 stocksage_venv/
-__pycache__
+__pycache__/
+*.pyc
 
+# Local SQLite database — do not commit production data
+backend/nse_platform.db
+
+# Local env files — set these in Render/Vercel dashboards instead
+backend/.env
+frontend/.env
