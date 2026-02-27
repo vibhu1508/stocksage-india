@@ -13,7 +13,12 @@ class AuthService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _currentUser != null;
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+  // serverClientId must be your WEB OAuth Client ID (not Android)
+  // This is needed to get an ID token for backend verification
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['email', 'profile'],
+    serverClientId: '632068874977-pu6us2b6nmskod5l3nvdaffilo6s06ln.apps.googleusercontent.com',
+  );
 
   // Initialize: check for existing token
   Future<void> init() async {
