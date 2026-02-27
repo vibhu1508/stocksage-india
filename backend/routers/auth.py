@@ -165,6 +165,101 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         )
 
 
+from pydantic import BaseModel
+
+class MobileAuthRequest(BaseModel):
+    id_token: str
+
+@router.post("/google/mobile")
+async def google_mobile_auth(request: MobileAuthRequest, db: Session = Depends(get_db)):
+    """
+    Mobile Google Sign-In endpoint.
+    Accepts a Google ID token from the Flutter app, verifies it,
+    and returns a JWT access token.
+    """
+    import httpx
+    
+    try:
+        # Verify the Google ID token
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"https://oauth2.googleapis.com/tokeninfo?id_token={request.id_token}"
+            )
+        
+        if resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid Google ID token")
+        
+        token_info = resp.json()
+        
+        # Verify the token is for our app
+        google_client_id = os.getenv("GOOGLE_CLIENT_ID")
+        if token_info.get("aud") != google_client_id:
+            raise HTTPException(status_code=401, detail="Token not issued for this app")
+        
+        email = token_info.get("email")
+        google_id = token_info.get("sub")
+        name = token_info.get("name", "")
+        picture = token_info.get("picture", "")
+        
+        if not email:
+            raise HTTPException(status_code=400, detail="Email not found in token")
+        
+        # Find or create user
+        user = db.query(User).filter(User.google_id == google_id).first()
+        
+        if not user:
+            user = db.query(User).filter(User.email == email).first()
+            if user:
+                user.google_id = google_id
+                user.picture = picture
+            else:
+                user = User(
+                    email=email,
+                    name=name,
+                    picture=picture,
+                    google_id=google_id,
+                    is_active=True
+                )
+                db.add(user)
+        
+        user.last_login = datetime.utcnow()
+        db.commit()
+        db.refresh(user)
+        
+        # Create JWT token
+        access_token, expires_at = create_access_token(
+            data={"sub": str(user.id), "email": user.email}
+        )
+        
+        # Store session
+        token_hash = hashlib.sha256(access_token.encode()).hexdigest()
+        session = UserSession(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            is_valid=True
+        )
+        db.add(session)
+        db.commit()
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "picture": user.picture,
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
+
+
+
 @router.get("/me")
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """Get current authenticated user info"""
