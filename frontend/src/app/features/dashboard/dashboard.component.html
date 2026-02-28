@@ -6,7 +6,7 @@
       <p>Here's your market overview for today</p>
     </div>
     <div class="welcome-time">
-      <span class="time">{{ currentTime | date:'h:mm a' }}</span>
+      <span class="time">{{ currentTime | date:'h:mm:ss a' }}</span>
       <span class="date">{{ currentTime | date:'EEEE, MMMM d' }}</span>
     </div>
   </section>
@@ -15,18 +15,24 @@
   <section class="stats-section">
     <div class="stats-grid">
       @for (stat of stats; track stat.label) {
-      <div class="stat-card">
+      <div class="stat-card" [class.stat-loading]="marketLoading">
         <div class="stat-icon">{{ stat.icon }}</div>
         <div class="stat-content">
           <span class="stat-label">{{ stat.label }}</span>
           <span class="stat-value">{{ stat.value }}</span>
           @if (stat.change) {
-          <span class="stat-change" [class.positive]="stat.change.startsWith('+')"
-            [class.negative]="stat.change.startsWith('-')">
+          <span class="stat-change"
+            [class.positive]="stat.changePositive"
+            [class.negative]="!stat.changePositive">
             {{ stat.change }}
           </span>
           }
         </div>
+        @if (stat.label === 'Market Status' && marketData) {
+        <span class="live-badge" [class]="marketStatusClass">
+          {{ marketStatus }}
+        </span>
+        }
       </div>
       }
     </div>
@@ -49,24 +55,24 @@
     </div>
   </section>
 
-  <!-- Recent Activity (Placeholder) -->
+  <!-- Market Hours -->
   <section class="activity-section">
     <h2>Market Hours</h2>
     <div class="market-hours-card">
       <div class="market-row">
         <span class="market-name">NSE / BSE</span>
         <span class="market-time">9:15 AM - 3:30 PM IST</span>
-        <span class="market-status status-open">Open</span>
+        <span class="market-status" [class]="marketStatusClass">{{ marketStatus }}</span>
       </div>
       <div class="market-row">
         <span class="market-name">F&O Segment</span>
         <span class="market-time">9:15 AM - 3:30 PM IST</span>
-        <span class="market-status status-open">Open</span>
+        <span class="market-status" [class]="marketStatusClass">{{ marketStatus }}</span>
       </div>
       <div class="market-row">
         <span class="market-name">Currency Derivatives</span>
         <span class="market-time">9:00 AM - 5:00 PM IST</span>
-        <span class="market-status status-open">Open</span>
+        <span class="market-status" [class]="marketStatusClass">{{ marketStatus }}</span>
       </div>
     </div>
   </section>

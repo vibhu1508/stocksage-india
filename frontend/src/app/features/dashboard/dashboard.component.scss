@@ -81,6 +81,28 @@
   align-items: center;
   gap: $spacing-md;
   @include hover-lift;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+
+  &.stat-loading {
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.03), transparent);
+      animation: shimmer 1.5s infinite;
+    }
+  }
+}
+
+@keyframes shimmer {
+  to {
+    left: 100%;
+  }
 }
 
 .stat-icon {
@@ -95,6 +117,7 @@
 .stat-content {
   display: flex;
   flex-direction: column;
+  flex: 1;
 }
 
 .stat-label {
@@ -105,7 +128,7 @@
 }
 
 .stat-value {
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   font-weight: 700;
 }
 
@@ -120,6 +143,40 @@
   &.negative {
     color: $danger;
   }
+}
+
+// Live badge
+.live-badge {
+  position: absolute;
+  top: $spacing-sm;
+  right: $spacing-sm;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+
+  &.status-open {
+    background: $success-light;
+    color: $success;
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  &.status-preopen {
+    background: rgba(255, 193, 7, 0.15);
+    color: #ffc107;
+  }
+
+  &.status-closed {
+    background: $danger-light;
+    color: $danger;
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 // Actions Section
@@ -241,6 +298,11 @@
   &.status-open {
     background: $success-light;
     color: $success;
+  }
+
+  &.status-preopen {
+    background: rgba(255, 193, 7, 0.15);
+    color: #ffc107;
   }
 
   &.status-closed {
