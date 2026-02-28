@@ -37,20 +37,16 @@ def fetch_nse_announcements(
     symbol: str, 
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
-    issuer: Optional[str] = None,
     limit: int = 100
 ) -> List[dict]:
     """Fetch corporate announcements from NSE API with optional date filtering"""
     
-    # Build the URL with date params if provided
+    # Build the URL matching exact working format
     params = f"index=equities&symbol={symbol}"
     if from_date:
         params += f"&from_date={from_date.strftime('%d-%m-%Y')}"
     if to_date:
         params += f"&to_date={to_date.strftime('%d-%m-%Y')}"
-    if issuer:
-        params += f"&issuer={requests.utils.quote(issuer)}"
-    params += "&reqXbrl=false"
     
     url = f"https://www.nseindia.com/api/corporate-announcements?{params}"
     
