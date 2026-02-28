@@ -137,3 +137,34 @@ async def get_live_market_data():
         "timestamp": ist_now.isoformat(),
         "debug": debug,
     }
+
+
+@router.get("/top-stocks")
+async def get_top_stocks():
+    """Get top 10 gainers from NSE"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            resp = await client.get(
+                "https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getTopTenStock",
+                headers={
+                    **BROWSER_HEADERS,
+                    "Referer": "https://www.nseindia.com/",
+                    "Origin": "https://www.nseindia.com",
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                gainers = data.get("topGainers", [])
+                results = []
+                for g in gainers:
+                    results.append({
+                        "symbol": g.get("symbol", ""),
+                        "price": g.get("lastPrice", 0),
+                        "change": round(float(g.get("change", 0)), 2),
+                        "pct_change": round(float(g.get("pchange", 0)), 2),
+                        "volume": g.get("totalTradedVolume", 0),
+                    })
+                return {"gainers": results}
+            return {"gainers": []}
+    except Exception as e:
+        return {"gainers": [], "error": str(e)}
