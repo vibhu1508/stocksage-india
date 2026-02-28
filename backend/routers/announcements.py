@@ -58,13 +58,24 @@ def fetch_nse_announcements(
         with requests.Session() as s:
             s.headers.update(NSE_HEADERS)
             
-            # Establish session
-            s.get("https://www.nseindia.com/companies-listing/corporate-filings-announcements", timeout=10)
+            # Establish session with proper cookies
+            s.get("https://www.nseindia.com/", timeout=10)
             
             # Fetch announcements
             response = s.get(url, timeout=30)
             response.raise_for_status()
-            data = response.json()
+            
+            # Check if response is JSON
+            content_type = response.headers.get('Content-Type', '')
+            if 'json' not in content_type and 'text' not in content_type:
+                logger.error(f"NSE returned non-JSON content type: {content_type}")
+                return []
+            
+            try:
+                data = response.json()
+            except Exception as json_err:
+                logger.error(f"NSE response not valid JSON: {json_err}, body: {response.text[:200]}")
+                return []
             
             if not data:
                 return []
