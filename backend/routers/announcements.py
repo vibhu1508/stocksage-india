@@ -37,10 +37,22 @@ def fetch_nse_announcements(
     symbol: str, 
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
+    issuer: Optional[str] = None,
     limit: int = 100
 ) -> List[dict]:
     """Fetch corporate announcements from NSE API with optional date filtering"""
-    url = f"https://www.nseindia.com/api/corporate-announcements?index=equities&symbol={symbol}"
+    
+    # Build the URL with date params if provided
+    params = f"index=equities&symbol={symbol}"
+    if from_date:
+        params += f"&from_date={from_date.strftime('%d-%m-%Y')}"
+    if to_date:
+        params += f"&to_date={to_date.strftime('%d-%m-%Y')}"
+    if issuer:
+        params += f"&issuer={requests.utils.quote(issuer)}"
+    params += "&reqXbrl=false"
+    
+    url = f"https://www.nseindia.com/api/corporate-announcements?{params}"
     
     try:
         with requests.Session() as s:
@@ -62,26 +74,6 @@ def fetch_nse_announcements(
             for item in data:
                 broadcast_date_str = item.get('an_dt', '')
                 
-                # Parse date for filtering (format: "02 Jan 2025")
-                announcement_date = None
-                if broadcast_date_str:
-                    try:
-                        announcement_date = datetime.strptime(broadcast_date_str.split()[0:3][0] + " " + 
-                                                              broadcast_date_str.split()[1] + " " + 
-                                                              broadcast_date_str.split()[2], '%d %b %Y').date()
-                    except (ValueError, IndexError):
-                        try:
-                            # Try alternative format
-                            announcement_date = datetime.strptime(broadcast_date_str[:11], '%d-%b-%Y').date()
-                        except ValueError:
-                            pass
-                
-                # Apply date filtering if dates are provided
-                if from_date and announcement_date and announcement_date < from_date:
-                    continue
-                if to_date and announcement_date and announcement_date > to_date:
-                    continue
-                
                 announcements.append({
                     "symbol": item.get('symbol', ''),
                     "company_name": item.get('sm_name', ''),
@@ -91,7 +83,6 @@ def fetch_nse_announcements(
                     "category": item.get('attchmntText', '')
                 })
                 
-                # Apply limit
                 if len(announcements) >= limit:
                     break
             
@@ -99,6 +90,33 @@ def fetch_nse_announcements(
             
     except Exception as e:
         logger.error(f"Error fetching NSE announcements for {symbol}: {e}")
+        return []
+
+
+def fetch_nse_autocomplete(query: str) -> List[dict]:
+    """Fetch symbol autocomplete suggestions from NSE"""
+    url = f"https://www.nseindia.com/api/NextApi/search/autocomplete?q={requests.utils.quote(query)}"
+    
+    try:
+        with requests.Session() as s:
+            s.headers.update(NSE_HEADERS)
+            s.get("https://www.nseindia.com/", timeout=10)
+            
+            response = s.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            symbols = data.get('symbols', [])
+            results = []
+            for item in symbols:
+                results.append({
+                    "symbol": item.get('symbol', ''),
+                    "company_name": item.get('symbol_info', ''),
+                    "type": item.get('result_sub_type', 'equity'),
+                })
+            return results
+    except Exception as e:
+        logger.error(f"NSE autocomplete error: {e}")
         return []
 
 
@@ -186,6 +204,18 @@ def fetch_bse_announcements(
     except Exception as e:
         logger.error(f"Error fetching BSE announcements: {e}")
         return {"announcements": [], "total_pages": 0, "current_page": page}
+
+
+@router.get("/nse/autocomplete")
+async def nse_autocomplete(
+    q: str = Query(..., min_length=1, description="Search query"),
+):
+    """
+    Get NSE symbol autocomplete suggestions.
+    No auth required for better UX on search.
+    """
+    results = fetch_nse_autocomplete(q)
+    return {"query": q, "count": len(results), "results": results}
 
 
 @router.get("/nse/{symbol}")
