@@ -26,6 +26,3 @@ python-multipart==0.0.6
 
 # Environment variables
 python-dotenv==1.0.0
-
-# Timezone
-pytz==2024.1
