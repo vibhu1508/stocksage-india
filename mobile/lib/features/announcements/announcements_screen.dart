@@ -240,165 +240,162 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
       },
       child: Column(
         children: [
-          // Scrollable filter area to prevent overflow
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  // Company search
-                  TextField(
-                    controller: _nseSymbolController,
-                    decoration: InputDecoration(
-                      hintText: 'Search company / symbol',
-                      prefixIcon: const Icon(Icons.search),
-                      isDense: true,
-                      suffixIcon: _nseSymbolController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear, size: 18),
-                              onPressed: () {
-                                setState(() {
-                                  _nseSymbolController.clear();
-                                  _selectedNseSymbol = '';
-                                  _selectedNseCompany = '';
-                                  _showNseSuggestions = false;
-                                });
-                              },
-                            )
-                          : null,
-                    ),
-                    onChanged: (val) => _fetchNseSuggestions(val),
-                    onSubmitted: (_) {
-                      setState(() => _showNseSuggestions = false);
-                      _loadNSEAnnouncements();
-                    },
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Company search
+                TextField(
+                  controller: _nseSymbolController,
+                  decoration: InputDecoration(
+                    hintText: 'Search company / symbol',
+                    prefixIcon: const Icon(Icons.search),
+                    isDense: true,
+                    suffixIcon: _nseSymbolController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              setState(() {
+                                _nseSymbolController.clear();
+                                _selectedNseSymbol = '';
+                                _selectedNseCompany = '';
+                                _showNseSuggestions = false;
+                              });
+                            },
+                          )
+                        : null,
                   ),
-                  // Suggestions dropdown (inline, not Positioned)
-                  if (_showNseSuggestions && _nseSuggestions.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      constraints: const BoxConstraints(maxHeight: 200),
-                      decoration: BoxDecoration(
-                        color: AppTheme.cardColor,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppTheme.primaryColor.withValues(alpha: 0.3),
-                        ),
-                      ),
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        padding: EdgeInsets.zero,
-                        itemCount: _nseSuggestions.length,
-                        itemBuilder: (context, index) {
-                          final s = _nseSuggestions[index];
-                          return InkWell(
-                            onTap: () => _selectNseSuggestion(s),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          s['symbol'] ?? '',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          s['company_name'] ?? '',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: AppTheme.textSecondary,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Icon(
-                                    Icons.north_east,
-                                    size: 14,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
+                  onChanged: (val) => _fetchNseSuggestions(val),
+                  onSubmitted: (_) {
+                    setState(() => _showNseSuggestions = false);
+                    _loadNSEAnnouncements();
+                  },
+                ),
+                // Suggestions dropdown (inline, not Positioned)
+                if (_showNseSuggestions && _nseSuggestions.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    decoration: BoxDecoration(
+                      color: AppTheme.cardColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.3),
                       ),
                     ),
-                  const SizedBox(height: 12),
-                  // Date pickers row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => _pickNseDate(true),
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: 'From',
-                              isDense: true,
-                              prefixIcon: Icon(Icons.calendar_today, size: 18),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      padding: EdgeInsets.zero,
+                      itemCount: _nseSuggestions.length,
+                      itemBuilder: (context, index) {
+                        final s = _nseSuggestions[index];
+                        return InkWell(
+                          onTap: () => _selectNseSuggestion(s),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
                             ),
-                            child: Text(
-                              DateFormat('dd MMM yyyy').format(_nseFromDate),
-                              style: const TextStyle(fontSize: 13),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        s['symbol'] ?? '',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        s['company_name'] ?? '',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: AppTheme.textSecondary,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.north_east,
+                                  size: 14,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ],
                             ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                // Date pickers row
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => _pickNseDate(true),
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'From',
+                            isDense: true,
+                            prefixIcon: Icon(Icons.calendar_today, size: 18),
+                          ),
+                          child: Text(
+                            DateFormat('dd MMM yyyy').format(_nseFromDate),
+                            style: const TextStyle(fontSize: 13),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => _pickNseDate(false),
-                          child: InputDecorator(
-                            decoration: const InputDecoration(
-                              labelText: 'To',
-                              isDense: true,
-                              prefixIcon: Icon(Icons.calendar_today, size: 18),
-                            ),
-                            child: Text(
-                              DateFormat('dd MMM yyyy').format(_nseToDate),
-                              style: const TextStyle(fontSize: 13),
-                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => _pickNseDate(false),
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'To',
+                            isDense: true,
+                            prefixIcon: Icon(Icons.calendar_today, size: 18),
+                          ),
+                          child: Text(
+                            DateFormat('dd MMM yyyy').format(_nseToDate),
+                            style: const TextStyle(fontSize: 13),
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Search button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _nseLoading ? null : _loadNSEAnnouncements,
-                      icon: _nseLoading
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.search, size: 18),
-                      label: Text(
-                        _nseLoading ? 'Searching...' : 'Search Announcements',
-                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Search button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _nseLoading ? null : _loadNSEAnnouncements,
+                    icon: _nseLoading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.search, size: 18),
+                    label: Text(
+                      _nseLoading ? 'Searching...' : 'Search Announcements',
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
 
@@ -556,11 +553,10 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                 ),
         ),
 
-        // Pagination
-        if (_bseTotalPages > 1)
-          Container(
-            padding: const EdgeInsets.all(12),
-            color: AppTheme.cardColor,
+        // Pagination (matching stock comparison style)
+        if (_bseTotalPages > 1) ...[
+          const SizedBox(height: 8),
+          Center(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -570,10 +566,15 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                       : null,
                   icon: const Icon(Icons.chevron_left),
                 ),
+                const SizedBox(width: 8),
                 Text(
                   'Page $_bsePage of $_bseTotalPages',
-                  style: TextStyle(color: AppTheme.textSecondary),
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
+                const SizedBox(width: 8),
                 IconButton(
                   onPressed: _bsePage < _bseTotalPages
                       ? () => _loadBSEAnnouncements(page: _bsePage + 1)
@@ -583,6 +584,16 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
               ],
             ),
           ),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                '${_bseAnnouncements.length} announcements loaded',
+                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

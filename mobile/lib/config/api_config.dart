@@ -30,4 +30,7 @@ class ApiConfig {
   // Autocomplete
   static const String nseAutocomplete =
       '$apiUrl/announcements/nse/autocomplete';
+
+  // Top stocks
+  static const String topStocks = '$apiUrl/market/top-stocks';
 }

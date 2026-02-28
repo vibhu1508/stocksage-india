@@ -123,4 +123,22 @@ class MarketService {
     if (minutes <= 930) return 'Open';
     return 'Closed';
   }
+
+  /// Fetch top 10 gainers from NSE
+  static Future<List<Map<String, dynamic>>> getTopGainers() async {
+    try {
+      final response = await http
+          .get(Uri.parse(ApiConfig.topStocks))
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final gainers = data['gainers'] as List? ?? [];
+        return gainers.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
 }

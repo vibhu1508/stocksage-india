@@ -27,6 +27,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   MarketData? _marketData;
   Timer? _refreshTimer;
 
+  // Top gainers
+  List<Map<String, dynamic>> _topGainers = [];
+  late PageController _carouselController;
+  Timer? _carouselTimer;
+  int _carouselPage = 0;
+
   @override
   void initState() {
     super.initState();
@@ -62,9 +68,11 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     _controller.forward();
     _fetchMarketData();
+    _fetchTopGainers();
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       _fetchMarketData();
     });
+    _carouselController = PageController();
   }
 
   Future<void> _fetchMarketData() async {
@@ -78,10 +86,37 @@ class _DashboardScreenState extends State<DashboardScreen>
     } catch (_) {}
   }
 
+  Future<void> _fetchTopGainers() async {
+    try {
+      final data = await MarketService.getTopGainers();
+      if (mounted && data.isNotEmpty) {
+        setState(() => _topGainers = data);
+        _startCarouselTimer();
+      }
+    } catch (_) {}
+  }
+
+  void _startCarouselTimer() {
+    _carouselTimer?.cancel();
+    _carouselTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (_topGainers.isEmpty || !mounted) return;
+      _carouselPage = (_carouselPage + 1) % _topGainers.length;
+      if (_carouselController.hasClients) {
+        _carouselController.animateToPage(
+          _carouselPage,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
     _refreshTimer?.cancel();
+    _carouselTimer?.cancel();
+    _carouselController.dispose();
     super.dispose();
   }
 
@@ -202,7 +237,197 @@ class _DashboardScreenState extends State<DashboardScreen>
 
               // Stats Cards — each animated separately
               _buildAnimatedStatsGrid(),
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
+
+              // Top Gainers Carousel
+              if (_topGainers.isNotEmpty) ...[
+                _animated(
+                  4,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.trending_up,
+                            size: 18,
+                            color: Colors.greenAccent,
+                          ),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Top Gainers',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.greenAccent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'LIVE',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.greenAccent,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 80,
+                        child: PageView.builder(
+                          controller: _carouselController,
+                          itemCount: _topGainers.length,
+                          onPageChanged: (i) =>
+                              setState(() => _carouselPage = i),
+                          itemBuilder: (context, index) {
+                            final g = _topGainers[index];
+                            final pct =
+                                (g['pct_change'] as num?)?.toDouble() ?? 0;
+                            final price = (g['price'] as num?)?.toDouble() ?? 0;
+                            final change =
+                                (g['change'] as num?)?.toDouble() ?? 0;
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.greenAccent.withValues(alpha: 0.08),
+                                    AppTheme.cardColor,
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: Colors.greenAccent.withValues(
+                                    alpha: 0.2,
+                                  ),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  // Left: Symbol + Price
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          g['symbol'] ?? '',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 15,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '₹${price.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: AppTheme.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Right: Change + Percent
+                                  Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.greenAccent.withValues(
+                                            alpha: 0.15,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.arrow_upward,
+                                              size: 12,
+                                              color: Colors.greenAccent,
+                                            ),
+                                            const SizedBox(width: 2),
+                                            Text(
+                                              '+${pct.toStringAsFixed(2)}%',
+                                              style: const TextStyle(
+                                                color: Colors.greenAccent,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '+${change.toStringAsFixed(2)}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.greenAccent.withValues(
+                                            alpha: 0.7,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      // Page indicator dots
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(
+                          _topGainers.length,
+                          (i) => AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: i == _carouselPage ? 16 : 6,
+                            height: 6,
+                            margin: const EdgeInsets.symmetric(horizontal: 2),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(3),
+                              color: i == _carouselPage
+                                  ? Colors.greenAccent
+                                  : AppTheme.textSecondary.withValues(
+                                      alpha: 0.3,
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
 
               // Quick Actions title
               _animated(
