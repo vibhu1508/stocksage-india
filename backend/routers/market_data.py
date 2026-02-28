@@ -8,13 +8,15 @@ from datetime import datetime, timezone, timedelta
 
 router = APIRouter()
 
-# IST offset: UTC+5:30
+# IST = UTC + 5:30
 IST_OFFSET = timedelta(hours=5, minutes=30)
 
 
 def get_ist_now():
-    """Get current time in IST without pytz dependency"""
-    return datetime.now(timezone.utc) + IST_OFFSET
+    """Get current time in IST"""
+    utc_now = datetime.now(timezone.utc)
+    ist_now = utc_now + IST_OFFSET
+    return ist_now
 
 
 def get_market_status():
@@ -22,121 +24,95 @@ def get_market_status():
     now = get_ist_now()
     weekday = now.weekday()  # 0=Monday, 6=Sunday
 
-    # Weekend
     if weekday >= 5:
         return "Closed"
 
-    hour = now.hour
-    minute = now.minute
-    time_val = hour * 60 + minute
+    time_minutes = now.hour * 60 + now.minute
 
-    pre_open = 9 * 60       # 9:00 AM
-    market_open = 9 * 60 + 15   # 9:15 AM
-    market_close = 15 * 60 + 30  # 3:30 PM
-
-    if time_val < pre_open:
+    if time_minutes < 540:       # Before 9:00 AM
         return "Pre-Market"
-    elif time_val < market_open:
+    elif time_minutes < 555:     # 9:00 - 9:15
         return "Pre-Open"
-    elif time_val <= market_close:
+    elif time_minutes <= 930:    # 9:15 - 15:30
         return "Open"
     else:
         return "Closed"
 
 
-# Headers to mimic browser requests
 BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
 }
 
 
 @router.get("/live")
 async def get_live_market_data():
     """Get live SENSEX and NIFTY data"""
+    ist_now = get_ist_now()
     market_status = get_market_status()
     sensex_data = None
     nifty_data = None
+    debug = {
+        "utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "ist": ist_now.strftime("%Y-%m-%d %H:%M:%S"),
+        "weekday": ist_now.weekday(),
+        "time_minutes": ist_now.hour * 60 + ist_now.minute,
+    }
 
     async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
-        # ── SENSEX from BSE ──
+        # ── BSE SENSEX ──
+        # Response format: [{"indxnm":"SenSexValue","ltp":"81,287.19","chg":"-961.42","perchg":"-1.17",...}]
         try:
-            bse_headers = {
-                **BROWSER_HEADERS,
-                "Referer": "https://www.bseindia.com/",
-                "Origin": "https://www.bseindia.com",
-            }
             resp = await client.get(
                 "https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexData/w",
-                headers=bse_headers,
+                headers={
+                    **BROWSER_HEADERS,
+                    "Referer": "https://www.bseindia.com/",
+                    "Origin": "https://www.bseindia.com",
+                },
             )
             if resp.status_code == 200:
-                data = resp.json()
-                # BSE can return a single object or a list
-                item = data[0] if isinstance(data, list) and len(data) > 0 else data if isinstance(data, dict) else None
+                raw = resp.json()
+                item = raw[0] if isinstance(raw, list) and len(raw) > 0 else raw if isinstance(raw, dict) else None
                 if item:
-                    # Try multiple field name variations
-                    value = item.get("ltp") or item.get("CurrValue") or item.get("last") or "0"
-                    change = item.get("Chg") or item.get("change") or "0"
-                    pct = item.get("PerChg") or item.get("ChgPer") or item.get("percChange") or "0"
-                    
-                    # If pct is 0 but we have value and prev_close, calculate it
-                    prev_close = item.get("PrvClose") or item.get("prevClose") or item.get("previousClose") or "0"
-                    try:
-                        val_f = float(str(value).replace(",", ""))
-                        prev_f = float(str(prev_close).replace(",", ""))
-                        chg_f = float(str(change).replace(",", ""))
-                        pct_f = float(str(pct).replace(",", ""))
-                        
-                        if pct_f == 0 and prev_f > 0:
-                            pct_f = round(((val_f - prev_f) / prev_f) * 100, 2)
-                            pct = str(pct_f)
-                        if chg_f == 0 and prev_f > 0:
-                            chg_f = round(val_f - prev_f, 2)
-                            change = str(chg_f)
-                    except (ValueError, ZeroDivisionError):
-                        pass
-
                     sensex_data = {
-                        "name": item.get("IndxNm") or item.get("indexName") or "SENSEX",
-                        "value": str(value),
-                        "change": str(change),
-                        "pct_change": str(pct),
-                        "high": str(item.get("High") or item.get("high") or "0"),
-                        "low": str(item.get("Low") or item.get("low") or "0"),
-                        "open": str(item.get("Open") or item.get("open") or "0"),
-                        "prev_close": str(prev_close),
+                        "name": "SENSEX",
+                        "value": item.get("ltp", "0"),
+                        "change": item.get("chg", "0"),
+                        "pct_change": item.get("perchg", "0"),
+                        "high": item.get("High", "0"),
+                        "low": item.get("Low", "0"),
+                        "open": item.get("I_open", "0"),
+                        "prev_close": item.get("Prev_Close", "0"),
                     }
-                    print(f"BSE raw item keys: {list(item.keys())}")
-                    print(f"BSE parsed: value={value}, change={change}, pct={pct}")
         except Exception as e:
-            print(f"BSE API error: {e}")
+            debug["bse_error"] = str(e)
 
-        # ── NIFTY from NSE ──
+        # ── NSE NIFTY 50 ──
+        # Response format: {"data":[{"indexName":"NIFTY 50","last":25178.65,"percChange":-1.25,...}]}
         try:
-            nse_headers = {
-                **BROWSER_HEADERS,
-                "Referer": "https://www.nseindia.com/",
-                "Origin": "https://www.nseindia.com",
-            }
-            
-            # Try the user-provided API URL first
             resp = await client.get(
                 "https://www.nseindia.com/api/NextApi/apiClient?functionName=getIndexData&&type=All",
-                headers=nse_headers,
+                headers={
+                    **BROWSER_HEADERS,
+                    "Referer": "https://www.nseindia.com/",
+                    "Origin": "https://www.nseindia.com",
+                },
             )
-
             if resp.status_code == 200:
-                data = resp.json()
-                indices = data.get("data", data) if isinstance(data, dict) else data
+                raw = resp.json()
+                # data can be at root level or inside "data" key
+                indices = raw.get("data", raw) if isinstance(raw, dict) else raw
                 if isinstance(indices, list):
                     for idx in indices:
-                        name = idx.get("indexName") or idx.get("index") or ""
-                        if name == "NIFTY 50":
-                            last_val = idx.get("last") or idx.get("closePrice") or 0
-                            change_val = round(float(last_val) - float(idx.get("previousClose", 0)), 2)
+                        if idx.get("indexName") == "NIFTY 50":
+                            last_val = idx.get("last", 0)
+                            prev_close = idx.get("previousClose", 0)
+                            try:
+                                change_val = round(float(last_val) - float(prev_close), 2)
+                            except (ValueError, TypeError):
+                                change_val = 0
                             nifty_data = {
                                 "name": "NIFTY 50",
                                 "value": str(last_val),
@@ -145,44 +121,19 @@ async def get_live_market_data():
                                 "high": str(idx.get("high", 0)),
                                 "low": str(idx.get("low", 0)),
                                 "open": str(idx.get("open", 0)),
-                                "prev_close": str(idx.get("previousClose", 0)),
+                                "prev_close": str(prev_close),
                             }
                             break
-            
-            # Fallback: try allIndices endpoint
-            if nifty_data is None:
-                await client.get("https://www.nseindia.com/", headers=nse_headers)
-                resp = await client.get(
-                    "https://www.nseindia.com/api/allIndices",
-                    headers=nse_headers,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    indices = data.get("data", [])
-                    for idx in indices:
-                        name = idx.get("index") or idx.get("indexSymbol") or ""
-                        if "NIFTY 50" == name:
-                            last_val = idx.get("last") or idx.get("closePrice") or 0
-                            change_val = round(float(last_val) - float(idx.get("previousClose", 0)), 2)
-                            nifty_data = {
-                                "name": "NIFTY 50",
-                                "value": str(last_val),
-                                "change": str(change_val),
-                                "pct_change": str(idx.get("percentChange") or idx.get("percChange") or 0),
-                                "high": str(idx.get("high", 0)),
-                                "low": str(idx.get("low", 0)),
-                                "open": str(idx.get("open", 0)),
-                                "prev_close": str(idx.get("previousClose", 0)),
-                            }
-                            break
+            else:
+                debug["nse_status"] = resp.status_code
+                debug["nse_body"] = resp.text[:200]
         except Exception as e:
-            print(f"NSE API error: {e}")
+            debug["nse_error"] = str(e)
 
-    now_ist = get_ist_now()
     return {
         "market_status": market_status,
         "sensex": sensex_data,
         "nifty": nifty_data,
-        "timestamp": now_ist.isoformat(),
-        "server_time_ist": now_ist.strftime("%H:%M:%S"),
+        "timestamp": ist_now.isoformat(),
+        "debug": debug,
     }
