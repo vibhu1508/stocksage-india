@@ -50,4 +50,23 @@ class AnnouncementService {
       'current_page': data['current_page'] ?? 1,
     };
   }
+
+  // NSE symbol autocomplete
+  static Future<List<Map<String, String>>> nseAutocomplete(String query) async {
+    if (query.isEmpty) return [];
+    final response = await ApiService.get(
+      ApiConfig.nseAutocomplete,
+      queryParams: {'q': query},
+    );
+    final data = ApiService.decodeResponse(response);
+    final results = data['results'] as List? ?? [];
+    return results
+        .map<Map<String, String>>(
+          (e) => {
+            'symbol': e['symbol']?.toString() ?? '',
+            'company_name': e['company_name']?.toString() ?? '',
+          },
+        )
+        .toList();
+  }
 }

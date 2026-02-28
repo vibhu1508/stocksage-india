@@ -23,4 +23,11 @@ class ApiConfig {
       '$apiUrl/announcements/nse/$symbol';
   static const String bseAnnouncements = '$apiUrl/announcements/bse';
   static const String bseScripCodes = '$apiUrl/announcements/bse/scrip-codes';
+
+  // Market data endpoints
+  static const String marketLive = '$apiUrl/market/live';
+
+  // Autocomplete
+  static const String nseAutocomplete =
+      '$apiUrl/announcements/nse/autocomplete';
 }

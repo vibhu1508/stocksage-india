@@ -72,6 +72,17 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
+  final _announcementsKey = GlobalKey<AnnouncementsScreenState>();
+
+  void _switchTab(int index, {int? subTab}) {
+    setState(() => _currentIndex = index);
+    if (index == 3 && subTab == 1) {
+      // Small delay so the screen is visible before switching sub-tab
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _announcementsKey.currentState?.switchToBSE();
+      });
+    }
+  }
 
   late final List<Widget> _screens;
 
@@ -79,42 +90,64 @@ class _MainShellState extends State<MainShell> {
   void initState() {
     super.initState();
     _screens = [
-      DashboardScreen(authService: widget.authService),
+      DashboardScreen(
+        authService: widget.authService,
+        onNavigateToTab: _switchTab,
+      ),
       const StockComparisonScreen(),
       const FOAnalysisScreen(),
-      const AnnouncementsScreen(),
+      AnnouncementsScreen(key: _announcementsKey),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: _screens),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
+    return PopScope(
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          setState(() => _currentIndex = 0);
+        }
+      },
+      child: Scaffold(
+        body: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          transitionBuilder: (child, animation) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          child: KeyedSubtree(
+            key: ValueKey(_currentIndex),
+            child: _screens[_currentIndex],
+          ),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_rounded),
-              label: 'Dashboard',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.compare_arrows_rounded),
-              label: 'Stocks',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.candlestick_chart_rounded),
-              label: 'F&O',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.article_rounded),
-              label: 'News',
-            ),
-          ],
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
+          ),
+          child: BottomNavigationBar(
+            currentIndex: _currentIndex,
+            onTap: _switchTab,
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.dashboard_rounded),
+                label: 'Dashboard',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.compare_arrows_rounded),
+                label: 'Stocks',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.candlestick_chart_rounded),
+                label: 'F&O',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.article_rounded),
+                label: 'News',
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -72,8 +72,17 @@ class ApiService {
     } else if (response.statusCode == 401) {
       throw Exception('Unauthorized — please login again');
     } else {
-      final error = jsonDecode(response.body);
-      throw Exception(error['detail'] ?? 'Request failed');
+      try {
+        final error = jsonDecode(response.body);
+        throw Exception(
+          error['detail'] ?? 'Request failed (${response.statusCode})',
+        );
+      } catch (e) {
+        if (e is Exception && e.toString().contains('detail')) rethrow;
+        throw Exception(
+          'Server error (${response.statusCode}): ${response.body.length > 100 ? response.body.substring(0, 100) : response.body}',
+        );
+      }
     }
   }
 }
