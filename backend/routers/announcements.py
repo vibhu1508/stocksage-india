@@ -100,6 +100,7 @@ def fetch_nse_autocomplete(query: str) -> List[dict]:
     try:
         with requests.Session() as s:
             s.headers.update(NSE_HEADERS)
+            # Establish cookies first
             s.get("https://www.nseindia.com/", timeout=10)
             
             response = s.get(url, timeout=10)
@@ -109,11 +110,23 @@ def fetch_nse_autocomplete(query: str) -> List[dict]:
             symbols = data.get('symbols', [])
             results = []
             for item in symbols:
+                # Get the highest weight from symbol_suggest for sorting
+                suggests = item.get('symbol_suggest', [])
+                weight = max((s.get('weight', 0) for s in suggests), default=0) if suggests else 0
                 results.append({
                     "symbol": item.get('symbol', ''),
                     "company_name": item.get('symbol_info', ''),
                     "type": item.get('result_sub_type', 'equity'),
+                    "weight": weight,
                 })
+            
+            # Sort by weight descending so most relevant appear first
+            results.sort(key=lambda x: x['weight'], reverse=True)
+            
+            # Remove weight from output
+            for r in results:
+                r.pop('weight', None)
+            
             return results
     except Exception as e:
         logger.error(f"NSE autocomplete error: {e}")
