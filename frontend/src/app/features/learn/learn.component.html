@@ -3,11 +3,11 @@
 
   <!-- Search -->
   <div class="search-bar">
-    <input type="text" [(ngModel)]="searchQuery" (keyup.enter)="searchVideos()" placeholder="Search videos..." />
+    <input type="text" [(ngModel)]="searchQuery" (input)="onSearchInput(searchQuery)"
+      placeholder="Search videos... (type 2+ characters)" />
     @if (searchQuery) {
     <button class="clear-btn" (click)="clearSearch()">✕</button>
     }
-    <button class="search-btn" (click)="searchVideos()">Search</button>
   </div>
 
   <!-- Video Player Modal -->

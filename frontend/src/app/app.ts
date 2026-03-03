@@ -13,5 +13,6 @@ import { CommonModule } from '@angular/common';
   styleUrl: './app.scss'
 })
 export class App {
+  sidebarCollapsed = false;
   constructor(public authService: AuthService) { }
 }

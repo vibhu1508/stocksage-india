@@ -1,28 +1,53 @@
-<aside class="sidebar">
+<!-- Mobile hamburger button -->
+<button class="mobile-toggle" (click)="toggleMobile()">
+  <span class="material-icons">menu</span>
+</button>
+
+<!-- Mobile backdrop -->
+@if (mobileOpen) {
+<div class="sidebar-backdrop" (click)="closeMobile()"></div>
+}
+
+<aside class="sidebar" [class.collapsed]="collapsed" [class.open]="mobileOpen">
   <div class="sidebar-header">
     <div class="logo">
       <span class="logo-icon"><img src="logo.png" alt="StockSage India"></span>
+      @if (!collapsed) {
       <span class="logo-text">StockSage India</span>
+      }
     </div>
   </div>
 
   <nav class="sidebar-nav">
     @for (item of menuItems; track item.path) {
-    <a [routerLink]="item.path" routerLinkActive="active" class="nav-item">
+    <a [routerLink]="item.path" routerLinkActive="active" class="nav-item" (click)="closeMobile()"
+      [title]="collapsed ? item.label : ''">
       <span class="nav-icon material-icons">{{ item.icon }}</span>
+      @if (!collapsed) {
       <span class="nav-label">{{ item.label }}</span>
+      }
     </a>
     }
   </nav>
 
   <div class="sidebar-footer">
+    <!-- Collapse toggle -->
+    <button class="collapse-btn" (click)="toggleCollapse()">
+      <span class="material-icons">{{ collapsed ? 'chevron_right' : 'chevron_left' }}</span>
+      @if (!collapsed) {
+      <span class="collapse-label">Collapse</span>
+      }
+    </button>
+
     @if (authService.currentUser$ | async; as user) {
     <div class="user-info">
       <img [src]="user.picture || 'assets/default-avatar.png'" alt="User" class="user-avatar" />
+      @if (!collapsed) {
       <div class="user-details">
         <span class="user-name">{{ user.name }}</span>
         <span class="user-email">{{ user.email }}</span>
       </div>
+      }
     </div>
     }
   </div>

@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
@@ -11,6 +11,11 @@ import { AuthService } from '../../../core/services/auth.service';
   styleUrl: './sidebar.component.scss'
 })
 export class SidebarComponent {
+  collapsed = false;
+  mobileOpen = false;
+
+  @Output() collapsedChange = new EventEmitter<boolean>();
+
   menuItems = [
     { path: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
     { path: '/stocks', icon: 'trending_up', label: 'Stock Comparison' },
@@ -20,4 +25,17 @@ export class SidebarComponent {
   ];
 
   constructor(public authService: AuthService) { }
+
+  toggleCollapse(): void {
+    this.collapsed = !this.collapsed;
+    this.collapsedChange.emit(this.collapsed);
+  }
+
+  toggleMobile(): void {
+    this.mobileOpen = !this.mobileOpen;
+  }
+
+  closeMobile(): void {
+    this.mobileOpen = false;
+  }
 }

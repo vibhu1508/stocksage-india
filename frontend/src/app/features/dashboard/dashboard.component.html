@@ -45,14 +45,16 @@
         <span class="mover-title">Top Gainers</span>
         <span class="live-tag gainer-tag">LIVE</span>
       </div>
+      @for (g of [currentGainer]; track gainerIndex) {
       <div class="mover-body">
-        <div class="mover-symbol">{{ currentGainer.symbol }}</div>
-        <div class="mover-price">₹{{ currentGainer.price | number:'1.2-2' }}</div>
+        <div class="mover-symbol">{{ g!.symbol }}</div>
+        <div class="mover-price">₹{{ g!.price | number:'1.2-2' }}</div>
         <div class="mover-change positive">
-          ▲ +{{ currentGainer.pct_change | number:'1.2-2' }}%
-          <span class="change-abs">(+{{ currentGainer.change | number:'1.2-2' }})</span>
+          ▲ +{{ g!.pct_change | number:'1.2-2' }}%
+          <span class="change-abs">(+{{ g!.change | number:'1.2-2' }})</span>
         </div>
       </div>
+      }
       <div class="mover-dots">
         @for (g of topGainers; track g.symbol; let i = $index) {
         <span class="dot" [class.active]="i === gainerIndex"></span>
@@ -67,14 +69,16 @@
         <span class="mover-title">Top Losers</span>
         <span class="live-tag loser-tag">LIVE</span>
       </div>
+      @for (l of [currentLoser]; track loserIndex) {
       <div class="mover-body">
-        <div class="mover-symbol">{{ currentLoser.symbol }}</div>
-        <div class="mover-price">₹{{ currentLoser.price | number:'1.2-2' }}</div>
+        <div class="mover-symbol">{{ l!.symbol }}</div>
+        <div class="mover-price">₹{{ l!.price | number:'1.2-2' }}</div>
         <div class="mover-change negative">
-          ▼ {{ currentLoser.pct_change | number:'1.2-2' }}%
-          <span class="change-abs">({{ currentLoser.change | number:'1.2-2' }})</span>
+          ▼ {{ l!.pct_change | number:'1.2-2' }}%
+          <span class="change-abs">({{ l!.change | number:'1.2-2' }})</span>
         </div>
       </div>
+      }
       <div class="mover-dots">
         @for (l of topLosers; track l.symbol; let i = $index) {
         <span class="dot" [class.active]="i === loserIndex"></span>

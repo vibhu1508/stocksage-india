@@ -14,10 +14,18 @@
   flex-direction: column;
   min-height: 100vh;
   margin-left: 260px;
-  transition: margin-left 0.3s ease;
+  transition: margin-left 0.25s ease;
+
+  &.sidebar-collapsed {
+    margin-left: 72px;
+  }
 
   @media (max-width: $breakpoint-lg) {
     margin-left: 0;
+
+    &.sidebar-collapsed {
+      margin-left: 0;
+    }
   }
 }
 

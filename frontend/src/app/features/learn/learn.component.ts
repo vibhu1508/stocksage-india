@@ -1,7 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { Subject, Subscription } from 'rxjs';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { MarketService, LearnVideo } from '../../core/services/market.service';
 
 @Component({
@@ -11,7 +13,7 @@ import { MarketService, LearnVideo } from '../../core/services/market.service';
   templateUrl: './learn.component.html',
   styleUrl: './learn.component.scss'
 })
-export class LearnComponent implements OnInit {
+export class LearnComponent implements OnInit, OnDestroy {
   videos: LearnVideo[] = [];
   loading = true;
   searchQuery = '';
@@ -22,6 +24,10 @@ export class LearnComponent implements OnInit {
   selectedVideo: LearnVideo | null = null;
   playerUrl: SafeResourceUrl | null = null;
 
+  // Dynamic search
+  private searchSubject = new Subject<string>();
+  private searchSub?: Subscription;
+
   constructor(
     private marketService: MarketService,
     private sanitizer: DomSanitizer
@@ -29,6 +35,26 @@ export class LearnComponent implements OnInit {
 
   ngOnInit(): void {
     this.fetchVideos();
+
+    // Dynamic search: debounce 400ms, trigger after 2+ chars or empty (reset)
+    this.searchSub = this.searchSubject.pipe(
+      debounceTime(400),
+      distinctUntilChanged()
+    ).subscribe(query => {
+      if (query.length === 0) {
+        this.fetchVideos();
+      } else if (query.length >= 2) {
+        this.doSearch(query);
+      }
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.searchSub?.unsubscribe();
+  }
+
+  onSearchInput(value: string): void {
+    this.searchSubject.next(value);
   }
 
   fetchVideos(pageToken: string = ''): void {
@@ -47,13 +73,9 @@ export class LearnComponent implements OnInit {
     });
   }
 
-  searchVideos(): void {
-    if (!this.searchQuery.trim()) {
-      this.fetchVideos();
-      return;
-    }
+  private doSearch(query: string): void {
     this.loading = true;
-    this.marketService.searchLearnVideos(this.searchQuery).subscribe(data => {
+    this.marketService.searchLearnVideos(query).subscribe(data => {
       this.videos = data.videos;
       this.nextPageToken = data.nextPageToken;
       this.loading = false;
@@ -63,7 +85,7 @@ export class LearnComponent implements OnInit {
   loadMore(): void {
     if (!this.nextPageToken || this.loadingMore) return;
     this.loadingMore = true;
-    if (this.searchQuery.trim()) {
+    if (this.searchQuery.trim() && this.searchQuery.length >= 2) {
       this.marketService.searchLearnVideos(this.searchQuery, this.nextPageToken).subscribe(data => {
         this.videos = [...this.videos, ...data.videos];
         this.nextPageToken = data.nextPageToken;
