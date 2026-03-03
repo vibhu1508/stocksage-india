@@ -19,8 +19,8 @@ def get_ist_now():
     return ist_now
 
 
-def get_market_status():
-    """Determine Indian market status based on current IST time"""
+def get_market_status_fallback():
+    """Fallback: Determine Indian market status based on current IST time"""
     now = get_ist_now()
     weekday = now.weekday()  # 0=Monday, 6=Sunday
 
@@ -39,6 +39,34 @@ def get_market_status():
         return "Closed"
 
 
+async def fetch_market_status(client: httpx.AsyncClient) -> str:
+    """Fetch real market status from NSE API"""
+    try:
+        resp = await client.get(
+            "https://www.nseindia.com/api/marketStatus",
+            headers={
+                **BROWSER_HEADERS,
+                "Referer": "https://www.nseindia.com/",
+                "Origin": "https://www.nseindia.com",
+            },
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            states = data.get("marketState", [])
+            for state in states:
+                if state.get("market") == "Capital Market":
+                    status = state.get("marketStatus", "")
+                    # Normalize: NSE returns "Close"/"Open"
+                    if status.lower() == "close":
+                        return "Closed"
+                    elif status.lower() == "open":
+                        return "Open"
+                    return status
+    except Exception:
+        pass
+    return get_market_status_fallback()
+
+
 BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
@@ -50,9 +78,9 @@ BROWSER_HEADERS = {
 async def get_live_market_data():
     """Get live SENSEX and NIFTY data"""
     ist_now = get_ist_now()
-    market_status = get_market_status()
     sensex_data = None
     nifty_data = None
+    market_status = get_market_status_fallback()  # default
     debug = {
         "utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "ist": ist_now.strftime("%Y-%m-%d %H:%M:%S"),
@@ -61,6 +89,9 @@ async def get_live_market_data():
     }
 
     async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+        # Fetch real market status from NSE
+        market_status = await fetch_market_status(client)
+
         # ── BSE SENSEX ──
         # Response format: [{"indxnm":"SenSexValue","ltp":"81,287.19","chg":"-961.42","perchg":"-1.17",...}]
         try:
@@ -172,11 +203,11 @@ async def get_top_stocks():
 
 @router.get("/top-losers")
 async def get_top_losers():
-    """Get top losers from NSE"""
+    """Get top 10 losers from NSE NIFTY"""
     try:
         async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
             resp = await client.get(
-                "https://www.nseindia.com/api/NextApi/apiClient?functionName=getMarketSnapshot&&type=L",
+                "https://www.nseindia.com/api/live-analysis-variations?index=loosers",
                 headers={
                     **BROWSER_HEADERS,
                     "Referer": "https://www.nseindia.com/",
@@ -185,16 +216,20 @@ async def get_top_losers():
             )
             if resp.status_code == 200:
                 data = resp.json()
-                raw = data.get("data", data) if isinstance(data, dict) else data
-                losers = raw.get("topLoosers", []) if isinstance(raw, dict) else []
+                nifty = data.get("NIFTY", {})
+                items = nifty.get("data", [])
                 results = []
-                for item in losers:
+                for item in items[:10]:
+                    price = float(item.get("ltp", 0))
+                    prev = float(item.get("prev_price", 0))
+                    change = round(price - prev, 2)
+                    pct = round(float(item.get("perChange", 0)), 2)
                     results.append({
                         "symbol": item.get("symbol", ""),
-                        "price": item.get("lastPrice", 0),
-                        "change": round(float(item.get("change", 0)), 2),
-                        "pct_change": round(float(item.get("pchange", 0)), 2),
-                        "volume": item.get("totalTradedVolume", 0),
+                        "price": price,
+                        "change": change,
+                        "pct_change": pct,
+                        "volume": item.get("trade_quantity", 0),
                     })
                 return {"losers": results}
             return {"losers": []}
