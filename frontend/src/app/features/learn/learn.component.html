@@ -1,0 +1,82 @@
+<div class="learn-page fade-in">
+  <h1 class="page-title">🎓 Learn with Girish Gupta</h1>
+
+  <!-- Search -->
+  <div class="search-bar">
+    <input type="text" [(ngModel)]="searchQuery" (keyup.enter)="searchVideos()" placeholder="Search videos..." />
+    @if (searchQuery) {
+    <button class="clear-btn" (click)="clearSearch()">✕</button>
+    }
+    <button class="search-btn" (click)="searchVideos()">Search</button>
+  </div>
+
+  <!-- Video Player Modal -->
+  @if (selectedVideo && playerUrl) {
+  <div class="player-overlay" (click)="closePlayer()">
+    <div class="player-modal" (click)="$event.stopPropagation()">
+      <button class="close-btn" (click)="closePlayer()">✕</button>
+      <div class="player-wrapper">
+        <iframe [src]="playerUrl" frameborder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowfullscreen></iframe>
+      </div>
+      <div class="player-info">
+        <h2>{{ selectedVideo.title }}</h2>
+        <div class="player-meta">
+          <span>👁 {{ formatViews(selectedVideo.views) }} views</span>
+          <span>📅 {{ timeAgo(selectedVideo.publishedAt) }}</span>
+        </div>
+        @if (selectedVideo.description) {
+        <p class="player-desc">{{ selectedVideo.description }}</p>
+        }
+      </div>
+    </div>
+  </div>
+  }
+
+  <!-- Loading -->
+  @if (loading) {
+  <div class="loading-state">
+    <div class="spinner"></div>
+    <p>Loading videos...</p>
+  </div>
+  }
+
+  <!-- Video Grid -->
+  @if (!loading && videos.length > 0) {
+  <div class="video-grid">
+    @for (video of videos; track video.videoId) {
+    <div class="video-card" (click)="playVideo(video)">
+      <div class="thumbnail-wrapper">
+        <img [src]="video.thumbnail" [alt]="video.title" loading="lazy" />
+        <div class="play-overlay">▶</div>
+        @if (video.duration) {
+        <span class="duration-badge">{{ formatDuration(video.duration) }}</span>
+        }
+      </div>
+      <div class="video-info">
+        <h3>{{ video.title }}</h3>
+        <div class="video-meta">
+          <span>👁 {{ formatViews(video.views) }}</span>
+          <span>{{ timeAgo(video.publishedAt) }}</span>
+        </div>
+      </div>
+    </div>
+    }
+  </div>
+
+  @if (nextPageToken) {
+  <div class="load-more">
+    <button (click)="loadMore()" [disabled]="loadingMore">
+      {{ loadingMore ? 'Loading...' : 'Load More' }}
+    </button>
+  </div>
+  }
+  }
+
+  @if (!loading && videos.length === 0) {
+  <div class="empty-state">
+    <p>No videos found</p>
+  </div>
+  }
+</div>

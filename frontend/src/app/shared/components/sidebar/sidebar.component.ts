@@ -15,7 +15,8 @@ export class SidebarComponent {
     { path: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
     { path: '/stocks', icon: 'trending_up', label: 'Stock Comparison' },
     { path: '/fo', icon: 'show_chart', label: 'F&O Analysis' },
-    { path: '/announcements', icon: 'campaign', label: 'Announcements' }
+    { path: '/announcements', icon: 'campaign', label: 'Announcements' },
+    { path: '/learn', icon: 'school', label: 'Learn' }
   ];
 
   constructor(public authService: AuthService) { }

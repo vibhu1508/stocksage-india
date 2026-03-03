@@ -25,6 +25,7 @@ export interface MarketData {
 })
 export class MarketService {
   private apiUrl = `${import.meta.env.NG_APP_BACKEND}/api/market`;
+  private learnUrl = `${import.meta.env.NG_APP_BACKEND}/api/learn`;
 
   constructor(private http: HttpClient) { }
 
@@ -45,6 +46,34 @@ export class MarketService {
     );
   }
 
+  getTopGainers(): Observable<{ gainers: StockMover[] }> {
+    return this.http.get<{ gainers: StockMover[] }>(`${this.apiUrl}/top-stocks`).pipe(
+      catchError(() => of({ gainers: [] }))
+    );
+  }
+
+  getTopLosers(): Observable<{ losers: StockMover[] }> {
+    return this.http.get<{ losers: StockMover[] }>(`${this.apiUrl}/top-losers`).pipe(
+      catchError(() => of({ losers: [] }))
+    );
+  }
+
+  getLearnVideos(pageToken: string = ''): Observable<LearnResponse> {
+    const params: any = { max_results: '10' };
+    if (pageToken) params.page_token = pageToken;
+    return this.http.get<LearnResponse>(this.learnUrl + '/videos', { params }).pipe(
+      catchError(() => of({ videos: [], nextPageToken: '', totalResults: 0 }))
+    );
+  }
+
+  searchLearnVideos(q: string, pageToken: string = ''): Observable<LearnResponse> {
+    const params: any = { q, max_results: '10' };
+    if (pageToken) params.page_token = pageToken;
+    return this.http.get<LearnResponse>(this.learnUrl + '/search', { params }).pipe(
+      catchError(() => of({ videos: [], nextPageToken: '', totalResults: 0 }))
+    );
+  }
+
   private getFallbackData(): MarketData {
     return {
       market_status: this.getLocalMarketStatus(),
@@ -56,13 +85,11 @@ export class MarketService {
 
   private getLocalMarketStatus(): string {
     const now = new Date();
-    // Convert to IST
-    const istOffset = 5.5 * 60; // minutes
+    const istOffset = 5.5 * 60;
     const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
     const istMinutes = utcMinutes + istOffset;
-    const day = now.getUTCDay(); // 0=Sun, 6=Sat
+    const day = now.getUTCDay();
 
-    // Adjust day if IST crosses midnight
     const adjustedDay = istMinutes >= 1440 ? (day + 1) % 7 : day;
     const adjustedMinutes = istMinutes >= 1440 ? istMinutes - 1440 : istMinutes;
 
@@ -73,9 +100,6 @@ export class MarketService {
     return 'Closed';
   }
 
-  /**
-   * Format a number string to Indian locale (e.g., 1,23,456.78)
-   */
   formatIndian(value: string | number): string {
     const num = typeof value === 'string'
       ? parseFloat(value.replace(/,/g, ''))
@@ -83,4 +107,30 @@ export class MarketService {
     if (isNaN(num)) return String(value);
     return num.toLocaleString('en-IN', { maximumFractionDigits: 2 });
   }
+}
+
+export interface StockMover {
+  symbol: string;
+  price: number;
+  change: number;
+  pct_change: number;
+  volume: number;
+}
+
+export interface LearnVideo {
+  videoId: string;
+  title: string;
+  description: string;
+  thumbnail: string;
+  publishedAt: string;
+  channelTitle: string;
+  views: number;
+  likes: number;
+  duration: string;
+}
+
+export interface LearnResponse {
+  videos: LearnVideo[];
+  nextPageToken: string;
+  totalResults: number;
 }

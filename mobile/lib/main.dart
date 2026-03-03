@@ -6,6 +6,7 @@ import 'features/dashboard/dashboard_screen.dart';
 import 'features/stocks/stock_comparison_screen.dart';
 import 'features/fo_analysis/fo_analysis_screen.dart';
 import 'features/announcements/announcements_screen.dart';
+import 'features/learn/learn_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -97,6 +98,7 @@ class _MainShellState extends State<MainShell> {
       const StockComparisonScreen(),
       const FOAnalysisScreen(),
       AnnouncementsScreen(key: _announcementsKey),
+      const LearnScreen(),
     ];
   }
 
@@ -145,6 +147,10 @@ class _MainShellState extends State<MainShell> {
               BottomNavigationBarItem(
                 icon: Icon(Icons.article_rounded),
                 label: 'News',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.school_rounded),
+                label: 'Learn',
               ),
             ],
           ),

@@ -60,6 +60,123 @@
   margin-bottom: $spacing-xl;
 }
 
+// Top Gainers / Losers
+.movers-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: $spacing-md;
+  margin-bottom: $spacing-xl;
+
+  @media (max-width: $breakpoint-md) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mover-card {
+  @include glass-card;
+  padding: $spacing-lg;
+  transition: all 0.3s ease;
+  @include hover-lift;
+
+  &.gainer {
+    border-left: 3px solid $success;
+  }
+
+  &.loser {
+    border-left: 3px solid $danger;
+  }
+}
+
+.mover-header {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+}
+
+.mover-icon {
+  font-size: 18px;
+}
+
+.mover-title {
+  font-weight: 600;
+  font-size: 14px;
+  flex: 1;
+}
+
+.live-tag {
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  animation: pulse-glow 2s ease-in-out infinite;
+
+  &.gainer-tag {
+    background: $success-light;
+    color: $success;
+  }
+
+  &.loser-tag {
+    background: $danger-light;
+    color: $danger;
+  }
+}
+
+.mover-body {
+  margin-bottom: $spacing-sm;
+}
+
+.mover-symbol {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.mover-price {
+  font-size: 14px;
+  color: $text-secondary;
+  margin-bottom: 4px;
+}
+
+.mover-change {
+  font-size: 14px;
+  font-weight: 600;
+
+  &.positive {
+    color: $success;
+  }
+
+  &.negative {
+    color: $danger;
+  }
+}
+
+.change-abs {
+  font-weight: 400;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.mover-dots {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: $spacing-sm;
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.15);
+    transition: all 0.2s ease;
+
+    &.active {
+      width: 16px;
+      background: $accent-primary;
+    }
+  }
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -175,8 +292,15 @@
 }
 
 @keyframes pulse-glow {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
 }
 
 // Actions Section

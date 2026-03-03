@@ -33,6 +33,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   Timer? _carouselTimer;
   int _carouselPage = 0;
 
+  // Top losers
+  List<Map<String, dynamic>> _topLosers = [];
+  late PageController _losersCarouselController;
+  Timer? _losersCarouselTimer;
+  int _losersCarouselPage = 0;
+
   @override
   void initState() {
     super.initState();
@@ -69,10 +75,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     _controller.forward();
     _fetchMarketData();
     _fetchTopGainers();
+    _fetchTopLosers();
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       _fetchMarketData();
     });
     _carouselController = PageController();
+    _losersCarouselController = PageController();
   }
 
   Future<void> _fetchMarketData() async {
@@ -111,12 +119,39 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
   }
 
+  Future<void> _fetchTopLosers() async {
+    try {
+      final data = await MarketService.getTopLosers();
+      if (mounted && data.isNotEmpty) {
+        setState(() => _topLosers = data);
+        _startLosersCarouselTimer();
+      }
+    } catch (_) {}
+  }
+
+  void _startLosersCarouselTimer() {
+    _losersCarouselTimer?.cancel();
+    _losersCarouselTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (_topLosers.isEmpty || !mounted) return;
+      _losersCarouselPage = (_losersCarouselPage + 1) % _topLosers.length;
+      if (_losersCarouselController.hasClients) {
+        _losersCarouselController.animateToPage(
+          _losersCarouselPage,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
     _refreshTimer?.cancel();
     _carouselTimer?.cancel();
     _carouselController.dispose();
+    _losersCarouselTimer?.cancel();
+    _losersCarouselController.dispose();
     super.dispose();
   }
 
@@ -416,6 +451,193 @@ class _DashboardScreenState extends State<DashboardScreen>
                               borderRadius: BorderRadius.circular(3),
                               color: i == _carouselPage
                                   ? Colors.greenAccent
+                                  : AppTheme.textSecondary.withValues(
+                                      alpha: 0.3,
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+
+              // Top Losers Carousel
+              if (_topLosers.isNotEmpty) ...[
+                _animated(
+                  4,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.trending_down,
+                            size: 18,
+                            color: Colors.redAccent,
+                          ),
+                          const SizedBox(width: 6),
+                          const Text(
+                            'Top Losers',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.redAccent.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'LIVE',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.redAccent,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 80,
+                        child: PageView.builder(
+                          controller: _losersCarouselController,
+                          itemCount: _topLosers.length,
+                          onPageChanged: (i) =>
+                              setState(() => _losersCarouselPage = i),
+                          itemBuilder: (context, index) {
+                            final g = _topLosers[index];
+                            final pct =
+                                (g['pct_change'] as num?)?.toDouble() ?? 0;
+                            final price = (g['price'] as num?)?.toDouble() ?? 0;
+                            final change =
+                                (g['change'] as num?)?.toDouble() ?? 0;
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 2),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.redAccent.withValues(alpha: 0.08),
+                                    AppTheme.cardColor,
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: Colors.redAccent.withValues(
+                                    alpha: 0.2,
+                                  ),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          g['symbol'] ?? '',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 15,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '\u20b9${price.toStringAsFixed(2)}',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: AppTheme.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.redAccent.withValues(
+                                            alpha: 0.15,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.arrow_downward,
+                                              size: 12,
+                                              color: Colors.redAccent,
+                                            ),
+                                            const SizedBox(width: 2),
+                                            Text(
+                                              '${pct.toStringAsFixed(2)}%',
+                                              style: const TextStyle(
+                                                color: Colors.redAccent,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${change.toStringAsFixed(2)}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.redAccent.withValues(
+                                            alpha: 0.7,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(
+                          _topLosers.length,
+                          (i) => AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: i == _losersCarouselPage ? 16 : 6,
+                            height: 6,
+                            margin: const EdgeInsets.symmetric(horizontal: 2),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(3),
+                              color: i == _losersCarouselPage
+                                  ? Colors.redAccent
                                   : AppTheme.textSecondary.withValues(
                                       alpha: 0.3,
                                     ),

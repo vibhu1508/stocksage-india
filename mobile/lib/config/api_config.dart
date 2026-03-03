@@ -33,4 +33,9 @@ class ApiConfig {
 
   // Top stocks
   static const String topStocks = '$apiUrl/market/top-stocks';
+  static const String topLosers = '$apiUrl/market/top-losers';
+
+  // Learn
+  static const String learnVideos = '$apiUrl/learn/videos';
+  static const String learnSearch = '$apiUrl/learn/search';
 }

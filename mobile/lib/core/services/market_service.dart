@@ -141,4 +141,22 @@ class MarketService {
       return [];
     }
   }
+
+  /// Fetch top losers from NSE
+  static Future<List<Map<String, dynamic>>> getTopLosers() async {
+    try {
+      final response = await http
+          .get(Uri.parse(ApiConfig.topLosers))
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final losers = data['losers'] as List? ?? [];
+        return losers.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
 }

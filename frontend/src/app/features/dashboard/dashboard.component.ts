@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { AuthService, User } from '../../core/services/auth.service';
-import { MarketService, MarketData } from '../../core/services/market.service';
+import { MarketService, MarketData, StockMover } from '../../core/services/market.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -21,11 +21,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private marketSub?: Subscription;
 
+  // Top gainers/losers carousel
+  topGainers: StockMover[] = [];
+  topLosers: StockMover[] = [];
+  gainerIndex = 0;
+  loserIndex = 0;
+  private gainerTimer?: any;
+  private loserTimer?: any;
+
   quickActions = [
     { label: 'Compare Stocks', description: 'Analyze price changes between dates', icon: '📊', route: '/stocks' },
     { label: 'F&O Analysis', description: 'View futures and options data', icon: '📈', route: '/fo' },
     { label: 'NSE Announcements', description: 'Latest corporate filings', icon: '📰', route: '/announcements' },
-    { label: 'BSE Announcements', description: 'BSE corporate filings', icon: '📋', route: '/announcements' }
+    { label: 'Learn', description: 'Videos by Girish Gupta', icon: '🎓', route: '/learn' }
   ];
 
   constructor(
@@ -40,20 +48,37 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     this.setGreeting();
 
-    // Update time every second
     setInterval(() => {
       this.currentTime = new Date();
     }, 1000);
 
-    // Live market data with 10s auto-refresh
     this.marketSub = this.marketService.getLiveDataStream(10000).subscribe(data => {
       this.marketData = data;
       this.marketLoading = false;
+    });
+
+    this.marketService.getTopGainers().subscribe(data => {
+      this.topGainers = data.gainers || [];
+      if (this.topGainers.length > 0) {
+        this.gainerTimer = setInterval(() => {
+          this.gainerIndex = (this.gainerIndex + 1) % this.topGainers.length;
+        }, 3000);
+      }
+    });
+    this.marketService.getTopLosers().subscribe(data => {
+      this.topLosers = data.losers || [];
+      if (this.topLosers.length > 0) {
+        this.loserTimer = setInterval(() => {
+          this.loserIndex = (this.loserIndex + 1) % this.topLosers.length;
+        }, 3000);
+      }
     });
   }
 
   ngOnDestroy(): void {
     this.marketSub?.unsubscribe();
+    if (this.gainerTimer) clearInterval(this.gainerTimer);
+    if (this.loserTimer) clearInterval(this.loserTimer);
   }
 
   private setGreeting(): void {
@@ -113,6 +138,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   get sensexPositive(): boolean {
     if (!this.marketData?.sensex) return true;
     return parseFloat(this.marketData.sensex.pct_change) >= 0;
+  }
+
+  get currentGainer(): StockMover | null {
+    return this.topGainers.length > 0 ? this.topGainers[this.gainerIndex] : null;
+  }
+
+  get currentLoser(): StockMover | null {
+    return this.topLosers.length > 0 ? this.topLosers[this.loserIndex] : null;
   }
 
   get stats() {
