@@ -168,3 +168,35 @@ async def get_top_stocks():
             return {"gainers": []}
     except Exception as e:
         return {"gainers": [], "error": str(e)}
+
+
+@router.get("/top-losers")
+async def get_top_losers():
+    """Get top losers from NSE"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+            resp = await client.get(
+                "https://www.nseindia.com/api/NextApi/apiClient?functionName=getMarketSnapshot&&type=L",
+                headers={
+                    **BROWSER_HEADERS,
+                    "Referer": "https://www.nseindia.com/",
+                    "Origin": "https://www.nseindia.com",
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                raw = data.get("data", data) if isinstance(data, dict) else data
+                losers = raw.get("topLoosers", []) if isinstance(raw, dict) else []
+                results = []
+                for item in losers:
+                    results.append({
+                        "symbol": item.get("symbol", ""),
+                        "price": item.get("lastPrice", 0),
+                        "change": round(float(item.get("change", 0)), 2),
+                        "pct_change": round(float(item.get("pchange", 0)), 2),
+                        "volume": item.get("totalTradedVolume", 0),
+                    })
+                return {"losers": results}
+            return {"losers": []}
+    except Exception as e:
+        return {"losers": [], "error": str(e)}
