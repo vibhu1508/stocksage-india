@@ -106,12 +106,14 @@
   <!-- Detail Tabs -->
   <div class="detail-tabs">
     <div class="tab-header">
+      @if (!isIndex) {
       <button [class.active]="activeTab === 'fundamentals'" (click)="setActiveTab('fundamentals')">
         <span class="material-icons">analytics</span> Fundamentals
       </button>
       <button [class.active]="activeTab === 'financials'" (click)="setActiveTab('financials')">
         <span class="material-icons">account_balance</span> Financials
       </button>
+      }
       <button [class.active]="activeTab === 'news'" (click)="setActiveTab('news')">
         <span class="material-icons">newspaper</span> News
       </button>
@@ -128,7 +130,7 @@
       }
 
       <!-- Fundamentals -->
-      @if (activeTab === 'fundamentals' && fundamentals && !tabLoading) {
+      @if (!isIndex && activeTab === 'fundamentals' && fundamentals && !tabLoading) {
       <div class="fundamentals-grid">
         <div class="fund-item"><span class="fl">Sector</span><span class="fv">{{ fundamentals.sector || '—' }}</span>
         </div>
@@ -172,7 +174,7 @@
       }
 
       <!-- Financials -->
-      @if (activeTab === 'financials' && !tabLoading) {
+      @if (!isIndex && activeTab === 'financials' && !tabLoading) {
       <div class="financials-controls">
         <select [(ngModel)]="financialStatement" (change)="onFinancialStatementChange()">
           <option value="income">Income Statement</option>

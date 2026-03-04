@@ -57,6 +57,7 @@ export class StockChartComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // Stock data
   selectedSymbol = '';
+  isIndex = false;
   quote: StockQuote | null = null;
   quoteLoading = false;
   private liveUpdateInterval: any;
@@ -155,11 +156,12 @@ export class StockChartComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   selectStock(result: SearchResult): void {
-    this.selectPreset(result.symbol, result.name);
+    this.selectPreset(result.symbol, result.name, result.type?.toLowerCase() === 'index');
   }
 
-  selectPreset(symbol: string, name: string): void {
+  selectPreset(symbol: string, name: string, isIndex: boolean = true): void {
     this.selectedSymbol = symbol;
+    this.isIndex = isIndex;
     this.searchQuery = `${symbol} — ${name}`;
     this.showResults = false;
     this.loadStock();
@@ -185,7 +187,12 @@ export class StockChartComponent implements OnInit, OnDestroy, AfterViewInit {
     // Load chart
     this.loadChartData();
 
-    // Load default tab
+    // Reset and Load default tab
+    if (this.isIndex && (this.activeTab === 'fundamentals' || this.activeTab === 'financials')) {
+      this.activeTab = 'options';
+    } else if (!this.isIndex && !['fundamentals', 'financials', 'news', 'options'].includes(this.activeTab)) {
+      this.activeTab = 'fundamentals';
+    }
     this.loadTabData();
 
     this.startLiveUpdates();
@@ -433,6 +440,8 @@ export class StockChartComponent implements OnInit, OnDestroy, AfterViewInit {
 
   loadTabData(): void {
     if (!this.selectedSymbol) return;
+    if (this.isIndex && (this.activeTab === 'fundamentals' || this.activeTab === 'financials')) return;
+
     this.tabLoading = true;
 
     switch (this.activeTab) {
