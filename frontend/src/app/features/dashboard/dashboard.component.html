@@ -46,7 +46,7 @@
         <span class="live-tag gainer-tag">LIVE</span>
       </div>
       @for (g of [currentGainer]; track gainerIndex) {
-      <div class="mover-body">
+      <div class="mover-body" @slideUp>
         <div class="mover-symbol">{{ g!.symbol }}</div>
         <div class="mover-price">₹{{ g!.price | number:'1.2-2' }}</div>
         <div class="mover-change positive">
@@ -70,7 +70,7 @@
         <span class="live-tag loser-tag">LIVE</span>
       </div>
       @for (l of [currentLoser]; track loserIndex) {
-      <div class="mover-body">
+      <div class="mover-body" @slideUp>
         <div class="mover-symbol">{{ l!.symbol }}</div>
         <div class="mover-price">₹{{ l!.price | number:'1.2-2' }}</div>
         <div class="mover-change negative">

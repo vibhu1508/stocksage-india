@@ -5,6 +5,7 @@ import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { Subject, Subscription } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { MarketService, LearnVideo } from '../../core/services/market.service';
+import { LayoutService } from '../../core/services/layout.service';
 
 @Component({
   selector: 'app-learn',
@@ -30,7 +31,8 @@ export class LearnComponent implements OnInit, OnDestroy {
 
   constructor(
     private marketService: MarketService,
-    private sanitizer: DomSanitizer
+    private sanitizer: DomSanitizer,
+    private layoutService: LayoutService
   ) { }
 
   ngOnInit(): void {
@@ -51,6 +53,7 @@ export class LearnComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.searchSub?.unsubscribe();
+    this.layoutService.setVideoPlaying(false);
   }
 
   onSearchInput(value: string): void {
@@ -97,6 +100,7 @@ export class LearnComponent implements OnInit, OnDestroy {
   }
 
   playVideo(video: LearnVideo): void {
+    this.layoutService.setVideoPlaying(true);
     this.selectedVideo = video;
     this.playerUrl = this.sanitizer.bypassSecurityTrustResourceUrl(
       `https://www.youtube.com/embed/${video.videoId}?autoplay=1&rel=0`
@@ -104,6 +108,7 @@ export class LearnComponent implements OnInit, OnDestroy {
   }
 
   closePlayer(): void {
+    this.layoutService.setVideoPlaying(false);
     this.selectedVideo = null;
     this.playerUrl = null;
   }

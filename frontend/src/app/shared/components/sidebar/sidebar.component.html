@@ -9,13 +9,17 @@
 }
 
 <aside class="sidebar" [class.collapsed]="collapsed" [class.open]="mobileOpen">
-  <div class="sidebar-header">
+  <div class="sidebar-header" [class.is-collapsed]="collapsed">
+    @if (!collapsed) {
     <div class="logo">
       <span class="logo-icon"><img src="logo.png" alt="StockSage India"></span>
-      @if (!collapsed) {
       <span class="logo-text">StockSage India</span>
-      }
     </div>
+    }
+    <button class="collapse-arrow" (click)="toggleCollapse()"
+      [title]="collapsed ? 'Expand sidebar' : 'Collapse sidebar'">
+      <span class="material-icons">{{ collapsed ? 'menu' : 'chevron_left' }}</span>
+    </button>
   </div>
 
   <nav class="sidebar-nav">
@@ -31,14 +35,6 @@
   </nav>
 
   <div class="sidebar-footer">
-    <!-- Collapse toggle -->
-    <button class="collapse-btn" (click)="toggleCollapse()">
-      <span class="material-icons">{{ collapsed ? 'chevron_right' : 'chevron_left' }}</span>
-      @if (!collapsed) {
-      <span class="collapse-label">Collapse</span>
-      }
-    </button>
-
     @if (authService.currentUser$ | async; as user) {
     <div class="user-info">
       <img [src]="user.picture || 'assets/default-avatar.png'" alt="User" class="user-avatar" />

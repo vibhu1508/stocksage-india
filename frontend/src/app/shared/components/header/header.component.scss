@@ -15,6 +15,11 @@
   justify-content: space-between;
   padding: 0 $spacing-lg;
   z-index: $z-sticky;
+  transition: transform $transition-normal;
+
+  &.hidden {
+    transform: translateY(-100%);
+  }
 
   @media (max-width: $breakpoint-lg) {
     left: 0;

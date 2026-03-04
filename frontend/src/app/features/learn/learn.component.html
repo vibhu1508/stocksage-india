@@ -4,7 +4,7 @@
   <!-- Search -->
   <div class="search-bar">
     <input type="text" [(ngModel)]="searchQuery" (input)="onSearchInput(searchQuery)"
-      placeholder="Search videos... (type 2+ characters)" />
+      placeholder="Search for your stock..." />
     @if (searchQuery) {
     <button class="clear-btn" (click)="clearSearch()">✕</button>
     }

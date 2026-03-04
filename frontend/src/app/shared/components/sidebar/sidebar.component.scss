@@ -52,19 +52,6 @@
   &.collapsed {
     width: 72px;
 
-    .sidebar-header {
-      padding: $spacing-md;
-    }
-
-    .logo {
-      justify-content: center;
-    }
-
-    .logo-icon img {
-      max-width: 36px;
-      max-height: 36px;
-    }
-
     .sidebar-nav {
       padding: $spacing-sm;
     }
@@ -109,8 +96,68 @@
 }
 
 .sidebar-header {
-  padding: $spacing-lg;
+  padding: 0 $spacing-lg;
+  height: 80px;
   border-bottom: 1px solid $glass-border;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  &.is-collapsed {
+    padding: 0;
+    justify-content: center;
+  }
+}
+
+.collapse-arrow {
+  position: absolute;
+  top: 26px;
+  right: -14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: $secondary-dark;
+  border: 1px solid $glass-border;
+  box-shadow: $shadow-sm;
+  color: $text-secondary;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all $transition-fast;
+  z-index: 10;
+
+  &:hover {
+    background: $tertiary-dark;
+    color: $accent-primary;
+  }
+
+  .material-icons {
+    font-size: 18px;
+  }
+
+  .is-collapsed & {
+    position: static;
+    width: 36px;
+    height: 36px;
+    border-radius: $radius-md;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+
+    &:hover {
+      background: $glass-bg;
+      color: $text-primary;
+    }
+
+    .material-icons {
+      font-size: 24px;
+    }
+  }
+
+  @media (max-width: $breakpoint-lg) {
+    display: none;
+  }
 }
 
 .logo {
@@ -190,45 +237,6 @@
 .sidebar-footer {
   padding: $spacing-md;
   border-top: 1px solid $glass-border;
-}
-
-// Collapse button
-.collapse-btn {
-  display: flex;
-  align-items: center;
-  gap: $spacing-sm;
-  width: 100%;
-  padding: $spacing-sm $spacing-md;
-  margin-bottom: $spacing-sm;
-  background: transparent;
-  border: 1px solid $glass-border;
-  border-radius: $radius-md;
-  color: $text-secondary;
-  cursor: pointer;
-  font-size: 13px;
-  transition: all $transition-fast;
-
-  &:hover {
-    background: $glass-bg;
-    color: $text-primary;
-  }
-
-  .material-icons {
-    font-size: 20px;
-  }
-
-  .collapse-label {
-    white-space: nowrap;
-  }
-
-  .collapsed & {
-    justify-content: center;
-    padding: $spacing-sm;
-  }
-
-  @media (max-width: $breakpoint-lg) {
-    display: none;
-  }
 }
 
 .user-info {
