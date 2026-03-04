@@ -30,6 +30,20 @@ class _StockChartScreenState extends State<StockChartScreen> {
   bool _isSearching = false;
   Timer? _debounce;
 
+  // Info Tabs State
+  String _activeTab =
+      'Fundamentals'; // Fundamentals, Financials, Option Chain, News
+  bool _isLoadingTab = false;
+  Map<String, dynamic>? _fundamentalsData;
+  Map<String, dynamic>? _financialsData;
+  List<dynamic>? _newsData;
+
+  // Options State
+  List<String> _optionDates = [];
+  String? _selectedOptionDate;
+  List<dynamic> _optionCalls = [];
+  List<dynamic> _optionPuts = [];
+
   final List<Map<String, String>> _indexPresets = [
     {'symbol': 'NIFTY', 'name': 'Nifty 50'},
     {'symbol': 'NIFTY BANK', 'name': 'Nifty Bank'},
@@ -110,8 +124,23 @@ class _StockChartScreenState extends State<StockChartScreen> {
         _quoteData = quote;
         _selectedName = quote['name'] ?? symbol;
         _isLoadingQuote = false;
+
+        // Default tab selection
+        if (isIndex &&
+            (_activeTab == 'Fundamentals' || _activeTab == 'Financials')) {
+          _activeTab = 'Option Chain';
+        } else if (!isIndex &&
+            ![
+              'Fundamentals',
+              'Financials',
+              'Option Chain',
+              'News',
+            ].contains(_activeTab)) {
+          _activeTab = 'Fundamentals';
+        }
       });
       await _loadChartData(symbol, _activePeriod);
+      _loadTabData();
     } catch (e) {
       if (mounted) {
         setState(() => _isLoadingQuote = false);
@@ -119,6 +148,54 @@ class _StockChartScreenState extends State<StockChartScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('Failed to load $symbol')));
       }
+    }
+  }
+
+  Future<void> _loadTabData() async {
+    if (_isIndex &&
+        (_activeTab == 'Fundamentals' || _activeTab == 'Financials'))
+      return;
+
+    setState(() => _isLoadingTab = true);
+    try {
+      if (_activeTab == 'Fundamentals') {
+        _fundamentalsData = await _chartService.getFundamentals(
+          _selectedSymbol,
+        );
+      } else if (_activeTab == 'Financials') {
+        _financialsData = await _chartService.getFinancials(_selectedSymbol);
+      } else if (_activeTab == 'News') {
+        final res = await _chartService.getNews(_selectedSymbol);
+        _newsData = res['articles'];
+      } else if (_activeTab == 'Option Chain') {
+        final datesRes = await _chartService.getOptionDates(_selectedSymbol);
+        _optionDates = List<String>.from(datesRes['dates'] ?? []);
+        if (_optionDates.isNotEmpty) {
+          _selectedOptionDate = _optionDates.first;
+          await _loadOptionChain();
+        }
+      }
+    } catch (e) {
+      debugPrint('Tab load error: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingTab = false);
+    }
+  }
+
+  Future<void> _loadOptionChain() async {
+    if (_selectedOptionDate == null) return;
+    setState(() => _isLoadingTab = true);
+    try {
+      final res = await _chartService.getOptionChain(
+        _selectedSymbol,
+        _selectedOptionDate!,
+      );
+      _optionCalls = res['calls'] ?? [];
+      _optionPuts = res['puts'] ?? [];
+    } catch (e) {
+      debugPrint('Options error: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingTab = false);
     }
   }
 
@@ -176,7 +253,9 @@ class _StockChartScreenState extends State<StockChartScreen> {
                 _buildChartArea(),
                 _buildTimeToggles(),
                 const Divider(height: 1, color: Colors.white10),
-                if (!_isIndex) _buildStockActionButtons(),
+                _buildStockActionButtons(),
+                _buildTabContent(),
+                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -462,15 +541,13 @@ class _StockChartScreenState extends State<StockChartScreen> {
     );
   }
 
-  /// Only shown when a stock (not an index) is selected via search
   Widget _buildStockActionButtons() {
-    final actions = [
-      'Fundamentals',
-      'Financials',
-      'Option Chain',
-      'News',
-      'Announcements',
-    ];
+    List<String> actions = [];
+    if (_isIndex) {
+      actions = ['Option Chain', 'News'];
+    } else {
+      actions = ['Fundamentals', 'Financials', 'Option Chain', 'News'];
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
@@ -481,27 +558,296 @@ class _StockChartScreenState extends State<StockChartScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           itemCount: actions.length,
           itemBuilder: (context, index) {
+            final action = actions[index];
+            final isActive = _activeTab == action;
             return Padding(
               padding: const EdgeInsets.only(right: 8),
               child: ActionChip(
-                label: Text(actions[index]),
-                backgroundColor: AppTheme.cardColor,
-                labelStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                label: Text(action),
+                backgroundColor: isActive
+                    ? AppTheme.primaryColor.withValues(alpha: 0.2)
+                    : AppTheme.cardColor,
+                labelStyle: TextStyle(
+                  color: isActive ? AppTheme.primaryColor : Colors.grey,
+                  fontSize: 13,
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(
+                    color: isActive
+                        ? AppTheme.primaryColor
+                        : Colors.transparent,
+                  ),
                 ),
-                side: BorderSide.none,
                 onPressed: () {
-                  // TODO: Navigate to detail pages
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${actions[index]} coming soon!')),
-                  );
+                  setState(() => _activeTab = action);
+                  _loadTabData();
                 },
               ),
             );
           },
         ),
       ),
+    );
+  }
+
+  Widget _buildTabContent() {
+    if (_isLoadingTab) {
+      return const Padding(
+        padding: EdgeInsets.all(32),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    switch (_activeTab) {
+      case 'Fundamentals':
+        return _buildFundamentalsTab();
+      case 'Financials':
+        return _buildFinancialsTab();
+      case 'Option Chain':
+        return _buildOptionsTab();
+      case 'News':
+        return _buildNewsTab();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _buildFundamentalsTab() {
+    if (_fundamentalsData == null) return const SizedBox.shrink();
+    final f = _fundamentalsData!;
+
+    Widget statRow(String label, String value) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+            Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        statRow(
+          'Sector',
+          f['sector']?.toString().isNotEmpty == true ? f['sector'] : '—',
+        ),
+        statRow(
+          'Industry',
+          f['industry']?.toString().isNotEmpty == true ? f['industry'] : '—',
+        ),
+        statRow('P/E Ratio', f['pe']?.toStringAsFixed(2) ?? '—'),
+        statRow('EPS', '₹${f['eps']?.toStringAsFixed(2) ?? '—'}'),
+        statRow('Book Value', '₹${f['bookValue']?.toStringAsFixed(2) ?? '—'}'),
+        statRow('ROE', '${(f['roe'] * 100).toStringAsFixed(2)}%'),
+        statRow(
+          'Revenue Growth',
+          '${(f['revenueGrowth'] * 100).toStringAsFixed(2)}%',
+        ),
+        statRow(
+          '52W High',
+          '₹${f['fiftyTwoWeekHigh']?.toStringAsFixed(2) ?? '—'}',
+        ),
+        statRow(
+          '52W Low',
+          '₹${f['fiftyTwoWeekLow']?.toStringAsFixed(2) ?? '—'}',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFinancialsTab() {
+    if (_financialsData == null || _financialsData!['data'] == null)
+      return const SizedBox.shrink();
+
+    final Map<String, dynamic> data = _financialsData!['data'];
+    if (data.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text("No financial data"),
+      );
+    }
+
+    final periods = data.keys.toList();
+    final rows = ['Total Income', 'Expenditure', 'Net Profit', 'EPS'];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: DataTable(
+        headingRowHeight: 40,
+        dataRowMinHeight: 40,
+        dataRowMaxHeight: 40,
+        columnSpacing: 24,
+        columns: [
+          const DataColumn(
+            label: Text('Item', style: TextStyle(color: Colors.grey)),
+          ),
+          ...periods.map(
+            (p) => DataColumn(
+              label: Text(p, style: const TextStyle(color: Colors.grey)),
+            ),
+          ),
+        ],
+        rows: rows.map((rowKey) {
+          return DataRow(
+            cells: [
+              DataCell(
+                Text(
+                  rowKey,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              ...periods.map((p) {
+                final val = data[p]?[rowKey];
+                String text = '—';
+                if (val != null) {
+                  if (rowKey == 'EPS')
+                    text = val.toStringAsFixed(2);
+                  else
+                    text = '₹${(val / 10000000).toStringAsFixed(2)}Cr';
+                }
+                return DataCell(Text(text));
+              }),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildOptionsTab() {
+    if (_optionDates.isEmpty)
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text("No options data"),
+      );
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: DropdownButton<String>(
+            value: _selectedOptionDate,
+            isExpanded: true,
+            dropdownColor: AppTheme.cardColor,
+            underline: Container(height: 1, color: Colors.white24),
+            items: _optionDates
+                .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                .toList(),
+            onChanged: (val) {
+              if (val != null) {
+                setState(() => _selectedOptionDate = val);
+                _loadOptionChain();
+              }
+            },
+          ),
+        ),
+        if (_optionCalls.isNotEmpty || _optionPuts.isNotEmpty)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: DataTable(
+              headingRowHeight: 32,
+              dataRowMinHeight: 36,
+              dataRowMaxHeight: 36,
+              columnSpacing: 16,
+              columns: const [
+                DataColumn(
+                  label: Text(
+                    'Call LTP',
+                    style: TextStyle(
+                      color: AppTheme.successColor,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                DataColumn(
+                  label: Text(
+                    'Strike',
+                    style: TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+                DataColumn(
+                  label: Text(
+                    'Put LTP',
+                    style: TextStyle(color: AppTheme.errorColor, fontSize: 12),
+                  ),
+                ),
+              ],
+              rows: List.generate(_optionCalls.length, (i) {
+                final call = _optionCalls[i];
+                final put = _optionPuts.length > i ? _optionPuts[i] : {};
+                return DataRow(
+                  cells: [
+                    DataCell(
+                      Text(
+                        call['lastPrice']?.toStringAsFixed(2) ?? '—',
+                        style: TextStyle(color: AppTheme.successColor),
+                      ),
+                    ),
+                    DataCell(
+                      Text(
+                        call['strike']?.toStringAsFixed(0) ?? '—',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    DataCell(
+                      Text(
+                        put['lastPrice']?.toStringAsFixed(2) ?? '—',
+                        style: TextStyle(color: AppTheme.errorColor),
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildNewsTab() {
+    if (_newsData == null || _newsData!.isEmpty)
+      return const Padding(
+        padding: EdgeInsets.all(16),
+        child: Text("No news data"),
+      );
+
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _newsData!.length,
+      separatorBuilder: (_, __) =>
+          const Divider(height: 1, color: Colors.white10),
+      itemBuilder: (context, i) {
+        final news = _newsData![i];
+        return ListTile(
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 4,
+          ),
+          title: Text(
+            news['title'] ?? '',
+            style: const TextStyle(fontSize: 13, height: 1.3),
+          ),
+          subtitle: Text(
+            news['publishedAt'] ?? '',
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+        );
+      },
     );
   }
 }

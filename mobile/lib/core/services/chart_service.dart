@@ -36,4 +36,60 @@ class ChartService {
     }
     throw Exception('Failed to load chart data');
   }
+
+  Future<Map<String, dynamic>> getFundamentals(String symbol) async {
+    final response = await ApiService.get(
+      '${ApiConfig.apiUrl}/charts/fundamentals?symbol=$symbol',
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    }
+    throw Exception('Failed to load fundamentals');
+  }
+
+  Future<Map<String, dynamic>> getFinancials(
+    String symbol, {
+    String statement = 'results',
+  }) async {
+    final response = await ApiService.get(
+      '${ApiConfig.apiUrl}/charts/financials?symbol=$symbol&statement=$statement',
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    }
+    throw Exception('Failed to load financials');
+  }
+
+  Future<Map<String, dynamic>> getNews(String symbol) async {
+    final response = await ApiService.get(
+      '${ApiConfig.apiUrl}/charts/news?symbol=$symbol',
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    }
+    throw Exception('Failed to load news');
+  }
+
+  Future<Map<String, dynamic>> getOptionDates(String symbol) async {
+    final response = await ApiService.get(
+      '${ApiConfig.apiUrl}/charts/options/dates?symbol=$symbol',
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    }
+    throw Exception('Failed to load option dates');
+  }
+
+  Future<Map<String, dynamic>> getOptionChain(
+    String symbol,
+    String date,
+  ) async {
+    final response = await ApiService.get(
+      '${ApiConfig.apiUrl}/charts/options/chain?symbol=$symbol&date=$date',
+    );
+    if (response.statusCode == 200) {
+      return json.decode(response.body);
+    }
+    throw Exception('Failed to load option chain');
+  }
 }
