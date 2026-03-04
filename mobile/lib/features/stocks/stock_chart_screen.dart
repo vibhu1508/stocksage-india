@@ -219,13 +219,21 @@ class _StockChartScreenState extends State<StockChartScreen> {
         } else {
           timestamp = (timeVal as num).toInt() * 1000;
         }
+
+        double parseDouble(dynamic val) {
+          if (val == null) return 0.0;
+          if (val is num) return val.toDouble();
+          if (val is String) return double.tryParse(val) ?? 0.0;
+          return 0.0;
+        }
+
         return CandleData(
           timestamp: timestamp,
-          open: (e['open'] as num).toDouble(),
-          high: (e['high'] as num).toDouble(),
-          low: (e['low'] as num).toDouble(),
-          close: (e['close'] as num).toDouble(),
-          volume: (e['volume'] as num).toDouble(),
+          open: parseDouble(e['open']),
+          high: parseDouble(e['high']),
+          low: parseDouble(e['low']),
+          close: parseDouble(e['close']),
+          volume: parseDouble(e['volume']),
         );
       }).toList();
 
@@ -397,9 +405,16 @@ class _StockChartScreenState extends State<StockChartScreen> {
     }
     if (_quoteData == null) return const SizedBox.shrink();
 
-    final price = (_quoteData!['price'] ?? 0).toDouble();
-    final change = (_quoteData!['change'] ?? 0).toDouble();
-    final pctChange = (_quoteData!['pctChange'] ?? 0).toDouble();
+    double parseDouble(dynamic val) {
+      if (val == null) return 0.0;
+      if (val is num) return val.toDouble();
+      if (val is String) return double.tryParse(val) ?? 0.0;
+      return 0.0;
+    }
+
+    final price = parseDouble(_quoteData!['price']);
+    final change = parseDouble(_quoteData!['change']);
+    final pctChange = parseDouble(_quoteData!['pctChange']);
     final isPositive = change >= 0;
     final color = isPositive ? AppTheme.successColor : AppTheme.errorColor;
 
