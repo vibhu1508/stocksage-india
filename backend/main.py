@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routers
-from routers import auth, stocks, fo_analysis, announcements, market_data, learn, charts
+from routers import auth, stocks, fo_analysis, announcements, market_data, learn
 from database import engine, Base
 
 # Create database tables on startup
@@ -32,12 +32,25 @@ app = FastAPI(
 )
 
 # CORS configuration
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4200")
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4200").rstrip("/")
+
+# Ensure it includes the custom domain and common variants
+allowed_origins = [
+    frontend_url,
+    "https://stocksageindia.tech",
+    "https://www.stocksageindia.tech",
+    "http://localhost:4200"
+]
+
+# Ensure no empty strings or duplicates
+allowed_origins = [o for o in allowed_origins if o]
+allowed_origins = list(set(allowed_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url, "http://localhost:4200"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
 
@@ -53,8 +66,6 @@ app.include_router(fo_analysis.router, prefix="/api/fo", tags=["F&O Analysis"])
 app.include_router(announcements.router, prefix="/api/announcements", tags=["Announcements"])
 app.include_router(market_data.router, prefix="/api/market", tags=["Market Data"])
 app.include_router(learn.router, prefix="/api/learn", tags=["Learn"])
-app.include_router(charts.router)
-
 @app.get("/")
 async def root():
     return {
