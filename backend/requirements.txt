@@ -20,7 +20,6 @@ itsdangerous==2.1.2
 pandas==2.1.4
 requests==2.31.0
 beautifulsoup4==4.12.3
-yahooquery==2.4.1
 
 # CORS
 python-multipart==0.0.6
