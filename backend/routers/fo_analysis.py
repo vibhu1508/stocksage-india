@@ -306,6 +306,93 @@ async def get_nifty_data(
         "date": str(parsed_date),
         "futures_count": len(futures),
         "options_count": len(options),
-        "futures": futures.fillna("").to_dict(orient='records'),
         "options": options.head(200).fillna("").to_dict(orient='records')
+    }
+
+@router.get("/futures-analysis")
+async def get_futures_analysis(
+    target_date: Optional[str] = None,
+    expiry_month: Optional[str] = Query(None, description="e.g. 'MAR-2026' or '26-Mar-2026'"),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get top and bottom 10 futures based on Open Interest and Price momentum for the latest or specified expiry.
+    """
+    if target_date:
+        try:
+            parsed_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+            df = download_fo_bhavcopy(parsed_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    else:
+        df, parsed_date = get_latest_available_data()
+        
+    if df is None:
+        raise HTTPException(status_code=404, detail="No F&O data available.")
+        
+    if 'FinInstrmTp' not in df.columns:
+        raise HTTPException(status_code=400, detail="Invalid Bhavcopy format: Missing FinInstrmTp column.")
+        
+    # Isolate Stock Futures uniformly mapped as STF or FUTSTK
+    df_stf = df[df['FinInstrmTp'].isin(['STF', 'FUTSTK'])].copy()
+    
+    if df_stf.empty:
+        raise HTTPException(status_code=404, detail="No Stock Futures data found in this Bhavcopy.")
+        
+    # Safely convert numeric primitives preventing string comma interference
+    numeric_cols = ['LastPric', 'PrvsClsgPric', 'OpnIntrst', 'ChngInOpnIntrst']
+    for col in numeric_cols:
+        if col in df_stf.columns:
+            if df_stf[col].dtype == 'object':
+                df_stf[col] = df_stf[col].astype(str).str.replace(',', '', regex=False).astype(float)
+            else:
+                df_stf[col] = df_stf[col].astype(float)
+                
+    try:
+        df_stf['ActualExpiry'] = pd.to_datetime(df_stf['XpryDt'], format="%d-%b-%Y")
+    except:
+        df_stf['ActualExpiry'] = pd.to_datetime(df_stf['XpryDt'], errors='coerce')
+        
+    # Extract unique expiry months for frontend dropdown
+    all_expiries = df_stf['ActualExpiry'].dropna().unique()
+    available_expiries_list = []
+    for exp in sorted(all_expiries):
+        available_expiries_list.append(pd.to_datetime(exp).strftime('%b-%Y').upper())
+    available_expiries_list = list(dict.fromkeys(available_expiries_list))
+                
+    # Extrapolate Current Expiry target map
+    if expiry_month:
+        df_stf = df_stf[df_stf['XpryDt'].str.contains(expiry_month, case=False, na=False)]
+    else:
+        current_expiry = df_stf['ActualExpiry'].min()
+        df_stf = df_stf[df_stf['ActualExpiry'] == current_expiry]
+        
+    if df_stf.empty:
+        raise HTTPException(status_code=404, detail="No data available for the specified expiry contract.")
+        
+    # Calculate Delta Math Sequences
+    df_stf['pct_price_change'] = ((df_stf['LastPric'] - df_stf['PrvsClsgPric']) / df_stf['PrvsClsgPric']) * 100
+    
+    yesterday_oi = df_stf['OpnIntrst'] - df_stf['ChngInOpnIntrst']
+    yesterday_oi = yesterday_oi.replace(0, float('nan')) 
+    df_stf['pct_oi_change'] = (df_stf['ChngInOpnIntrst'] / yesterday_oi) * 100
+    df_stf['pct_oi_change'] = df_stf['pct_oi_change'].fillna(0)
+    
+    df_stf['pct_price_change'] = df_stf['pct_price_change'].round(2)
+    df_stf['pct_oi_change'] = df_stf['pct_oi_change'].round(2)
+    
+    # Dual Sort Engine via Highest OI Momentum, then highest Price Momentum
+    sorted_df = df_stf.sort_values(by=['pct_oi_change', 'pct_price_change'], ascending=[False, False])
+    
+    result_cols = ['TckrSymb', 'XpryDt', 'LastPric', 'PrvsClsgPric', 'pct_price_change', 'OpnIntrst', 'ChngInOpnIntrst', 'pct_oi_change']
+    available_cols = [c for c in result_cols if c in sorted_df.columns]
+    output_df = sorted_df[available_cols]
+    
+    # Cap limits exactly at Top 10 and Bottom 10 metrics
+    return {
+        "date": str(parsed_date),
+        "expiry_date": str(df_stf['XpryDt'].iloc[0]) if not df_stf.empty else "",
+        "available_expiries": available_expiries_list,
+        "top_10": output_df.head(10).fillna("").to_dict(orient='records'),
+        "bottom_10": output_df.tail(10).fillna("").to_dict(orient='records'),
     }
