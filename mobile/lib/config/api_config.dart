@@ -15,6 +15,7 @@ class ApiConfig {
 
   // F&O endpoints
   static const String foNifty = '$apiUrl/fo/nifty';
+  static const String foFuturesAnalysis = '$apiUrl/fo/futures-analysis';
   static String foFutures(String symbol) => '$apiUrl/fo/futures/$symbol';
   static String foOptions(String symbol) => '$apiUrl/fo/options/$symbol';
 

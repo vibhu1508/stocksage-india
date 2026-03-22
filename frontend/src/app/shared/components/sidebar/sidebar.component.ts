@@ -18,7 +18,6 @@ export class SidebarComponent {
 
   menuItems = [
     { path: '/dashboard', icon: 'dashboard', label: 'Dashboard' },
-    { path: '/chart', icon: 'candlestick_chart', label: 'Charts' },
     { path: '/stocks', icon: 'trending_up', label: 'Stock Comparison' },
     { path: '/fo', icon: 'show_chart', label: 'F&O Analysis' },
     { path: '/announcements', icon: 'campaign', label: 'Announcements' },

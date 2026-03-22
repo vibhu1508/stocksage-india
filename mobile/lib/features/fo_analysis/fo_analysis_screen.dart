@@ -19,6 +19,15 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
   bool _loading = false;
   String? _error;
 
+  // Momentum tab
+  Map<String, dynamic>? _momentumData;
+  List<dynamic> _top10 = [];
+  List<dynamic> _bottom10 = [];
+  List<dynamic> _shortCovering = [];
+  List<dynamic> _longUnwinding = [];
+  String _selectedMomentumExpiry = '';
+  List<String> _availableMomentumExpiries = [];
+
   // NIFTY tab
   NiftyData? _niftyData;
   List<String> _uniqueSymbols = [];
@@ -40,13 +49,14 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
+        setState(() {}); // refresh appbar & date display
         _onTabChange(_tabController.index);
       }
     });
-    _loadNiftyData();
+    _loadMomentumData();
   }
 
   @override
@@ -85,14 +95,48 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
     setState(() => _error = null);
     switch (index) {
       case 0:
-        if (_niftyData == null) _loadNiftyData();
+        _loadMomentumData();
         break;
       case 1:
-        _loadFuturesData();
+        if (_niftyData == null) _loadNiftyData();
         break;
       case 2:
+        _loadFuturesData();
+        break;
+      case 3:
         _loadOptionsData();
         break;
+    }
+  }
+
+  Future<void> _loadMomentumData() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await FOService.getFuturesAnalysis(
+        _formatDate(_selectedDate),
+        _selectedMomentumExpiry.isNotEmpty ? _selectedMomentumExpiry : null,
+      );
+      setState(() {
+        _momentumData = data;
+        _top10 = data['top_10'] ?? [];
+        _bottom10 = data['bottom_10'] ?? [];
+        _shortCovering = data['short_covering'] ?? [];
+        _longUnwinding = data['long_unwinding'] ?? [];
+        
+        if (data['available_expiries'] != null) {
+          _availableMomentumExpiries = List<String>.from(data['available_expiries']);
+        }
+        
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString().replaceAll('Exception: ', '');
+        _loading = false;
+      });
     }
   }
 
@@ -255,6 +299,7 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
           labelColor: AppTheme.primaryColor,
           unselectedLabelColor: AppTheme.textSecondary,
           tabs: const [
+            Tab(text: 'Momentum'),
             Tab(text: 'NIFTY'),
             Tab(text: 'Futures'),
             Tab(text: 'Options'),
@@ -315,6 +360,7 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
                 : TabBarView(
                     controller: _tabController,
                     children: [
+                      _buildMomentumTab(),
                       _buildNiftyTab(),
                       _buildDataTab(_futuresData, 'futures'),
                       _buildOptionsTab(),
@@ -621,6 +667,207 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         ),
       ],
+    );
+  }
+
+  Widget _buildMomentumTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Expiry filter
+          if (_availableMomentumExpiries.isNotEmpty) ...[
+            const Text(
+              'Expiry Month',
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 36,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _availableMomentumExpiries.length + 1,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final exp = index == 0 ? '' : _availableMomentumExpiries[index - 1];
+                  final display = index == 0 ? 'Current Expiry' : exp;
+                  final isSelected = exp == _selectedMomentumExpiry;
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _selectedMomentumExpiry = exp;
+                        _loadMomentumData();
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppTheme.accentColor
+                            : AppTheme.cardColor,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppTheme.accentColor
+                              : Colors.white12,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        display,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+          
+          if (_momentumData != null && _top10.isEmpty && _bottom10.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 32),
+                child: Text(
+                  'No momentum data available',
+                  style: TextStyle(color: AppTheme.textSecondary),
+                ),
+              ),
+            ),
+
+          if (_top10.isNotEmpty) ...[
+            const Text('Long Buildup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.successColor)),
+            const SizedBox(height: 12),
+            ..._top10.map((item) => _buildMomentumCard(item as Map<String, dynamic>, true)),
+          ],
+          if (_bottom10.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const Text('Short Buildup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.errorColor)),
+            const SizedBox(height: 12),
+            ..._bottom10.map((item) => _buildMomentumCard(item as Map<String, dynamic>, false)),
+          ],
+          if (_shortCovering.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const Text('Short Covering', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.successColor)),
+            const SizedBox(height: 12),
+            ..._shortCovering.map((item) => _buildMomentumCard(item as Map<String, dynamic>, true)),
+          ],
+          if (_longUnwinding.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const Text('Long Unwinding', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.errorColor)),
+            const SizedBox(height: 12),
+            ..._longUnwinding.map((item) => _buildMomentumCard(item as Map<String, dynamic>, false)),
+          ]
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMomentumCard(Map<String, dynamic> item, bool isLong) {
+    final symbol = item['TckrSymb'] ?? '';
+    final price = item['LastPric']?.toString() ?? '0';
+    final priceChange = (item['pct_price_change'] as num?)?.toDouble() ?? 0.0;
+    final oiChange = (item['pct_oi_change'] as num?)?.toDouble() ?? 0.0;
+    
+    final isPriceUp = priceChange > 0;
+    final priceColor = isPriceUp ? AppTheme.successColor : AppTheme.errorColor;
+    final iconColor = isLong ? AppTheme.successColor : AppTheme.errorColor;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: iconColor,
+                ),
+                child: Center(
+                  child: Text(
+                    symbol.isNotEmpty ? symbol[0] : '',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(symbol, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(price, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                        const SizedBox(width: 6),
+                        Text(
+                          '(${isPriceUp ? '+' : ''}${priceChange.toStringAsFixed(2)}%)',
+                          style: TextStyle(fontSize: 12, color: priceColor),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${oiChange > 0 ? '+' : ''}${oiChange.toStringAsFixed(2)}%',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: oiChange > 0 ? AppTheme.successColor : AppTheme.errorColor),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Progress bar native implementation
+          Container(
+            height: 14,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: oiChange.abs().toInt().clamp(5, 100),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: oiChange > 0 ? AppTheme.successColor : AppTheme.errorColor,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Text(
+                      '${oiChange > 0 ? '+' : ''}${oiChange.toStringAsFixed(2)}%',
+                      style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 100 - oiChange.abs().toInt().clamp(5, 100),
+                  child: const SizedBox(),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

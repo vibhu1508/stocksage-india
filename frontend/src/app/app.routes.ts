@@ -41,11 +41,7 @@ export const routes: Routes = [
     loadComponent: () => import('./features/learn/learn.component').then(m => m.LearnComponent),
     canActivate: [authGuard]
   },
-  {
-    path: 'chart',
-    loadComponent: () => import('./features/stock-chart/stock-chart.component').then(m => m.StockChartComponent),
-    canActivate: [authGuard]
-  },
+
   {
     path: '**',
     redirectTo: 'dashboard'

@@ -3,7 +3,6 @@ import 'config/theme.dart';
 import 'core/services/auth_service.dart';
 import 'features/auth/login_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
-import 'features/stocks/stock_chart_screen.dart';
 import 'features/stocks/stock_comparison_screen.dart';
 import 'features/fo_analysis/fo_analysis_screen.dart';
 import 'features/announcements/announcements_screen.dart';
@@ -96,7 +95,6 @@ class _MainShellState extends State<MainShell> {
         authService: widget.authService,
         onNavigateToTab: _switchTab,
       ),
-      const StockChartScreen(),
       const StockComparisonScreen(),
       const FOAnalysisScreen(),
       AnnouncementsScreen(key: _announcementsKey),
@@ -137,10 +135,6 @@ class _MainShellState extends State<MainShell> {
               BottomNavigationBarItem(
                 icon: Icon(Icons.dashboard_rounded),
                 label: 'Dashboard',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.show_chart_rounded),
-                label: 'Charts',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.compare_arrows_rounded),

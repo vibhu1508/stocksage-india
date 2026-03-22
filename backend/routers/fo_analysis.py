@@ -333,11 +333,11 @@ async def get_futures_analysis(
     if 'FinInstrmTp' not in df.columns:
         raise HTTPException(status_code=400, detail="Invalid Bhavcopy format: Missing FinInstrmTp column.")
         
-    # Isolate Stock Futures uniformly mapped as STF or FUTSTK
-    df_stf = df[df['FinInstrmTp'].isin(['STF', 'FUTSTK'])].copy()
+    # Isolate Stock and Index Futures uniformly mapped as STF, FUTSTK, IDF, or FUTIDX
+    df_stf = df[df['FinInstrmTp'].isin(['STF', 'FUTSTK', 'IDF', 'FUTIDX'])].copy()
     
     if df_stf.empty:
-        raise HTTPException(status_code=404, detail="No Stock Futures data found in this Bhavcopy.")
+        raise HTTPException(status_code=404, detail="No Futures data found in this Bhavcopy.")
         
     # Safely convert numeric primitives preventing string comma interference
     numeric_cols = ['ClsPric', 'PrvsClsgPric', 'OpnIntrst', 'ChngInOpnIntrst']
@@ -398,6 +398,19 @@ async def get_futures_analysis(
         by=['pct_oi_change', 'pct_price_change'], ascending=[False, True]
     )
     
+    # Filter strictly for Unwinding/Covering (Negative OI Momentum)
+    unwind_df = output_df[output_df['pct_oi_change'] < 0]
+    
+    # Short Covering: Positive Price Momentum (with negative OI)
+    short_covering = unwind_df[unwind_df['pct_price_change'] > 0].sort_values(
+        by=['pct_oi_change', 'pct_price_change'], ascending=[True, False]
+    )
+    
+    # Long Unwinding: Negative Price Momentum (with negative OI)
+    long_unwinding = unwind_df[unwind_df['pct_price_change'] < 0].sort_values(
+        by=['pct_oi_change', 'pct_price_change'], ascending=[True, True]
+    )
+    
     # Cap limits exactly at Top 10 and Bottom 10 metrics
     return {
         "date": str(parsed_date),
@@ -405,4 +418,6 @@ async def get_futures_analysis(
         "available_expiries": available_expiries_list,
         "top_10": long_buildup.head(10).fillna("").to_dict(orient='records'),
         "bottom_10": short_buildup.head(10).fillna("").to_dict(orient='records'),
+        "short_covering": short_covering.head(10).fillna("").to_dict(orient='records'),
+        "long_unwinding": long_unwinding.head(10).fillna("").to_dict(orient='records'),
     }

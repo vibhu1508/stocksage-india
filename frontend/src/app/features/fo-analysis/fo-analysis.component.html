@@ -8,6 +8,10 @@
 
   <!-- Tabs -->
   <div class="main-tabs">
+    <button class="main-tab" [class.active]="activeTab === 'momentum'" (click)="onTabChange('momentum')">
+      <span class="tab-icon">🚀</span>
+      Momentum Screener
+    </button>
     <button class="main-tab" [class.active]="activeTab === 'nifty'" (click)="onTabChange('nifty')">
       <span class="tab-icon">📊</span>
       NIFTY Index
@@ -30,12 +34,12 @@
         <input type="date" [(ngModel)]="selectedDate" class="date-input" />
       </div>
 
-      @if (activeTab !== 'nifty') {
+      @if (activeTab === 'futures' || activeTab === 'options') {
       <div class="filter-group">
         <label>Symbol</label>
         <input type="text" [(ngModel)]="symbol" placeholder="e.g., NIFTY, BANKNIFTY" class="text-input" />
       </div>
-      } @else {
+      } @else if (activeTab === 'nifty') {
       <!-- NIFTY Tab Specific Filters -->
       <div class="filter-group">
         <label>Ticker Symbol</label>
@@ -49,6 +53,18 @@
         <label>Expiry Date</label>
         <select [(ngModel)]="selectedExpiry" (change)="onExpiryChange()" class="select-input">
           @for (exp of uniqueExpiries; track exp) {
+          <option [value]="exp">{{ exp }}</option>
+          }
+        </select>
+      </div>
+      }
+
+      @if (activeTab === 'momentum') {
+      <div class="filter-group">
+        <label>Expiry Month</label>
+        <select [(ngModel)]="selectedMomentumExpiry" (change)="onMomentumExpiryChange()" class="select-input">
+          <option value="">Current Expiry</option>
+          @for (exp of availableExpiries; track exp) {
           <option [value]="exp">{{ exp }}</option>
           }
         </select>
@@ -256,6 +272,144 @@
           }
         </tbody>
       </table>
+    </div>
+  </section>
+  }
+
+  <!-- Momentum Tab Content -->
+  @if (activeTab === 'momentum' && momentumData && !loading) {
+  <section class="momentum-section">
+    <div class="momentum-grid">
+      
+      <!-- Long Buildup (Top 10 OI) -->
+      <div class="momentum-column">
+        <h3 class="column-title">Long Buildup</h3>
+        <div class="cards-container">
+          @for (item of momentumData.top_10; track item.TckrSymb) {
+          <div class="screener-card">
+            <div class="card-header">
+              <div class="company-logo success">{{ item.TckrSymb.charAt(0) }}</div>
+              <div class="company-info">
+                <h4>{{ item.TckrSymb }}</h4>
+                <div class="price-row">
+                  <span class="price-value">{{ item.ClsPric }}</span>
+                  <span class="price-change" [class.text-success]="item.pct_price_change > 0" [class.text-danger]="item.pct_price_change < 0">
+                    ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
+                  </span>
+                </div>
+                <div class="oi-row" [class.text-success]="item.pct_oi_change > 0" [class.text-danger]="item.pct_oi_change < 0">
+                  {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
+                </div>
+              </div>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar positive" [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)">
+                <span class="bar-label">{{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%</span>
+              </div>
+            </div>
+          </div>
+          }
+        </div>
+      </div>
+
+      <!-- Short Buildup / Long Unwinding (Bottom 10 OI) -->
+      <div class="momentum-column">
+        <h3 class="column-title">Short Buildup</h3>
+        <div class="cards-container">
+          @for (item of momentumData.bottom_10; track item.TckrSymb) {
+          <div class="screener-card">
+            <div class="card-header">
+              <div class="company-logo danger">{{ item.TckrSymb.charAt(0) }}</div>
+              <div class="company-info">
+                <h4>{{ item.TckrSymb }}</h4>
+                <div class="price-row">
+                  <span class="price-value">{{ item.ClsPric }}</span>
+                  <span class="price-change" [class.text-success]="item.pct_price_change > 0" [class.text-danger]="item.pct_price_change < 0">
+                    ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
+                  </span>
+                </div>
+                <div class="oi-row" [class.text-success]="item.pct_oi_change > 0" [class.text-danger]="item.pct_oi_change < 0">
+                  {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
+                </div>
+              </div>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar negative" [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)">
+                <span class="bar-label">{{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%</span>
+              </div>
+            </div>
+          </div>
+          }
+        </div>
+      </div>
+
+    </div>
+    
+    <!-- Unwinding and Covering row -->
+    <div class="momentum-grid" style="margin-top: 1.5rem;">
+      
+      <!-- Short Covering -->
+      <div class="momentum-column">
+        <h3 class="column-title" style="color: #10B981;">Short Covering</h3>
+        <div class="cards-container">
+          @for (item of momentumData.short_covering; track item.TckrSymb) {
+          <div class="screener-card">
+            <div class="card-header">
+              <div class="company-logo success">{{ item.TckrSymb.charAt(0) }}</div>
+              <div class="company-info">
+                <h4>{{ item.TckrSymb }}</h4>
+                <div class="price-row">
+                  <span class="price-value">{{ item.ClsPric }}</span>
+                  <span class="price-change" [class.text-success]="item.pct_price_change > 0" [class.text-danger]="item.pct_price_change < 0">
+                    ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
+                  </span>
+                </div>
+                <div class="oi-row" [class.text-success]="item.pct_oi_change > 0" [class.text-danger]="item.pct_oi_change < 0">
+                  {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
+                </div>
+              </div>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar negative" [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)">
+                <span class="bar-label">{{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%</span>
+              </div>
+            </div>
+          </div>
+          }
+        </div>
+      </div>
+
+      <!-- Long Unwinding -->
+      <div class="momentum-column">
+        <h3 class="column-title" style="color: #EF4444;">Long Unwinding</h3>
+        <div class="cards-container">
+          @for (item of momentumData.long_unwinding; track item.TckrSymb) {
+          <div class="screener-card">
+            <div class="card-header">
+              <div class="company-logo danger">{{ item.TckrSymb.charAt(0) }}</div>
+              <div class="company-info">
+                <h4>{{ item.TckrSymb }}</h4>
+                <div class="price-row">
+                  <span class="price-value">{{ item.ClsPric }}</span>
+                  <span class="price-change" [class.text-success]="item.pct_price_change > 0" [class.text-danger]="item.pct_price_change < 0">
+                    ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
+                  </span>
+                </div>
+                <div class="oi-row" [class.text-success]="item.pct_oi_change > 0" [class.text-danger]="item.pct_oi_change < 0">
+                  {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
+                </div>
+              </div>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar negative" [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)">
+                <span class="bar-label">{{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%</span>
+              </div>
+            </div>
+          </div>
+          }
+        </div>
+      </div>
+
     </div>
   </section>
   }

@@ -16,6 +16,21 @@ class FOService {
     return NiftyData.fromJson(data);
   }
 
+  // Get futures analysis
+  static Future<Map<String, dynamic>> getFuturesAnalysis(String? date, [String? expiryMonth]) async {
+    final params = <String, String>{};
+    if (date != null) params['target_date'] = date;
+    if (expiryMonth != null && expiryMonth.isNotEmpty) {
+      params['expiry_month'] = expiryMonth;
+    }
+
+    final response = await ApiService.get(
+      ApiConfig.foFuturesAnalysis,
+      queryParams: params,
+    );
+    return ApiService.decodeResponse(response);
+  }
+
   // Get futures data for a symbol
   static Future<FOData> getFuturesData(String symbol, String? date) async {
     final params = <String, String>{};

@@ -8,6 +8,16 @@ export interface FOData {
   data: any[];
 }
 
+export interface FuturesAnalysisData {
+  date: string;
+  expiry_date: string;
+  available_expiries: string[];
+  top_10: any[];
+  bottom_10: any[];
+  short_covering: any[];
+  long_unwinding: any[];
+}
+
 export interface FuturesData {
   symbol: string;
   date: string;
@@ -72,5 +82,12 @@ export class FOService {
       params = params.set('target_date', date);
     }
     return this.http.get<NiftyData>(`${this.apiUrl}/nifty`, { params });
+  }
+
+  getFuturesAnalysis(date?: string, expiryMonth?: string): Observable<FuturesAnalysisData> {
+    let params = new HttpParams();
+    if (date) params = params.set('target_date', date);
+    if (expiryMonth) params = params.set('expiry_month', expiryMonth);
+    return this.http.get<FuturesAnalysisData>(`${this.apiUrl}/futures-analysis`, { params });
   }
 }

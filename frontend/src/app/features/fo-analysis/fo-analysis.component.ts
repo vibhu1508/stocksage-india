@@ -11,7 +11,7 @@ import { FOService, NiftyData } from '../../core/services/fo.service';
   styleUrl: './fo-analysis.component.scss'
 })
 export class FOAnalysisComponent implements OnInit {
-  activeTab: 'futures' | 'options' | 'nifty' = 'nifty';
+  activeTab: 'nifty' | 'futures' | 'options' | 'momentum' = 'momentum';
   selectedDate = '';
   symbol = 'NIFTY';
   optionType = '';
@@ -22,6 +22,12 @@ export class FOAnalysisComponent implements OnInit {
   niftyData: NiftyData | null = null;
   futuresData: any[] = [];
   optionsData: any[] = [];
+  momentumData: any = null;
+  
+  availableExpiries: string[] = [];
+  selectedMomentumExpiry: string = '';
+
+  math = Math;
 
   // Filtering Properties for NIFTY Tab
   uniqueSymbols: string[] = [];
@@ -36,7 +42,7 @@ export class FOAnalysisComponent implements OnInit {
 
   ngOnInit(): void {
     this.selectedDate = this.formatDate(new Date());
-    this.loadNiftyData();
+    this.loadMomentumData();
   }
 
   private formatDate(date: Date): string {
@@ -92,6 +98,29 @@ export class FOAnalysisComponent implements OnInit {
         this.loading = false;
       }
     });
+  }
+
+  loadMomentumData(): void {
+    this.loading = true;
+    this.error = null;
+
+    this.foService.getFuturesAnalysis(this.selectedDate, this.selectedMomentumExpiry).subscribe({
+      next: (data) => {
+        this.momentumData = data;
+        if (data.available_expiries) {
+          this.availableExpiries = data.available_expiries;
+        }
+        this.loading = false;
+      },
+      error: (err) => {
+        this.error = err.error?.detail || 'Failed to load momentum data';
+        this.loading = false;
+      }
+    });
+  }
+
+  onMomentumExpiryChange(): void {
+    this.loadMomentumData();
   }
 
   private processNiftyDataForFiltering(data: NiftyData): void {
@@ -176,7 +205,7 @@ export class FOAnalysisComponent implements OnInit {
     this.filteredOptions = [];
   }
 
-  onTabChange(tab: 'futures' | 'options' | 'nifty'): void {
+  onTabChange(tab: 'futures' | 'options' | 'nifty' | 'momentum'): void {
     this.activeTab = tab;
     this.error = null;
 
@@ -189,6 +218,9 @@ export class FOAnalysisComponent implements OnInit {
         break;
       case 'options':
         this.loadOptionsData();
+        break;
+      case 'momentum':
+        if (!this.momentumData) this.loadMomentumData();
         break;
     }
   }
@@ -203,6 +235,9 @@ export class FOAnalysisComponent implements OnInit {
         break;
       case 'options':
         this.loadOptionsData();
+        break;
+      case 'momentum':
+        this.loadMomentumData();
         break;
     }
   }
