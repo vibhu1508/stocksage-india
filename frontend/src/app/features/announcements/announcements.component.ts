@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AnnouncementService, NSEAnnouncement, BSEAnnouncement } from '../../core/services/announcement.service';
+import { LucideAngularModule } from 'lucide-angular';
 
 interface ScripCode {
   'Scrip Code': string;
@@ -11,24 +12,22 @@ interface ScripCode {
 @Component({
   selector: 'app-announcements',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   templateUrl: './announcements.component.html',
   styleUrl: './announcements.component.scss'
 })
 export class AnnouncementsComponent implements OnInit {
   activeTab: 'nse' | 'bse' = 'nse';
 
-  // NSE filters
   nseSymbol = 'RELIANCE';
   nseFromDate = '';
   nseToDate = '';
   nseLimit = 100;
 
-  // BSE filters
   bseFromDate = '';
   bseToDate = '';
-  bseScripCode = '';  // Added for company filter
-  bseScripCodes: ScripCode[] = [];  // List of available companies
+  bseScripCode = ''; 
+  bseScripCodes: ScripCode[] = [];  
 
   loading = false;
   error: string | null = null;
@@ -36,25 +35,22 @@ export class AnnouncementsComponent implements OnInit {
   nseAnnouncements: NSEAnnouncement[] = [];
   bseAnnouncements: BSEAnnouncement[] = [];
 
-  // Popular symbols for quick selection
   popularSymbols = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'AXISBANK', 'SBIN', 'BHARTIARTL'];
 
   constructor(private announcementService: AnnouncementService) { }
 
   ngOnInit(): void {
-    // Set default dates
     const today = new Date();
     const weekAgo = new Date(today);
     weekAgo.setDate(weekAgo.getDate() - 7);
 
-    // Set dates for both NSE and BSE
     this.nseToDate = this.formatDate(today);
     this.nseFromDate = this.formatDate(weekAgo);
     this.bseToDate = this.formatDate(today);
     this.bseFromDate = this.formatDate(weekAgo);
 
     this.loadNSEAnnouncements();
-    this.loadBSEScripCodes();  // Load company list for dropdown
+    this.loadBSEScripCodes(); 
   }
 
   private formatDate(date: Date): string {
@@ -108,7 +104,6 @@ export class AnnouncementsComponent implements OnInit {
     this.loading = true;
     this.error = null;
 
-    // Pass scrip code if selected (for company filtering)
     const scripCode = this.bseScripCode || undefined;
 
     this.announcementService.getBSEAnnouncements(scripCode, this.bseFromDate, this.bseToDate).subscribe({
@@ -134,4 +129,3 @@ export class AnnouncementsComponent implements OnInit {
     }
   }
 }
-

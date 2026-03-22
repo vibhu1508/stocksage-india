@@ -1,47 +1,55 @@
-<!-- Mobile hamburger button -->
-<button class="mobile-toggle" (click)="toggleMobile()">
-  <span class="material-icons">menu</span>
+<!-- Mobile Hamburger (Outside sidebar) -->
+<button class="fixed top-4 left-4 z-50 flex h-10 w-10 items-center justify-center rounded-md border border-border bg-background text-foreground shadow-sm lg:hidden hover:bg-accent transition-colors" (click)="toggleMobile()">
+  <lucide-icon name="menu" [size]="20"></lucide-icon>
 </button>
 
 <!-- Mobile backdrop -->
 @if (mobileOpen) {
-<div class="sidebar-backdrop" (click)="closeMobile()"></div>
+<div class="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 lg:hidden" (click)="closeMobile()"></div>
 }
 
-<aside class="sidebar" [class.collapsed]="collapsed" [class.open]="mobileOpen">
-  <div class="sidebar-header" [class.is-collapsed]="collapsed">
+<!-- Sidebar Application Shell -->
+<aside class="fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-background transition-all duration-300 lg:static"
+       [class.w-[260px]]="!collapsed" [class.w-[72px]]="collapsed"
+       [class.-translate-x-full]="!mobileOpen" [class.translate-x-0]="mobileOpen" [class.lg:translate-x-0]="true">
+
+  <!-- Header -->
+  <div class="flex h-[72px] items-center px-4 border-b border-border shadow-sm" [class.justify-between]="!collapsed" [class.justify-center]="collapsed">
     @if (!collapsed) {
-    <div class="logo">
-      <span class="logo-icon"><img src="logo.png" alt="StockSage India"></span>
-      <span class="logo-text">StockSage India</span>
+    <div class="flex items-center gap-3">
+      <img src="logo.png" alt="StockSage" class="w-8 h-8 object-contain">
+      <span class="font-bold tracking-tight text-foreground text-lg" style="font-family: 'Outfit', sans-serif;">StockSage India</span>
     </div>
     }
-    <button class="collapse-arrow" (click)="toggleCollapse()"
-      [title]="collapsed ? 'Expand sidebar' : 'Collapse sidebar'">
-      <span class="material-icons">{{ collapsed ? 'menu' : 'chevron_left' }}</span>
+    <button (click)="toggleCollapse()" [title]="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+            class="flex items-center justify-center rounded-md w-8 h-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors hidden lg:flex">
+      <lucide-icon [name]="collapsed ? 'menu' : 'chevron-left'" [size]="20"></lucide-icon>
     </button>
   </div>
 
-  <nav class="sidebar-nav">
+  <!-- Navigation -->
+  <nav class="flex-1 overflow-y-auto py-6 px-3 flex flex-col gap-1.5 custom-scrollbar pb-24">
     @for (item of menuItems; track item.path) {
-    <a [routerLink]="item.path" routerLinkActive="active" class="nav-item" (click)="closeMobile()"
-      [title]="collapsed ? item.label : ''">
-      <span class="nav-icon material-icons">{{ item.icon }}</span>
+    <a [routerLink]="item.path" routerLinkActive="bg-accent text-foreground shadow-sm" [routerLinkActiveOptions]="{exact: false}"
+       class="flex items-center rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-accent-foreground transition-all duration-200"
+       [class.justify-center]="collapsed" [title]="collapsed ? item.label : ''" (click)="closeMobile()">
+      <lucide-icon [name]="item.icon" [size]="20" [class.mr-3]="!collapsed" [strokeWidth]="2.5"></lucide-icon>
       @if (!collapsed) {
-      <span class="nav-label">{{ item.label }}</span>
+      <span>{{ item.label }}</span>
       }
     </a>
     }
   </nav>
 
-  <div class="sidebar-footer">
+  <!-- Footer / Profile -->
+  <div class="absolute bottom-0 w-full border-t border-border p-3 bg-background/95 backdrop-blur">
     @if (authService.currentUser$ | async; as user) {
-    <div class="user-info">
-      <img [src]="user.picture || 'assets/default-avatar.png'" alt="User" class="user-avatar" />
+    <div class="flex items-center gap-3 rounded-md px-3 py-2.5 hover:bg-muted transition-colors cursor-pointer" [class.justify-center]="collapsed">
+      <img [src]="user.picture || 'assets/default-avatar.png'" alt="User" class="w-8 h-8 rounded-full shadow-sm ring-1 ring-border" />
       @if (!collapsed) {
-      <div class="user-details">
-        <span class="user-name">{{ user.name }}</span>
-        <span class="user-email">{{ user.email }}</span>
+      <div class="flex flex-col flex-1 overflow-hidden">
+        <span class="text-sm font-semibold leading-none truncate text-foreground">{{ user.name }}</span>
+        <span class="text-xs text-muted-foreground truncate mt-1">{{ user.email }}</span>
       </div>
       }
     </div>

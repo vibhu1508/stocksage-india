@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { StockService, StockComparison, ComparisonItem, SymbolSearchResult } from '../../core/services/stock.service';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-stock-comparison',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   templateUrl: './stock-comparison.component.html',
   styleUrl: './stock-comparison.component.scss'
 })
@@ -24,20 +25,15 @@ export class StockComparisonComponent implements OnInit {
   availableSymbols: string[] = [];
   activeTab: 'gainers' | 'losers' | 'all' = 'all';
 
-  // Autocomplete suggestions
   suggestions: SymbolSearchResult[] = [];
   showSuggestions = false;
 
-  // Table filter search
   tableSearchQuery = '';
-
-  // Debounce subject for autocomplete
   private searchSubject = new Subject<string>();
 
   constructor(private stockService: StockService) { }
 
   ngOnInit(): void {
-    // Set default dates (today and yesterday)
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -45,10 +41,8 @@ export class StockComparisonComponent implements OnInit {
     this.date2 = this.formatDate(today);
     this.date1 = this.formatDate(yesterday);
 
-    // Load available symbols
     this.loadSymbols();
 
-    // Setup debounced search for autocomplete
     this.searchSubject.pipe(
       debounceTime(300),
       distinctUntilChanged()
@@ -79,7 +73,6 @@ export class StockComparisonComponent implements OnInit {
   onSymbolInput(event: Event): void {
     const input = event.target as HTMLInputElement;
     const value = input.value;
-    // Get the last symbol being typed (after the last comma)
     const parts = value.split(',');
     const lastPart = parts[parts.length - 1].trim();
     this.searchSubject.next(lastPart);
@@ -99,9 +92,7 @@ export class StockComparisonComponent implements OnInit {
   }
 
   selectSuggestion(suggestion: SymbolSearchResult): void {
-    // Add the selected symbol to the input (append if there are existing symbols)
     const parts = this.symbols.split(',').map(s => s.trim()).filter(s => s);
-    // Replace the last part (which user was typing) with the selected symbol
     if (parts.length > 0) {
       parts[parts.length - 1] = suggestion.symbol;
     } else {
@@ -113,7 +104,6 @@ export class StockComparisonComponent implements OnInit {
   }
 
   hideSuggestions(): void {
-    // Delay hiding to allow click on suggestion
     setTimeout(() => {
       this.showSuggestions = false;
     }, 200);
@@ -163,8 +153,8 @@ export class StockComparisonComponent implements OnInit {
   }
 
   getChangeClass(change: number): string {
-    if (change > 0) return 'positive';
-    if (change < 0) return 'negative';
-    return '';
+    if (change > 0) return 'text-green-500';
+    if (change < 0) return 'text-destructive';
+    return 'text-muted-foreground';
   }
 }

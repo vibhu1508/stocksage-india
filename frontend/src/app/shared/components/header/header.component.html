@@ -1,29 +1,47 @@
-<header class="header" [class.hidden]="!showHeader">
-  <div class="header-left">
-    <h1 class="page-title">
-      <!-- Page title will be set dynamically based on current route -->
-    </h1>
-  </div>
+<header class="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 transition-all duration-300" [class.-translate-y-full]="!showHeader">
+  <div class="flex h-16 items-center px-4 md:px-6 justify-between lg:justify-end gap-4 w-full">
+    
+    <!-- Mobile left spacer (sidebar toggle takes up space visually via position fixed, but here we just need spacing) -->
+    <div class="lg:hidden w-10"></div>
 
-  <div class="header-right">
-    <div class="header-date">
-      <span class="date-label">Today</span>
-      <span class="date-value">{{ currentDate | date:'EEE, MMM d, y' }}</span>
+    <!-- Unlumen Favicon Search -->
+    <div class="relative w-full max-w-sm hidden md:flex items-center flex-1 lg:flex-none mr-auto lg:mr-4">
+      <div class="absolute left-2.5 flex h-5 w-5 items-center justify-center rounded-sm bg-primary/15 text-primary text-xs font-bold leading-none select-none">
+        S
+      </div>
+      <input type="text" placeholder="Search stocks and indices..." 
+             class="h-9 w-full rounded-md border border-input bg-background pl-10 pr-12 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+      <kbd class="pointer-events-none absolute right-2.5 flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 text-muted-foreground">
+        <span class="text-xs">⌘</span>K
+      </kbd>
     </div>
 
-    <div class="header-actions">
-      <button class="btn-icon" title="Notifications">
-        <span class="material-icons">notifications</span>
+    <!-- Right Actions -->
+    <div class="flex items-center gap-2">
+      <div class="hidden sm:flex items-center justify-center px-3 py-1.5 rounded-md border border-border bg-muted/30 text-xs font-medium text-muted-foreground whitespace-nowrap mr-2">
+        <span class="mr-1 inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+        {{ currentDate | date:'EEE, MMM d' }}
+      </div>
+
+      <!-- Theme Toggle -->
+      <button (click)="toggleTheme()" 
+              class="flex items-center justify-center h-9 w-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors shadow-sm">
+        <lucide-icon [name]="isDarkTheme ? 'sun' : 'moon'" [size]="18" class="text-foreground"></lucide-icon>
       </button>
 
-      <button class="btn-icon" title="Settings">
-        <span class="material-icons">settings</span>
+      <!-- Notifications -->
+      <button class="flex items-center justify-center h-9 w-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors shadow-sm relative">
+        <lucide-icon name="bell" [size]="18" class="text-foreground"></lucide-icon>
+        <span class="absolute top-2 right-2 flex h-2 w-2 rounded-full bg-destructive"></span>
       </button>
 
-      <button class="logout-btn" (click)="logout()">
-        <span class="material-icons">logout</span>
-        <span class="logout-text">Logout</span>
+      <!-- Logout -->
+      <button (click)="logout()" 
+              class="ml-2 flex items-center justify-center h-9 px-3 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm gap-2">
+        <lucide-icon name="log-out" [size]="16"></lucide-icon>
+        <span class="hidden sm:inline">Logout</span>
       </button>
     </div>
+
   </div>
 </header>

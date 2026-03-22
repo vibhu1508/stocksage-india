@@ -34,6 +34,8 @@
     "@angular/platform-browser-dynamic": "^21.0.6",
     "@angular/router": "^21.0.0",
     "chart.js": "^4.5.1",
+    "lucide": "^0.577.0",
+    "lucide-angular": "^0.577.0",
     "ng2-charts": "^8.0.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
@@ -45,14 +47,18 @@
     "@angular/cli": "^21.0.4",
     "@angular/compiler-cli": "^21.0.0",
     "@ngx-env/builder": "^21.0.1",
+    "@tailwindcss/postcss": "^4.2.2",
     "@types/jasmine": "^5.1.13",
+    "autoprefixer": "^10.4.27",
     "jasmine-core": "^5.13.0",
     "karma": "^6.4.4",
     "karma-chrome-launcher": "^3.2.0",
     "karma-coverage": "^2.2.1",
     "karma-jasmine": "^5.1.0",
     "karma-jasmine-html-reporter": "^2.1.0",
+    "postcss": "^8.5.8",
     "puppeteer": "^24.34.0",
+    "tailwindcss": "^3.4.19",
     "typescript": "~5.9.2"
   }
 }

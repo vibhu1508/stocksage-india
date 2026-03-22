@@ -1,89 +1,88 @@
-<div class="announcements fade-in">
-  <header class="page-header">
-    <div class="header-content">
-      <h1>Corporate Announcements</h1>
-      <p>Stay updated with the latest corporate filings from NSE and BSE</p>
-    </div>
+<div class="w-full space-y-8 animate-in fade-in duration-500">
+  <header>
+    <h1 class="text-3xl font-bold tracking-tight text-foreground" style="font-family: 'Outfit', sans-serif;">Corporate Announcements</h1>
+    <p class="text-muted-foreground mt-1">Stay updated with the latest corporate filings from NSE and BSE</p>
   </header>
 
   <!-- Main Tabs -->
-  <div class="main-tabs">
-    <button class="main-tab" [class.active]="activeTab === 'nse'" (click)="onTabChange('nse')">
-      <span class="tab-icon">🏛️</span>
+  <div class="inline-flex h-12 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground w-full sm:w-auto">
+    <button [class]="activeTab === 'nse' ? 'bg-background text-foreground shadow-sm' : 'hover:bg-muted/80 hover:text-foreground'" (click)="onTabChange('nse')" class="inline-flex items-center justify-center whitespace-nowrap rounded-md px-6 py-2.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 gap-2">
+      <lucide-icon name="landmark" [size]="18"></lucide-icon>
       NSE Announcements
     </button>
-    <button class="main-tab" [class.active]="activeTab === 'bse'" (click)="onTabChange('bse')">
-      <span class="tab-icon">🏦</span>
+    <button [class]="activeTab === 'bse' ? 'bg-background text-foreground shadow-sm' : 'hover:bg-muted/80 hover:text-foreground'" (click)="onTabChange('bse')" class="inline-flex items-center justify-center whitespace-nowrap rounded-md px-6 py-2.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 gap-2">
+      <lucide-icon name="building-2" [size]="18"></lucide-icon>
       BSE Announcements
     </button>
   </div>
 
   <!-- NSE Tab -->
   @if (activeTab === 'nse') {
-  <section class="filters-section">
-    <div class="filters-card">
-      <div class="filter-group">
-        <label>Symbol</label>
-        <input type="text" [(ngModel)]="nseSymbol" placeholder="Enter symbol" class="text-input" />
+  <section class="space-y-6">
+    <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm p-6 flex flex-wrap items-end gap-6 relative z-10 transition-all">
+      
+      <div class="flex flex-col gap-2">
+        <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Symbol</label>
+        <input type="text" [(ngModel)]="nseSymbol" placeholder="Enter symbol" class="flex h-10 w-48 rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 uppercase" />
       </div>
 
-      <div class="filter-group">
-        <label>From Date</label>
-        <input type="date" [(ngModel)]="nseFromDate" class="date-input" />
+      <div class="flex flex-col gap-2">
+        <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">From Date</label>
+        <input type="date" [(ngModel)]="nseFromDate" class="flex h-10 w-40 rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" />
       </div>
 
-      <div class="filter-group">
-        <label>To Date</label>
-        <input type="date" [(ngModel)]="nseToDate" class="date-input" />
+      <div class="flex flex-col gap-2">
+        <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">To Date</label>
+        <input type="date" [(ngModel)]="nseToDate" class="flex h-10 w-40 rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" />
       </div>
 
-      <button class="btn" (click)="loadNSEAnnouncements()" [disabled]="loading">
+      <button (click)="loadNSEAnnouncements()" [disabled]="loading" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6 min-w-[120px]">
         @if (loading) {
-        <span class="btn-spinner"></span>
+        <span class="animate-spin h-4 w-4 rounded-full border-2 border-primary-foreground border-r-transparent mr-2"></span>
         }
         Search
       </button>
-    </div>
 
-    <!-- Popular Symbols -->
-    <div class="popular-symbols">
-      <span class="popular-label">Popular:</span>
-      @for (symbol of popularSymbols; track symbol) {
-      <button class="symbol-chip" [class.active]="nseSymbol === symbol" (click)="selectSymbol(symbol)">
-        {{ symbol }}
-      </button>
-      }
+      <div class="w-full mt-2 pt-4 border-t border-border flex flex-wrap items-center gap-2">
+        <span class="text-xs font-medium text-muted-foreground mr-1">Popular:</span>
+        @for (symbol of popularSymbols; track symbol) {
+        <button [class]="nseSymbol === symbol ? 'bg-primary/10 text-primary border-primary/20 hover:bg-primary/20' : 'bg-muted/50 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground'" (click)="selectSymbol(symbol)" class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+          {{ symbol }}
+        </button>
+        }
+      </div>
     </div>
   </section>
   }
 
   <!-- BSE Tab -->
   @if (activeTab === 'bse') {
-  <section class="filters-section">
-    <div class="filters-card">
-      <div class="filter-group">
-        <label>From Date</label>
-        <input type="date" [(ngModel)]="bseFromDate" class="date-input" />
-      </div>
-
-      <div class="filter-group">
-        <label>To Date</label>
-        <input type="date" [(ngModel)]="bseToDate" class="date-input" />
-      </div>
-
-      <div class="filter-group filter-company">
-        <label>Company (Optional)</label>
-        <select [(ngModel)]="bseScripCode" class="select-input">
+  <section class="space-y-6">
+    <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm p-6 flex flex-wrap items-end gap-6 relative z-10">
+      
+      <div class="flex flex-col gap-2 flex-1 min-w-[250px]">
+        <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Company (Optional)</label>
+        <select [(ngModel)]="bseScripCode" class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
           <option value="">All Companies</option>
           @for (scrip of bseScripCodes; track scrip['Scrip Code']) {
-          <option [value]="scrip['Scrip Code']">{{ scrip['Company Name'] }}</option>
+          <option [value]="scrip['Scrip Code']">{{ scrip['Company Name'] }} ({{ scrip['Scrip Code'] }})</option>
           }
         </select>
       </div>
 
-      <button class="btn" (click)="loadBSEAnnouncements()" [disabled]="loading">
+      <div class="flex flex-col gap-2">
+        <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">From Date</label>
+        <input type="date" [(ngModel)]="bseFromDate" class="flex h-10 w-40 rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" />
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">To Date</label>
+        <input type="date" [(ngModel)]="bseToDate" class="flex h-10 w-40 rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" />
+      </div>
+
+      <button (click)="loadBSEAnnouncements()" [disabled]="loading" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6 min-w-[120px]">
         @if (loading) {
-        <span class="btn-spinner"></span>
+        <span class="animate-spin h-4 w-4 rounded-full border-2 border-primary-foreground border-r-transparent mr-2"></span>
         }
         Search
       </button>
@@ -93,46 +92,50 @@
 
   <!-- Error -->
   @if (error) {
-  <div class="error-alert">
-    <span>⚠️</span> {{ error }}
+  <div class="rounded-lg border border-destructive/50 bg-destructive/10 text-destructive px-4 py-3 flex items-center gap-3">
+    <lucide-icon name="alert-triangle" [size]="18"></lucide-icon>
+    <p class="text-sm font-medium">{{ error }}</p>
   </div>
   }
 
   <!-- Loading -->
   @if (loading) {
-  <div class="loading-state">
-    <div class="spinner"></div>
-    <p>Loading announcements...</p>
+  <div class="flex flex-col items-center justify-center p-12 w-full text-muted-foreground gap-4">
+    <div class="animate-spin h-8 w-8 rounded-full border-4 border-primary/20 border-r-primary"></div>
+    <p class="text-sm font-medium animate-pulse">Scanning exchange networks...</p>
   </div>
   }
 
   <!-- NSE Results -->
   @if (activeTab === 'nse' && nseAnnouncements.length > 0 && !loading) {
-  <section class="results-section">
-    <div class="results-header">
-      <h3>{{ nseAnnouncements.length }} Announcements for {{ nseSymbol }}</h3>
-    </div>
+  <section class="space-y-4 animate-in fade-in duration-300">
+    <h3 class="text-lg font-semibold text-foreground border-b border-border pb-2">{{ nseAnnouncements.length }} Filing(s) Extracted for {{ nseSymbol }}</h3>
 
-    <div class="announcements-list">
+    <div class="grid gap-4">
       @for (item of nseAnnouncements; track $index) {
-      <div class="announcement-card">
-        <div class="announcement-header">
-          <span class="company-badge">{{ item.symbol }}</span>
-          <span class="announcement-date">{{ item.broadcast_date }}</span>
-        </div>
-        <div class="announcement-body">
-          <h4 class="announcement-subject">{{ item.subject }}</h4>
-          <p class="announcement-company">{{ item.company_name }}</p>
-        </div>
-        <div class="announcement-footer">
-          @if (item.category) {
-          <span class="category-badge">{{ item.category }}</span>
-          }
-          @if (item.attachment_link) {
-          <button class="view-btn" (click)="openAttachment(item.attachment_link)">
-            📎 View Attachment
-          </button>
-          }
+      <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm hover:border-primary/50 transition-colors duration-200">
+        <div class="p-5">
+          <div class="flex items-center justify-between mb-3 border-b border-border/50 pb-3">
+            <span class="inline-flex items-center rounded-md border border-border px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary">{{ item.symbol }}</span>
+            <span class="text-xs text-muted-foreground font-medium bg-muted px-2 py-1 rounded">{{ item.broadcast_date }}</span>
+          </div>
+          <div class="mb-4">
+            <h4 class="text-base font-semibold leading-relaxed text-foreground tracking-tight mb-1">{{ item.subject }}</h4>
+            <p class="text-sm text-muted-foreground">{{ item.company_name }}</p>
+          </div>
+          <div class="flex items-center flex-wrap gap-2 justify-between">
+            @if (item.category) {
+            <span class="inline-flex items-center rounded-full border border-border px-3 py-0.5 text-xs font-medium text-muted-foreground bg-muted/40">
+              {{ item.category }}
+            </span>
+            } @else { <div></div> }
+            
+            @if (item.attachment_link) {
+            <button (click)="openAttachment(item.attachment_link)" class="inline-flex items-center justify-center rounded-md text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 gap-2">
+              <lucide-icon name="paperclip" [size]="14"></lucide-icon> View Attachment
+            </button>
+            }
+          </div>
         </div>
       </div>
       }
@@ -142,31 +145,34 @@
 
   <!-- BSE Results -->
   @if (activeTab === 'bse' && bseAnnouncements.length > 0 && !loading) {
-  <section class="results-section">
-    <div class="results-header">
-      <h3>{{ bseAnnouncements.length }} Announcements</h3>
-    </div>
+  <section class="space-y-4 animate-in fade-in duration-300">
+    <h3 class="text-lg font-semibold text-foreground border-b border-border pb-2">{{ bseAnnouncements.length }} Filing(s) Extracted</h3>
 
-    <div class="announcements-list">
+    <div class="grid gap-4">
       @for (item of bseAnnouncements; track $index) {
-      <div class="announcement-card">
-        <div class="announcement-header">
-          <span class="company-badge bse">{{ item.scrip_code }}</span>
-          <span class="announcement-date">{{ item.news_date }}</span>
-        </div>
-        <div class="announcement-body">
-          <h4 class="announcement-subject">{{ item.subject }}</h4>
-          <p class="announcement-company">{{ item.company_name }}</p>
-        </div>
-        <div class="announcement-footer">
-          @if (item.category) {
-          <span class="category-badge">{{ item.category }}</span>
-          }
-          @if (item.attachment_url) {
-          <button class="view-btn" (click)="openAttachment(item.attachment_url)">
-            📎 View Attachment
-          </button>
-          }
+      <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm hover:border-orange-500/50 transition-colors duration-200">
+        <div class="p-5">
+          <div class="flex items-center justify-between mb-3 border-b border-border/50 pb-3">
+            <span class="inline-flex items-center rounded-md border border-orange-500/20 px-2.5 py-0.5 text-xs font-semibold bg-orange-500/10 text-orange-500">{{ item.scrip_code }}</span>
+            <span class="text-xs text-muted-foreground font-medium bg-muted px-2 py-1 rounded">{{ item.news_date }}</span>
+          </div>
+          <div class="mb-4">
+            <h4 class="text-base font-semibold leading-relaxed text-foreground tracking-tight mb-1">{{ item.subject }}</h4>
+            <p class="text-sm text-muted-foreground">{{ item.company_name }}</p>
+          </div>
+          <div class="flex items-center flex-wrap gap-2 justify-between">
+            @if (item.category) {
+            <span class="inline-flex items-center rounded-full border border-border px-3 py-0.5 text-xs font-medium text-muted-foreground bg-muted/40">
+              {{ item.category }}
+            </span>
+            } @else { <div></div> }
+            
+            @if (item.attachment_url) {
+            <button (click)="openAttachment(item.attachment_url)" class="inline-flex items-center justify-center rounded-md text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 gap-2">
+              <lucide-icon name="paperclip" [size]="14"></lucide-icon> View Attachment
+            </button>
+            }
+          </div>
         </div>
       </div>
       }
@@ -175,12 +181,13 @@
   }
 
   <!-- Empty State -->
-  @if (!loading && ((activeTab === 'nse' && nseAnnouncements.length === 0) || (activeTab === 'bse' &&
-  bseAnnouncements.length === 0))) {
-  <div class="empty-state">
-    <span class="empty-icon">📰</span>
-    <h3>No Announcements Found</h3>
-    <p>Try adjusting your search filters</p>
+  @if (!loading && ((activeTab === 'nse' && nseAnnouncements.length === 0) || (activeTab === 'bse' && bseAnnouncements.length === 0))) {
+  <div class="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-16 px-4 bg-muted/20 text-center animate-in zoom-in-95 duration-500 fade-in">
+    <div class="p-4 bg-muted border border-border rounded-full mb-4 text-muted-foreground shadow-sm">
+      <lucide-icon name="file-text" [size]="48"></lucide-icon>
+    </div>
+    <h3 class="text-xl font-bold text-foreground">No Filings Located</h3>
+    <p class="text-sm text-muted-foreground mt-2 max-w-sm">No regulatory announcements or filings matched the current query matrix on the selected exchange.</p>
   </div>
   }
 </div>

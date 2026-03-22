@@ -5,11 +5,12 @@ import { trigger, transition, style, animate } from '@angular/animations';
 import { Subscription } from 'rxjs';
 import { AuthService, User } from '../../core/services/auth.service';
 import { MarketService, MarketData, StockMover } from '../../core/services/market.service';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, LucideAngularModule],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   animations: [
@@ -28,6 +29,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
   user: User | null = null;
   currentTime = new Date();
   greeting = '';
+  
+  get timeParts() {
+    const h = this.currentTime.getHours();
+    const m = this.currentTime.getMinutes();
+    const s = this.currentTime.getSeconds();
+    return {
+      hours: (h % 12 || 12).toString().padStart(2, '0'),
+      minutes: m.toString().padStart(2, '0'),
+      seconds: s.toString().padStart(2, '0'),
+      ampm: h >= 12 ? 'PM' : 'AM'
+    };
+  }
   marketData: MarketData | null = null;
   marketLoading = true;
 
@@ -42,10 +55,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private loserTimer?: any;
 
   quickActions = [
-    { label: 'Compare Stocks', description: 'Analyze price changes between dates', icon: '📊', route: '/stocks' },
-    { label: 'F&O Analysis', description: 'View futures and options data', icon: '📈', route: '/fo' },
-    { label: 'NSE Announcements', description: 'Latest corporate filings', icon: '📰', route: '/announcements' },
-    { label: 'Learn', description: 'Videos by Girish Gupta', icon: '🎓', route: '/learn' }
+    { label: 'Compare Stocks', description: 'Analyze price changes between dates', icon: 'bar-chart-2', route: '/stocks' },
+    { label: 'F&O Analysis', description: 'View futures and options data', icon: 'line-chart', route: '/fo' },
+    { label: 'NSE Announcements', description: 'Latest corporate filings', icon: 'megaphone', route: '/announcements' },
+    { label: 'Learn', description: 'Videos by Girish Gupta', icon: 'graduation-cap', route: '/learn' }
   ];
 
   constructor(
@@ -165,28 +178,32 @@ export class DashboardComponent implements OnInit, OnDestroy {
       {
         label: 'Market Status',
         value: this.marketStatus,
-        icon: this.marketStatus === 'Open' ? '🟢' : this.marketStatus === 'Closed' ? '🔴' : '🟡',
+        icon: this.marketStatus === 'Open' ? 'check-circle-2' : this.marketStatus === 'Closed' ? 'x-circle' : 'alert-circle',
+        iconClass: this.marketStatus === 'Open' ? 'text-green-500' : this.marketStatus === 'Closed' ? 'text-red-500' : 'text-yellow-500',
         change: null as string | null,
         changePositive: true
       },
       {
         label: 'NIFTY 50',
         value: this.niftyValue,
-        icon: this.niftyPositive ? '📈' : '📉',
+        icon: this.niftyPositive ? 'trending-up' : 'trending-down',
+        iconClass: this.niftyPositive ? 'text-green-500' : 'text-red-500',
         change: this.niftyChange || null,
         changePositive: this.niftyPositive
       },
       {
         label: 'SENSEX',
         value: this.sensexValue,
-        icon: this.sensexPositive ? '📈' : '📉',
+        icon: this.sensexPositive ? 'trending-up' : 'trending-down',
+        iconClass: this.sensexPositive ? 'text-green-500' : 'text-red-500',
         change: this.sensexChange || null,
         changePositive: this.sensexPositive
       },
       {
         label: 'My Portfolio',
         value: 'View',
-        icon: '💼',
+        icon: 'briefcase',
+        iconClass: 'text-primary',
         change: 'Coming Soon' as string | null,
         changePositive: true
       }

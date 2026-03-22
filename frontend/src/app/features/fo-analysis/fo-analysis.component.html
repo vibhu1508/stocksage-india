@@ -1,416 +1,337 @@
-<div class="fo-analysis fade-in">
-  <header class="page-header">
-    <div class="header-content">
-      <h1>F&O Analysis</h1>
-      <p>Analyze Futures and Options data from NSE</p>
-    </div>
-  </header>
+<div class="flex flex-col gap-6 w-full fade-in">
+  <div class="flex flex-col space-y-1.5">
+    <h1 class="text-3xl lg:text-4xl font-bold tracking-tight text-foreground" style="font-family: 'Outfit', sans-serif;">F&O Analysis</h1>
+    <p class="text-muted-foreground text-sm">Analyze Futures and Options data comprehensively from the NSE</p>
+  </div>
 
-  <!-- Tabs -->
-  <div class="main-tabs">
-    <button class="main-tab" [class.active]="activeTab === 'momentum'" (click)="onTabChange('momentum')">
-      <span class="tab-icon">🚀</span>
-      Momentum Screener
+  <!-- Shadcn Tabs -->
+  <div class="inline-flex h-10 items-center justify-start rounded-md bg-muted p-1 text-muted-foreground self-start shadow-sm w-full md:w-auto overflow-x-auto">
+    <button (click)="onTabChange('momentum')"
+            class="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-1.5 text-sm font-medium transition-all"
+            [class.bg-background]="activeTab === 'momentum'" [class.text-foreground]="activeTab === 'momentum'" [class.shadow-sm]="activeTab === 'momentum'">
+      <lucide-icon name="rocket" [size]="16" class="mr-2"></lucide-icon> Momentum Screener
     </button>
-    <button class="main-tab" [class.active]="activeTab === 'nifty'" (click)="onTabChange('nifty')">
-      <span class="tab-icon">📊</span>
-      NIFTY Index
+    <button (click)="onTabChange('nifty')"
+            class="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-1.5 text-sm font-medium transition-all"
+            [class.bg-background]="activeTab === 'nifty'" [class.text-foreground]="activeTab === 'nifty'" [class.shadow-sm]="activeTab === 'nifty'">
+      <lucide-icon name="bar-chart-2" [size]="16" class="mr-2"></lucide-icon> NIFTY Index
     </button>
-    <button class="main-tab" [class.active]="activeTab === 'futures'" (click)="onTabChange('futures')">
-      <span class="tab-icon">📈</span>
-      Futures
+    <button (click)="onTabChange('futures')"
+            class="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-1.5 text-sm font-medium transition-all"
+            [class.bg-background]="activeTab === 'futures'" [class.text-foreground]="activeTab === 'futures'" [class.shadow-sm]="activeTab === 'futures'">
+      <lucide-icon name="line-chart" [size]="16" class="mr-2"></lucide-icon> Futures
     </button>
-    <button class="main-tab" [class.active]="activeTab === 'options'" (click)="onTabChange('options')">
-      <span class="tab-icon">⚡</span>
-      Options
+    <button (click)="onTabChange('options')"
+            class="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-4 py-1.5 text-sm font-medium transition-all"
+            [class.bg-background]="activeTab === 'options'" [class.text-foreground]="activeTab === 'options'" [class.shadow-sm]="activeTab === 'options'">
+      <lucide-icon name="zap" [size]="16" class="mr-2"></lucide-icon> Options
     </button>
   </div>
 
-  <!-- Filters -->
-  <section class="filters-section">
-    <div class="filters-card">
-      <div class="filter-group">
-        <label>Date</label>
-        <input type="date" [(ngModel)]="selectedDate" class="date-input" />
-      </div>
-
-      @if (activeTab === 'futures' || activeTab === 'options') {
-      <div class="filter-group">
-        <label>Symbol</label>
-        <input type="text" [(ngModel)]="symbol" placeholder="e.g., NIFTY, BANKNIFTY" class="text-input" />
-      </div>
-      } @else if (activeTab === 'nifty') {
-      <!-- NIFTY Tab Specific Filters -->
-      <div class="filter-group">
-        <label>Ticker Symbol</label>
-        <select [(ngModel)]="selectedSymbol" (change)="onSymbolChange()" class="select-input">
-          @for (sym of uniqueSymbols; track sym) {
-          <option [value]="sym">{{ sym }}</option>
-          }
-        </select>
-      </div>
-      <div class="filter-group">
-        <label>Expiry Date</label>
-        <select [(ngModel)]="selectedExpiry" (change)="onExpiryChange()" class="select-input">
-          @for (exp of uniqueExpiries; track exp) {
-          <option [value]="exp">{{ exp }}</option>
-          }
-        </select>
-      </div>
-      }
-
-      @if (activeTab === 'momentum') {
-      <div class="filter-group">
-        <label>Expiry Month</label>
-        <select [(ngModel)]="selectedMomentumExpiry" (change)="onMomentumExpiryChange()" class="select-input">
-          <option value="">Current Expiry</option>
-          @for (exp of availableExpiries; track exp) {
-          <option [value]="exp">{{ exp }}</option>
-          }
-        </select>
-      </div>
-      }
-
-      @if (activeTab === 'options') {
-      <div class="filter-group">
-        <label>Option Type</label>
-        <select [(ngModel)]="optionType" class="select-input">
-          <option value="">All</option>
-          <option value="CE">Call (CE)</option>
-          <option value="PE">Put (PE)</option>
-        </select>
-      </div>
-      }
-
-      <button class="btn" (click)="refresh()" [disabled]="loading">
-        @if (loading) {
-        <span class="btn-spinner"></span>
-        }
-        Refresh Data
-      </button>
-    </div>
-  </section>
-
-  <!-- Error -->
-  @if (error) {
-  <div class="error-alert">
-    <span>⚠️</span> {{ error }}
-  </div>
-  }
-
-  <!-- Loading -->
-  @if (loading) {
-  <div class="loading-state">
-    <div class="spinner"></div>
-    <p>Loading data...</p>
-  </div>
-  }
-
-  <!-- NIFTY Tab Content -->
-  @if (activeTab === 'nifty' && niftyData && !loading) {
-  <section class="results-section">
-    <div class="summary-grid">
-      <div class="summary-card">
-        <span class="summary-icon">📈</span>
-        <div class="summary-content">
-          <span class="summary-value">{{ filteredFutures.length }}</span>
-          <span class="summary-label">Futures Contracts</span>
-        </div>
-      </div>
-      <div class="summary-card">
-        <span class="summary-icon">⚡</span>
-        <div class="summary-content">
-          <span class="summary-value">{{ filteredOptions.length }}</span>
-          <span class="summary-label">Options Contracts</span>
-        </div>
-      </div>
-    </div>
-
-    <h3 class="section-title">NIFTY Futures</h3>
-    <div class="table-container">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th>Expiry</th>
-            <th class="text-right">Open</th>
-            <th class="text-right">High</th>
-            <th class="text-right">Low</th>
-            <th class="text-right">Close</th>
-            <th class="text-right">Volume</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (item of filteredFutures; track $index) {
-          <tr>
-            <td><span class="symbol-badge">{{ item.TckrSymb }}</span></td>
-            <td>{{ item.XpryDt }}</td>
-            <td class="text-right">{{ item.OpnPric | number:'1.2-2' }}</td>
-            <td class="text-right">{{ item.HghPric | number:'1.2-2' }}</td>
-            <td class="text-right">{{ item.LwPric | number:'1.2-2' }}</td>
-            <td class="text-right">{{ item.ClsPric | number:'1.2-2' }}</td>
-            <td class="text-right">{{ item.TtlTrdVol | number }}</td>
-          </tr>
-          }
-          @empty {
-          <tr>
-            <td colspan="7" class="text-center">No futures found for this selection.</td>
-          </tr>
-          }
-        </tbody>
-      </table>
-    </div>
-
-    <h3 class="section-title" style="margin-top: 2rem;">NIFTY Options</h3>
-    <div class="table-container">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th>Type</th>
-            <th class="text-right">Strike</th>
-            <th>Expiry</th>
-            <th class="text-right">Close</th>
-            <th class="text-right">OI</th>
-            <th class="text-right">Volume</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (item of filteredOptions; track $index) {
-          <tr>
-            <td><span class="symbol-badge">{{ item.TckrSymb }}</span></td>
-            <td>
-              <span class="option-type"
-                [class.call]="item.OptnTp === 'CE' || (item.FinInstrmNm && item.FinInstrmNm.includes('CE'))"
-                [class.put]="item.OptnTp === 'PE' || (item.FinInstrmNm && item.FinInstrmNm.includes('PE'))">
-                {{ item.OptnTp || (item.FinInstrmNm.includes('CE') ? 'CE' : 'PE') }}
-              </span>
-            </td>
-            <td class="text-right">{{ item.StrkPric | number:'1.2-2' }}</td>
-            <td>{{ item.XpryDt }}</td>
-            <td class="text-right">{{ item.ClsPric | number:'1.2-2' }}</td>
-            <td class="text-right">{{ item.OpnIntrst | number }}</td>
-            <td class="text-right">{{ item.TtlTrdVol | number }}</td>
-          </tr>
-          }
-          @empty {
-          <tr>
-            <td colspan="7" class="text-center">No options found for this selection.</td>
-          </tr>
-          }
-        </tbody>
-      </table>
-    </div>
-  </section>
-  }
-
-  <!-- Futures Tab Content -->
-  @if (activeTab === 'futures' && futuresData.length > 0 && !loading) {
-  <section class="results-section">
-    <div class="table-container">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th>Expiry</th>
-            <th class="text-right">Open</th>
-            <th class="text-right">High</th>
-            <th class="text-right">Low</th>
-            <th class="text-right">Close</th>
-            <th class="text-right">OI</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (item of futuresData; track $index) {
-          <tr>
-            <td><span class="symbol-badge">{{ item.TckrSymb }}</span></td>
-            <td>{{ item.XpryDt }}</td>
-            <td class="text-right">{{ item.OpnPric | number:'1.2-2' }}</td>
-            <td class="text-right">{{ item.HghPric | number:'1.2-2' }}</td>
-            <td class="text-right">{{ item.LwPric | number:'1.2-2' }}</td>
-            <td class="text-right">{{ item.ClsPric | number:'1.2-2' }}</td>
-            <td class="text-right">{{ item.OpnIntrst | number }}</td>
-          </tr>
-          }
-        </tbody>
-      </table>
-    </div>
-  </section>
-  }
-
-  <!-- Options Tab Content -->
-  @if (activeTab === 'options' && optionsData.length > 0 && !loading) {
-  <section class="results-section">
-    <div class="table-container">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th>Type</th>
-            <th class="text-right">Strike</th>
-            <th>Expiry</th>
-            <th class="text-right">Close</th>
-            <th class="text-right">OI</th>
-            <th class="text-right">Volume</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (item of optionsData; track $index) {
-          <tr>
-            <td><span class="symbol-badge">{{ item.TckrSymb }}</span></td>
-            <td>
-              <span class="option-type" [class.call]="item.OptnTp === 'CE'" [class.put]="item.OptnTp === 'PE'">
-                {{ item.OptnTp }}
-              </span>
-            </td>
-            <td class="text-right">{{ item.StrkPric | number:'1.2-2' }}</td>
-            <td>{{ item.XpryDt }}</td>
-            <td class="text-right">{{ item.ClsPric | number:'1.2-2' }}</td>
-            <td class="text-right">{{ item.OpnIntrst | number }}</td>
-            <td class="text-right">{{ item.TtlTrdVol | number }}</td>
-          </tr>
-          }
-        </tbody>
-      </table>
-    </div>
-  </section>
-  }
-
-  <!-- Momentum Tab Content -->
-  @if (activeTab === 'momentum' && momentumData && !loading) {
-  <section class="momentum-section">
-    <div class="momentum-grid">
-      
-      <!-- Long Buildup (Top 10 OI) -->
-      <div class="momentum-column">
-        <h3 class="column-title">Long Buildup</h3>
-        <div class="cards-container">
-          @for (item of momentumData.top_10; track item.TckrSymb) {
-          <div class="screener-card">
-            <div class="card-header">
-              <div class="company-logo success">{{ item.TckrSymb.charAt(0) }}</div>
-              <div class="company-info">
-                <h4>{{ item.TckrSymb }}</h4>
-                <div class="price-row">
-                  <span class="price-value">{{ item.ClsPric }}</span>
-                  <span class="price-change" [class.text-success]="item.pct_price_change > 0" [class.text-danger]="item.pct_price_change < 0">
-                    ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
-                  </span>
-                </div>
-                <div class="oi-row" [class.text-success]="item.pct_oi_change > 0" [class.text-danger]="item.pct_oi_change < 0">
-                  {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
-                </div>
-              </div>
-            </div>
-            <div class="progress-bar-container">
-              <div class="progress-bar positive" [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)">
-                <span class="bar-label">{{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%</span>
-              </div>
-            </div>
-          </div>
-          }
-        </div>
-      </div>
-
-      <!-- Short Buildup / Long Unwinding (Bottom 10 OI) -->
-      <div class="momentum-column">
-        <h3 class="column-title">Short Buildup</h3>
-        <div class="cards-container">
-          @for (item of momentumData.bottom_10; track item.TckrSymb) {
-          <div class="screener-card">
-            <div class="card-header">
-              <div class="company-logo danger">{{ item.TckrSymb.charAt(0) }}</div>
-              <div class="company-info">
-                <h4>{{ item.TckrSymb }}</h4>
-                <div class="price-row">
-                  <span class="price-value">{{ item.ClsPric }}</span>
-                  <span class="price-change" [class.text-success]="item.pct_price_change > 0" [class.text-danger]="item.pct_price_change < 0">
-                    ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
-                  </span>
-                </div>
-                <div class="oi-row" [class.text-success]="item.pct_oi_change > 0" [class.text-danger]="item.pct_oi_change < 0">
-                  {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
-                </div>
-              </div>
-            </div>
-            <div class="progress-bar-container">
-              <div class="progress-bar negative" [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)">
-                <span class="bar-label">{{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%</span>
-              </div>
-            </div>
-          </div>
-          }
-        </div>
-      </div>
-
-    </div>
+  <!-- Filter Strip -->
+  <div class="p-4 md:p-6 border border-border bg-card text-card-foreground rounded-xl shadow-sm flex flex-col md:flex-row flex-wrap items-end gap-5">
     
-    <!-- Unwinding and Covering row -->
-    <div class="momentum-grid" style="margin-top: 1.5rem;">
-      
-      <!-- Short Covering -->
-      <div class="momentum-column">
-        <h3 class="column-title" style="color: #10B981;">Short Covering</h3>
-        <div class="cards-container">
-          @for (item of momentumData.short_covering; track item.TckrSymb) {
-          <div class="screener-card">
-            <div class="card-header">
-              <div class="company-logo success">{{ item.TckrSymb.charAt(0) }}</div>
-              <div class="company-info">
-                <h4>{{ item.TckrSymb }}</h4>
-                <div class="price-row">
-                  <span class="price-value">{{ item.ClsPric }}</span>
-                  <span class="price-change" [class.text-success]="item.pct_price_change > 0" [class.text-danger]="item.pct_price_change < 0">
-                    ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
-                  </span>
+    <div class="flex flex-col gap-1.5 w-full md:w-auto">
+      <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</label>
+      <input type="date" [(ngModel)]="selectedDate" class="flex h-9 w-full md:w-48 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+    </div>
+
+    @if (activeTab === 'futures' || activeTab === 'options') {
+    <div class="flex flex-col gap-1.5 w-full md:w-auto">
+      <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Symbol</label>
+      <input type="text" [(ngModel)]="symbol" placeholder="e.g., NIFTY" class="flex h-9 w-full md:w-48 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+    </div>
+    } @else if (activeTab === 'nifty') {
+    <div class="flex flex-col gap-1.5 w-full md:w-auto">
+      <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Ticker Symbol</label>
+      <select [(ngModel)]="selectedSymbol" (change)="onSymbolChange()" class="flex h-9 w-full md:w-48 items-center justify-between rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        @for (sym of uniqueSymbols; track sym) {
+        <option [value]="sym" class="bg-background text-foreground">{{ sym }}</option>
+        }
+      </select>
+    </div>
+    <div class="flex flex-col gap-1.5 w-full md:w-auto">
+      <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Expiry Date</label>
+      <select [(ngModel)]="selectedExpiry" (change)="onExpiryChange()" class="flex h-9 w-full md:w-48 items-center justify-between rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        @for (exp of uniqueExpiries; track exp) {
+        <option [value]="exp" class="bg-background text-foreground">{{ exp }}</option>
+        }
+      </select>
+    </div>
+    }
+
+    @if (activeTab === 'momentum') {
+    <div class="flex flex-col gap-1.5 w-full md:w-auto">
+      <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Expiry Month</label>
+      <select [(ngModel)]="selectedMomentumExpiry" (change)="onMomentumExpiryChange()" class="flex h-9 w-full md:w-48 items-center justify-between rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        <option value="" class="bg-background text-foreground">Current Expiry</option>
+        @for (exp of availableExpiries; track exp) {
+        <option [value]="exp" class="bg-background text-foreground">{{ exp }}</option>
+        }
+      </select>
+    </div>
+    }
+
+    @if (activeTab === 'options') {
+    <div class="flex flex-col gap-1.5 w-full md:w-auto">
+      <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Option Type</label>
+      <select [(ngModel)]="optionType" class="flex h-9 w-full md:w-32 items-center justify-between rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        <option value="" class="bg-background text-foreground">All</option>
+        <option value="CE" class="bg-background text-foreground">Call (CE)</option>
+        <option value="PE" class="bg-background text-foreground">Put (PE)</option>
+      </select>
+    </div>
+    }
+
+    <!-- Unlumen Enhanced Button -->
+    <button (click)="refresh()" [disabled]="loading"
+            class="group inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-all hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 ml-auto md:ml-0 mt-2 md:mt-0 w-full md:w-auto">
+      <lucide-icon name="refresh-cw" [class.animate-spin]="loading" [size]="16" class="mr-2"></lucide-icon> 
+      {{ loading ? 'Syncing...' : 'Refresh Data' }}
+    </button>
+  </div>
+
+  @if (error) {
+  <div class="rounded-lg border border-destructive/50 bg-destructive/10 p-4 w-full flex items-center gap-3 text-destructive shadow-sm">
+    <lucide-icon name="alert-triangle" [size]="20"></lucide-icon>
+    <p class="text-sm font-medium">{{ error }}</p>
+  </div>
+  }
+
+  @if (loading) {
+  <div class="flex flex-col items-center justify-center py-20 gap-4 text-muted-foreground">
+    <lucide-icon name="refresh-cw" [size]="32" class="animate-spin text-primary opacity-50"></lucide-icon>
+    <p class="text-sm font-medium tracking-widest uppercase">Connecting to Exchange...</p>
+  </div>
+  }
+
+  <!-- MOMENTUM SCREENER TAB -->
+  @if (activeTab === 'momentum' && momentumData && !loading) {
+  <div class="flex flex-col gap-8 w-full mt-4">
+    
+    <!-- Row 1: Buildups -->
+    <div class="grid md:grid-cols-2 gap-6 w-full">
+      <!-- Long Buildup -->
+      <div class="flex flex-col gap-4">
+        <div class="flex items-center gap-2 px-1">
+          <lucide-icon name="trending-up" [size]="20" class="text-green-500"></lucide-icon>
+          <h2 class="text-lg font-bold text-foreground">Long Buildup</h2>
+        </div>
+        <div class="grid gap-3">
+          @for (item of momentumData.top_10; track item.TckrSymb) {
+          <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm flex flex-col p-4 hover:bg-muted/30 hover:border-border transition-all duration-300">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-500/10 text-green-500 font-bold text-lg border border-green-500/20">
+                  {{ item.TckrSymb.charAt(0) }}
                 </div>
-                <div class="oi-row" [class.text-success]="item.pct_oi_change > 0" [class.text-danger]="item.pct_oi_change < 0">
+                <div>
+                  <h4 class="font-bold text-foreground">{{ item.TckrSymb }}</h4>
+                  <div class="flex items-center gap-2 mt-0.5">
+                    <span class="text-sm font-medium">{{ item.ClsPric }}</span>
+                    <span class="text-[11px] font-bold" [class.text-green-500]="item.pct_price_change > 0" [class.text-red-500]="item.pct_price_change < 0">
+                      ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div class="text-right">
+                <span class="text-sm font-bold block" [class.text-green-500]="item.pct_oi_change > 0" [class.text-red-500]="item.pct_oi_change < 0">
                   {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
-                </div>
+                </span>
+                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold">OI Chg</span>
               </div>
             </div>
-            <div class="progress-bar-container">
-              <div class="progress-bar negative" [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)">
-                <span class="bar-label">{{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%</span>
-              </div>
+            <div class="w-full bg-muted rounded-full h-1.5 overflow-hidden mt-1">
+              <div class="h-full rounded-full transition-all duration-500" 
+                   [class.bg-green-500]="item.pct_oi_change > 0" [class.bg-red-500]="item.pct_oi_change < 0"
+                   [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)"></div>
             </div>
           </div>
+          } @empty {
+          <div class="p-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-xl">No metrics resolved</div>
+          }
+        </div>
+      </div>
+
+      <!-- Short Buildup -->
+      <div class="flex flex-col gap-4">
+        <div class="flex items-center gap-2 px-1">
+          <lucide-icon name="trending-down" [size]="20" class="text-red-500"></lucide-icon>
+          <h2 class="text-lg font-bold text-foreground">Short Buildup</h2>
+        </div>
+        <div class="grid gap-3">
+          @for (item of momentumData.bottom_10; track item.TckrSymb) {
+          <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm flex flex-col p-4 hover:bg-muted/30 hover:border-border transition-all duration-300">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-red-500 font-bold text-lg border border-red-500/20">
+                  {{ item.TckrSymb.charAt(0) }}
+                </div>
+                <div>
+                  <h4 class="font-bold text-foreground">{{ item.TckrSymb }}</h4>
+                  <div class="flex items-center gap-2 mt-0.5">
+                    <span class="text-sm font-medium">{{ item.ClsPric }}</span>
+                    <span class="text-[11px] font-bold" [class.text-green-500]="item.pct_price_change > 0" [class.text-red-500]="item.pct_price_change < 0">
+                      ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div class="text-right">
+                <span class="text-sm font-bold block" [class.text-green-500]="item.pct_oi_change > 0" [class.text-red-500]="item.pct_oi_change < 0">
+                  {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
+                </span>
+                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold">OI Chg</span>
+              </div>
+            </div>
+            <div class="w-full bg-muted rounded-full h-1.5 overflow-hidden mt-1">
+              <div class="h-full rounded-full transition-all duration-500 bg-red-500" 
+                   [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)"></div>
+            </div>
+          </div>
+          } @empty {
+          <div class="p-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-xl">No metrics resolved</div>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 2: Unwinding/Covering -->
+    <div class="grid md:grid-cols-2 gap-6 w-full mt-4">
+      <!-- Short Covering -->
+      <div class="flex flex-col gap-4">
+        <div class="flex items-center gap-2 px-1">
+          <lucide-icon name="trending-up" [size]="20" class="text-green-500"></lucide-icon>
+          <h2 class="text-lg font-bold text-foreground">Short Covering</h2>
+        </div>
+        <div class="grid gap-3">
+          @for (item of momentumData.short_covering; track item.TckrSymb) {
+          <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm flex flex-col p-4 hover:bg-muted/30 hover:border-border transition-all duration-300">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-500/10 text-green-500 font-bold text-lg border border-green-500/20">
+                  {{ item.TckrSymb.charAt(0) }}
+                </div>
+                <div>
+                  <h4 class="font-bold text-foreground">{{ item.TckrSymb }}</h4>
+                  <div class="flex items-center gap-2 mt-0.5">
+                    <span class="text-sm font-medium">{{ item.ClsPric }}</span>
+                    <span class="text-[11px] font-bold" [class.text-green-500]="item.pct_price_change > 0" [class.text-red-500]="item.pct_price_change < 0">
+                      ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div class="text-right">
+                <span class="text-sm font-bold block text-red-500">
+                  {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
+                </span>
+                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold">OI Drop</span>
+              </div>
+            </div>
+            <div class="w-full bg-muted rounded-full h-1.5 overflow-hidden mt-1">
+              <div class="h-full rounded-full transition-all duration-500 bg-red-400" 
+                   [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)"></div>
+            </div>
+          </div>
+          } @empty {
+          <div class="p-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-xl">No metrics resolved</div>
           }
         </div>
       </div>
 
       <!-- Long Unwinding -->
-      <div class="momentum-column">
-        <h3 class="column-title" style="color: #EF4444;">Long Unwinding</h3>
-        <div class="cards-container">
+      <div class="flex flex-col gap-4">
+        <div class="flex items-center gap-2 px-1">
+          <lucide-icon name="trending-down" [size]="20" class="text-red-500"></lucide-icon>
+          <h2 class="text-lg font-bold text-foreground">Long Unwinding</h2>
+        </div>
+        <div class="grid gap-3">
           @for (item of momentumData.long_unwinding; track item.TckrSymb) {
-          <div class="screener-card">
-            <div class="card-header">
-              <div class="company-logo danger">{{ item.TckrSymb.charAt(0) }}</div>
-              <div class="company-info">
-                <h4>{{ item.TckrSymb }}</h4>
-                <div class="price-row">
-                  <span class="price-value">{{ item.ClsPric }}</span>
-                  <span class="price-change" [class.text-success]="item.pct_price_change > 0" [class.text-danger]="item.pct_price_change < 0">
-                    ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
-                  </span>
+          <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm flex flex-col p-4 hover:bg-muted/30 hover:border-border transition-all duration-300">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-red-500 font-bold text-lg border border-red-500/20">
+                  {{ item.TckrSymb.charAt(0) }}
                 </div>
-                <div class="oi-row" [class.text-success]="item.pct_oi_change > 0" [class.text-danger]="item.pct_oi_change < 0">
+                <div>
+                  <h4 class="font-bold text-foreground">{{ item.TckrSymb }}</h4>
+                  <div class="flex items-center gap-2 mt-0.5">
+                    <span class="text-sm font-medium">{{ item.ClsPric }}</span>
+                    <span class="text-[11px] font-bold" [class.text-green-500]="item.pct_price_change > 0" [class.text-red-500]="item.pct_price_change < 0">
+                      ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div class="text-right">
+                <span class="text-sm font-bold block text-red-500">
                   {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
-                </div>
+                </span>
+                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold">OI Drop</span>
               </div>
             </div>
-            <div class="progress-bar-container">
-              <div class="progress-bar negative" [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)">
-                <span class="bar-label">{{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%</span>
-              </div>
+            <div class="w-full bg-muted rounded-full h-1.5 overflow-hidden mt-1">
+              <div class="h-full rounded-full transition-all duration-500 bg-red-400" 
+                   [style.width.%]="math.min(math.abs(item.pct_oi_change), 100)"></div>
             </div>
           </div>
+          } @empty {
+          <div class="p-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-xl">No metrics resolved</div>
           }
         </div>
       </div>
-
     </div>
-  </section>
+  </div>
   }
+
+  <!-- TABLES for Nifty/Futures/Options (Abstracted into Shadcn styles natively) -->
+  @if ((activeTab === 'nifty' && niftyData) || (activeTab === 'futures' && futuresData.length > 0) || (activeTab === 'options' && optionsData.length > 0)) {
+  <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm overflow-hidden mt-4 w-full">
+    <div class="overflow-x-auto w-full">
+      <table class="w-full text-sm text-left">
+        <thead class="text-xs text-muted-foreground bg-muted/50 uppercase border-b border-border">
+          <tr>
+            <th class="px-5 py-4 font-medium tracking-wider">Symbol</th>
+            <th class="px-5 py-4 font-medium tracking-wider">Expiry</th>
+            @if (activeTab === 'options' || (activeTab === 'nifty' && filteredOptions.length > 0)) {
+            <th class="px-5 py-4 font-medium tracking-wider">Type / Strike</th>
+            }
+            <th class="px-5 py-4 font-medium tracking-wider text-right">Close</th>
+            <th class="px-5 py-4 font-medium tracking-wider text-right">OI</th>
+            <th class="px-5 py-4 font-medium tracking-wider text-right">Volume</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border">
+          
+          <!-- Shared Iterator Logic (Abstracted visually) -->
+          @for (item of (activeTab === 'futures' ? futuresData : (activeTab === 'options' ? optionsData : filteredFutures)); track $index) {
+          <tr class="hover:bg-muted/30 transition-colors">
+            <td class="px-5 py-3"><span class="font-semibold text-foreground bg-primary/10 text-primary px-2 py-1 rounded-md text-xs">{{ item.TckrSymb }}</span></td>
+            <td class="px-5 py-3 font-medium text-muted-foreground">{{ item.XpryDt }}</td>
+            
+            @if (activeTab === 'options' || (activeTab === 'nifty' && filteredOptions.length > 0)) {
+            <td class="px-5 py-3">
+              @if (item.OptnTp) {
+              <span class="px-2.5 py-1 rounded-full text-xs font-bold" [class.bg-green-500/10]="item.OptnTp==='CE'" [class.text-green-500]="item.OptnTp==='CE'" [class.bg-red-500/10]="item.OptnTp==='PE'" [class.text-red-500]="item.OptnTp==='PE'">
+                {{ item.OptnTp }} @ {{ item.StrkPric | number:'1.2-2' }}
+              </span>
+              } @else {
+              <span class="text-muted-foreground">-</span>
+              }
+            </td>
+            }
+
+            <td class="px-5 py-3 text-right font-semibold text-foreground">{{ item.ClsPric | number:'1.2-2' }}</td>
+            <td class="px-5 py-3 text-right font-medium text-muted-foreground">{{ item.OpnIntrst | number }}</td>
+            <td class="px-5 py-3 text-right font-medium text-muted-foreground">{{ item.TtlTrdVol | number }}</td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+  }
+
 </div>

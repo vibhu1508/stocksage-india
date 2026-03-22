@@ -2,11 +2,12 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { FOService, NiftyData } from '../../core/services/fo.service';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-fo-analysis',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   templateUrl: './fo-analysis.component.html',
   styleUrl: './fo-analysis.component.scss'
 })
