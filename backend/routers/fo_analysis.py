@@ -381,18 +381,28 @@ async def get_futures_analysis(
     df_stf['pct_price_change'] = df_stf['pct_price_change'].round(2)
     df_stf['pct_oi_change'] = df_stf['pct_oi_change'].round(2)
     
-    # Dual Sort Engine via Highest OI Momentum, then highest Price Momentum
-    sorted_df = df_stf.sort_values(by=['pct_oi_change', 'pct_price_change'], ascending=[False, False])
-    
     result_cols = ['TckrSymb', 'XpryDt', 'ClsPric', 'PrvsClsgPric', 'pct_price_change', 'OpnIntrst', 'ChngInOpnIntrst', 'pct_oi_change']
-    available_cols = [c for c in result_cols if c in sorted_df.columns]
-    output_df = sorted_df[available_cols]
+    available_cols = [c for c in result_cols if c in df_stf.columns]
+    output_df = df_stf[available_cols]
+    
+    # Filter strictly for Buildups (Positive OI Momentum)
+    buildup_df = output_df[output_df['pct_oi_change'] > 0]
+    
+    # Long Buildup: Positive Price Momentum
+    long_buildup = buildup_df[buildup_df['pct_price_change'] > 0].sort_values(
+        by=['pct_oi_change', 'pct_price_change'], ascending=[False, False]
+    )
+    
+    # Short Buildup: Negative Price Momentum
+    short_buildup = buildup_df[buildup_df['pct_price_change'] < 0].sort_values(
+        by=['pct_oi_change', 'pct_price_change'], ascending=[False, True]
+    )
     
     # Cap limits exactly at Top 10 and Bottom 10 metrics
     return {
         "date": str(parsed_date),
         "expiry_date": str(df_stf['XpryDt'].iloc[0]) if not df_stf.empty else "",
         "available_expiries": available_expiries_list,
-        "top_10": output_df.head(10).fillna("").to_dict(orient='records'),
-        "bottom_10": output_df.tail(10).fillna("").to_dict(orient='records'),
+        "top_10": long_buildup.head(10).fillna("").to_dict(orient='records'),
+        "bottom_10": short_buildup.head(10).fillna("").to_dict(orient='records'),
     }
