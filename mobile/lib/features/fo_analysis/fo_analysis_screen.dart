@@ -772,7 +772,7 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
 
   Widget _buildMomentumCard(Map<String, dynamic> item, bool isLong) {
     final symbol = item['TckrSymb'] ?? '';
-    final price = item['LastPric']?.toString() ?? '0';
+    final price = item['ClsPric']?.toString() ?? item['LastPric']?.toString() ?? '0';
     final priceChange = (item['pct_price_change'] as num?)?.toDouble() ?? 0.0;
     final oiChange = (item['pct_oi_change'] as num?)?.toDouble() ?? 0.0;
     
