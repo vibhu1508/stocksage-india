@@ -340,7 +340,7 @@ async def get_futures_analysis(
         raise HTTPException(status_code=404, detail="No Stock Futures data found in this Bhavcopy.")
         
     # Safely convert numeric primitives preventing string comma interference
-    numeric_cols = ['LastPric', 'PrvsClsgPric', 'OpnIntrst', 'ChngInOpnIntrst']
+    numeric_cols = ['ClsPric', 'PrvsClsgPric', 'OpnIntrst', 'ChngInOpnIntrst']
     for col in numeric_cols:
         if col in df_stf.columns:
             if df_stf[col].dtype == 'object':
@@ -371,7 +371,7 @@ async def get_futures_analysis(
         raise HTTPException(status_code=404, detail="No data available for the specified expiry contract.")
         
     # Calculate Delta Math Sequences
-    df_stf['pct_price_change'] = ((df_stf['LastPric'] - df_stf['PrvsClsgPric']) / df_stf['PrvsClsgPric']) * 100
+    df_stf['pct_price_change'] = ((df_stf['ClsPric'] - df_stf['PrvsClsgPric']) / df_stf['PrvsClsgPric']) * 100
     
     yesterday_oi = df_stf['OpnIntrst'] - df_stf['ChngInOpnIntrst']
     yesterday_oi = yesterday_oi.replace(0, float('nan')) 
@@ -384,7 +384,7 @@ async def get_futures_analysis(
     # Dual Sort Engine via Highest OI Momentum, then highest Price Momentum
     sorted_df = df_stf.sort_values(by=['pct_oi_change', 'pct_price_change'], ascending=[False, False])
     
-    result_cols = ['TckrSymb', 'XpryDt', 'LastPric', 'PrvsClsgPric', 'pct_price_change', 'OpnIntrst', 'ChngInOpnIntrst', 'pct_oi_change']
+    result_cols = ['TckrSymb', 'XpryDt', 'ClsPric', 'PrvsClsgPric', 'pct_price_change', 'OpnIntrst', 'ChngInOpnIntrst', 'pct_oi_change']
     available_cols = [c for c in result_cols if c in sorted_df.columns]
     output_df = sorted_df[available_cols]
     
