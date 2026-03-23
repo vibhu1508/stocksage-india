@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
-import '../../config/theme.dart';
+import '../../core/services/auth_service.dart';
+import '../../shared/widgets/profile_menu.dart';
 import 'video_player_screen.dart';
 
 class LearnScreen extends StatefulWidget {
@@ -196,9 +197,12 @@ class _LearnScreenState extends State<LearnScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Learn with Girish Gupta',
+          'Learn',
           style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
         ),
+        actions: [
+          ProfileMenu(authService: AuthService()),
+        ],
         centerTitle: false,
         elevation: 0,
       ),
@@ -222,7 +226,7 @@ class _LearnScreenState extends State<LearnScreen> {
                       )
                     : null,
                 filled: true,
-                fillColor: AppTheme.cardColor,
+                fillColor: Theme.of(context).cardTheme.color,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,
@@ -248,12 +252,12 @@ class _LearnScreenState extends State<LearnScreen> {
                         Icon(
                           Icons.error_outline,
                           size: 48,
-                          color: AppTheme.textSecondary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         const SizedBox(height: 12),
                         Text(
                           _error!,
-                          style: TextStyle(color: AppTheme.textSecondary),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                         const SizedBox(height: 12),
                         ElevatedButton(
@@ -267,7 +271,7 @@ class _LearnScreenState extends State<LearnScreen> {
                 ? Center(
                     child: Text(
                       _isSearching ? 'No videos found' : 'No videos available',
-                      style: TextStyle(color: AppTheme.textSecondary),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   )
                 : RefreshIndicator(
@@ -320,9 +324,9 @@ class _LearnScreenState extends State<LearnScreen> {
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         decoration: BoxDecoration(
-          color: AppTheme.cardColor,
+          color: Theme.of(context).cardTheme.color,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
@@ -418,28 +422,28 @@ class _LearnScreenState extends State<LearnScreen> {
                       Icon(
                         Icons.visibility_outlined,
                         size: 14,
-                        color: AppTheme.textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         '${_formatViews(views)} views',
                         style: TextStyle(
                           fontSize: 12,
-                          color: AppTheme.textSecondary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(width: 12),
                       Icon(
                         Icons.access_time,
                         size: 14,
-                        color: AppTheme.textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         timeAgo,
                         style: TextStyle(
                           fontSize: 12,
-                          color: AppTheme.textSecondary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],

@@ -31,14 +31,22 @@ export class AuthService {
     const token = this.getToken();
     if (token) {
       this.fetchCurrentUser().subscribe({
+        next: (user) => {
+          this.currentUserSubject.next(user);
+        },
         error: (err) => {
-          // Only logout on auth failures (401), not network errors
+          // If token is invalid/expired (401), clear everything
           if (err.status === 401) {
-            this.logout();
+            this.clearSession();
           }
         }
       });
     }
+  }
+
+  private clearSession(): void {
+    localStorage.removeItem('access_token');
+    this.currentUserSubject.next(null);
   }
 
   getToken(): string | null {
@@ -82,8 +90,17 @@ export class AuthService {
   logout(): void {
     const token = this.getToken();
     if (token) {
-      this.http.post(`${this.apiUrl}/logout`, {}).subscribe();
+      // Best effort logout on backend
+      this.http.post(`${this.apiUrl}/logout`, {}).subscribe({
+        next: () => this.finalizeLogout(),
+        error: () => this.finalizeLogout()
+      });
+    } else {
+      this.finalizeLogout();
     }
+  }
+
+  private finalizeLogout(): void {
     localStorage.removeItem('access_token');
     this.currentUserSubject.next(null);
     this.router.navigate(['/login']);

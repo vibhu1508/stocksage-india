@@ -2,7 +2,10 @@ import { Component, HostListener, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AuthService } from '../../../core/services/auth.service';
 import { LayoutService } from '../../../core/services/layout.service';
+import { ThemeService } from '../../../core/services/theme.service';
+import { ClockService } from '../../../core/services/clock.service';
 import { LucideAngularModule } from 'lucide-angular';
+import { Observable } from 'rxjs';
 
 @Component({
   selector: 'app-header',
@@ -12,42 +15,38 @@ import { LucideAngularModule } from 'lucide-angular';
   styleUrl: './header.component.scss'
 })
 export class HeaderComponent implements OnInit {
-  currentDate = new Date();
-  isDarkTheme = true;
-
+  timeParts$: Observable<any>;
   isVisible = true;
   isVideoPlaying = false;
   private lastScrollY = 0;
 
   constructor(
     public authService: AuthService,
-    private layoutService: LayoutService
-  ) { }
+    private layoutService: LayoutService,
+    public themeService: ThemeService,
+    public clockService: ClockService
+  ) { 
+    this.timeParts$ = this.clockService.timeParts$;
+  }
 
   ngOnInit() {
     this.layoutService.videoPlaying$.subscribe(playing => {
       this.isVideoPlaying = playing;
     });
 
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'light') {
-      this.isDarkTheme = false;
-      document.documentElement.classList.remove('dark');
-    } else {
-      this.isDarkTheme = true;
-      document.documentElement.classList.add('dark');
-    }
+    // The theme initialization logic is now handled within ThemeService
+    // const savedTheme = localStorage.getItem('theme');
+    // if (savedTheme === 'light') {
+    //   this.isDarkTheme = false;
+    //   document.documentElement.classList.remove('dark');
+    // } else {
+    //   this.isDarkTheme = true;
+    //   document.documentElement.classList.add('dark');
+    // }
   }
 
   toggleTheme(): void {
-    this.isDarkTheme = !this.isDarkTheme;
-    if (this.isDarkTheme) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
+    this.themeService.toggleTheme();
   }
 
   get showHeader(): boolean {

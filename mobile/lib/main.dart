@@ -7,6 +7,7 @@ import 'features/stocks/stock_comparison_screen.dart';
 import 'features/fo_analysis/fo_analysis_screen.dart';
 import 'features/announcements/announcements_screen.dart';
 import 'features/learn/learn_screen.dart';
+import 'package:lucide_icons/lucide_icons.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,12 +39,14 @@ class _StockSageAppState extends State<StockSageApp> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: _authService,
+      listenable: Listenable.merge([_authService, themeNotifier]),
       builder: (context, _) {
         return MaterialApp(
           title: 'StockSage India',
           debugShowCheckedModeBanner: false,
-          theme: AppTheme.darkTheme,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeNotifier.value,
           home: _buildHome(),
         );
       },
@@ -133,23 +136,23 @@ class _MainShellState extends State<MainShell> {
             onTap: _switchTab,
             items: const [
               BottomNavigationBarItem(
-                icon: Icon(Icons.dashboard_rounded),
+                icon: Icon(LucideIcons.layoutDashboard),
                 label: 'Dashboard',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.compare_arrows_rounded),
+                icon: Icon(LucideIcons.arrowUpRight),
                 label: 'Stocks',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.candlestick_chart_rounded),
+                icon: Icon(LucideIcons.lineChart),
                 label: 'F&O',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.article_rounded),
+                icon: Icon(LucideIcons.megaphone),
                 label: 'News',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.school_rounded),
+                icon: Icon(LucideIcons.graduationCap),
                 label: 'Learn',
               ),
             ],

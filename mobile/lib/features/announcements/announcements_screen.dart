@@ -4,6 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../config/theme.dart';
 import '../../core/models/announcement.dart';
 import '../../core/services/announcement_service.dart';
+import '../../core/services/auth_service.dart';
+import '../../shared/widgets/profile_menu.dart';
 
 class AnnouncementsScreen extends StatefulWidget {
   const AnnouncementsScreen({super.key});
@@ -65,13 +67,9 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
       builder: (context, child) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         return Theme(
-          data: AppTheme.darkTheme.copyWith(
-            colorScheme: ColorScheme.dark(
-              primary: AppTheme.primaryColor,
-              surface: AppTheme.cardColor,
-            ),
-          ),
+          data: isDark ? AppTheme.darkTheme : AppTheme.lightTheme,
           child: child!,
         );
       },
@@ -94,13 +92,9 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
       builder: (context, child) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         return Theme(
-          data: AppTheme.darkTheme.copyWith(
-            colorScheme: ColorScheme.dark(
-              primary: AppTheme.primaryColor,
-              surface: AppTheme.cardColor,
-            ),
-          ),
+          data: isDark ? AppTheme.darkTheme : AppTheme.lightTheme,
           child: child!,
         );
       },
@@ -214,11 +208,14 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Announcements'),
+        actions: [
+          ProfileMenu(authService: AuthService()),
+        ],
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: AppTheme.primaryColor,
-          labelColor: AppTheme.primaryColor,
-          unselectedLabelColor: AppTheme.textSecondary,
+          indicatorColor: Theme.of(context).colorScheme.primary,
+          labelColor: Theme.of(context).colorScheme.primary,
+          unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
           tabs: const [
             Tab(text: 'NSE'),
             Tab(text: 'BSE'),
@@ -277,10 +274,10 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                     margin: const EdgeInsets.only(top: 4),
                     constraints: const BoxConstraints(maxHeight: 200),
                     decoration: BoxDecoration(
-                      color: AppTheme.cardColor,
+                      color: Theme.of(context).cardTheme.color,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
                       ),
                     ),
                     child: ListView.builder(
@@ -315,7 +312,7 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                                         s['company_name'] ?? '',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: AppTheme.textSecondary,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
@@ -326,7 +323,7 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                                 Icon(
                                   Icons.north_east,
                                   size: 14,
-                                  color: AppTheme.textSecondary,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                                 ),
                               ],
                             ),
@@ -411,13 +408,13 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                         Icon(
                           Icons.article_outlined,
                           size: 48,
-                          color: AppTheme.textSecondary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         const SizedBox(height: 12),
                         Text(
                           'Search a company and date range\nto view announcements',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: AppTheme.textSecondary),
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                         ),
                       ],
                     ),
@@ -526,13 +523,13 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                       Icon(
                         Icons.newspaper_outlined,
                         size: 48,
-                        color: AppTheme.textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(height: 12),
                       Text(
                         'Set filters and search\nto view BSE announcements',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: AppTheme.textSecondary),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                       ),
                     ],
                   ),
@@ -570,7 +567,7 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                 Text(
                   'Page $_bsePage of $_bseTotalPages',
                   style: TextStyle(
-                    color: AppTheme.textSecondary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -589,7 +586,7 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
                 '${_bseAnnouncements.length} announcements loaded',
-                style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
           ),
@@ -604,24 +601,24 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppTheme.cardColor,
+          color: Theme.of(context).cardTheme.color,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white12),
+          border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               label,
-              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.calendar_today,
                   size: 14,
-                  color: AppTheme.primaryColor,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
                 const SizedBox(width: 6),
                 Text(
@@ -679,8 +676,9 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppTheme.cardColor,
+        color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -704,7 +702,7 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                   child: Icon(
                     Icons.open_in_new,
                     size: 18,
-                    color: AppTheme.accentColor,
+                    color: Theme.of(context).colorScheme.secondary,
                   ),
                 ),
             ],
@@ -727,14 +725,14 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                       vertical: 3,
                     ),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.15),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       category,
                       style: TextStyle(
                         fontSize: 10,
-                        color: AppTheme.primaryColor,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -744,7 +742,7 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
               const SizedBox(width: 8),
               Text(
                 date,
-                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ],
           ),

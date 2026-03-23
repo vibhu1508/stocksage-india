@@ -11,62 +11,7 @@
   margin-bottom: $spacing-lg;
 }
 
-// Search bar
-.search-bar {
-  display: flex;
-  gap: $spacing-sm;
-  margin-bottom: $spacing-xl;
 
-  input {
-    flex: 1;
-    padding: 12px 16px;
-    background: $glass-bg;
-    border: 1px solid $glass-border;
-    border-radius: $radius-md;
-    color: $text-primary;
-    font-size: 14px;
-    outline: none;
-    transition: border-color $transition-fast;
-
-    &:focus {
-      border-color: $accent-primary;
-    }
-
-    &::placeholder {
-      color: $text-muted;
-    }
-  }
-
-  .search-btn {
-    padding: 12px 24px;
-    background: $accent-gradient;
-    border: none;
-    border-radius: $radius-md;
-    color: white;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all $transition-fast;
-
-    &:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba($accent-primary, 0.3);
-    }
-  }
-
-  .clear-btn {
-    padding: 12px;
-    background: transparent;
-    border: 1px solid $glass-border;
-    border-radius: $radius-md;
-    color: $text-secondary;
-    cursor: pointer;
-    transition: all $transition-fast;
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.05);
-    }
-  }
-}
 
 // Video grid
 .video-grid {

@@ -42,7 +42,6 @@ export class FOAnalysisComponent implements OnInit {
   constructor(private foService: FOService) { }
 
   ngOnInit(): void {
-    this.selectedDate = this.formatDate(new Date());
     this.loadMomentumData();
   }
 

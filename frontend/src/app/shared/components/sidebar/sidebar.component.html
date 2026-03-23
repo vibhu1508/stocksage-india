@@ -18,7 +18,7 @@
     @if (!collapsed) {
     <div class="flex items-center gap-3">
       <img src="logo.png" alt="StockSage" class="w-8 h-8 object-contain">
-      <span class="font-bold tracking-tight text-foreground text-lg" style="font-family: 'Outfit', sans-serif;">StockSage India</span>
+      <span class="font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-foreground to-foreground/50 text-xl lg:text-2xl" style="font-family: 'Plus Jakarta Sans', sans-serif;">StockSage India</span>
     </div>
     }
     <button (click)="toggleCollapse()" [title]="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
@@ -28,21 +28,21 @@
   </div>
 
   <!-- Navigation -->
-  <nav class="flex-1 overflow-y-auto py-6 px-3 flex flex-col gap-1.5 custom-scrollbar pb-24">
+  <nav class="flex-1 overflow-y-auto py-6 px-3 flex flex-col gap-1.5 custom-scrollbar">
     @for (item of menuItems; track item.path) {
     <a [routerLink]="item.path" routerLinkActive="bg-accent text-foreground shadow-sm" [routerLinkActiveOptions]="{exact: false}"
        class="flex items-center rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-accent-foreground transition-all duration-200"
        [class.justify-center]="collapsed" [title]="collapsed ? item.label : ''" (click)="closeMobile()">
       <lucide-icon [name]="item.icon" [size]="20" [class.mr-3]="!collapsed" [strokeWidth]="2.5"></lucide-icon>
       @if (!collapsed) {
-      <span>{{ item.label }}</span>
+      <span class="truncate">{{ item.label }}</span>
       }
     </a>
     }
   </nav>
 
   <!-- Footer / Profile -->
-  <div class="absolute bottom-0 w-full border-t border-border p-3 bg-background/95 backdrop-blur">
+  <div class="mt-auto border-t border-border p-3 bg-background/95 backdrop-blur">
     @if (authService.currentUser$ | async; as user) {
     <div class="flex items-center gap-3 rounded-md px-3 py-2.5 hover:bg-muted transition-colors cursor-pointer" [class.justify-center]="collapsed">
       <img [src]="user.picture || 'assets/default-avatar.png'" alt="User" class="w-8 h-8 rounded-full shadow-sm ring-1 ring-border" />

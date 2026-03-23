@@ -15,6 +15,7 @@ import time
 from database import get_db
 from routers.auth import get_current_user
 from models import User
+from utils.market_utils import get_latest_market_date
 
 router = APIRouter()
 
@@ -107,11 +108,17 @@ def download_fo_bhavcopy(target_date: date) -> Optional[pd.DataFrame]:
 
 
 def get_latest_available_data(start_date: date = None) -> tuple[Optional[pd.DataFrame], date]:
-    """Try to find the latest available data looking back 5 days."""
+    """Try to find the latest available data using the market utils latest date."""
     if start_date is None:
-        start_date = date.today()
+        start_date = get_latest_market_date()
         
-    for days_back in range(5):
+    # Try the calculated latest date first
+    df = download_fo_bhavcopy(start_date)
+    if df is not None:
+        return df, start_date
+        
+    # Fallback to looking back if for some reason the calculated date is not yet available
+    for days_back in range(1, 6):
         target_date = start_date - timedelta(days=days_back)
         df = download_fo_bhavcopy(target_date)
         if df is not None:

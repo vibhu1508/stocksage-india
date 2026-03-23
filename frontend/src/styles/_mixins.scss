@@ -2,11 +2,11 @@
 
 // Glassmorphism card
 @mixin glass-card {
-  background: $glass-bg;
-  backdrop-filter: $glass-blur;
-  -webkit-backdrop-filter: $glass-blur;
-  border: 1px solid $glass-border;
-  border-radius: $radius-lg;
+  background: hsl(var(--card) / 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
 }
 
 // Gradient text
@@ -110,38 +110,39 @@
 
 @mixin button-ghost {
   background: transparent;
-  color: $text-primary;
-  border: 1px solid $glass-border;
-  border-radius: $radius-md;
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
   padding: $spacing-sm $spacing-lg;
   font-weight: 500;
   cursor: pointer;
   transition: all $transition-normal;
 
   &:hover {
-    background: $glass-bg;
-    border-color: $accent-primary;
+    background: hsl(var(--accent));
+    border-color: hsl(var(--primary));
   }
 }
 
 // Input styles
 @mixin input-style {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid $glass-border;
-  border-radius: $radius-md;
+  background: hsl(var(--background) / 0.5);
+  border: 1px solid hsl(var(--input));
+  border-radius: var(--radius);
   padding: $spacing-sm $spacing-md;
-  color: $text-primary;
+  color: hsl(var(--foreground));
   font-size: 14px;
   transition: all $transition-fast;
 
   &:focus {
     outline: none;
-    border-color: $accent-primary;
-    box-shadow: 0 0 0 3px rgba($accent-primary, 0.2);
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 0 2px hsl(var(--primary) / 0.15);
   }
 
   &::placeholder {
-    color: $text-muted;
+    color: hsl(var(--muted-foreground));
+    opacity: 0.6;
   }
 }
 

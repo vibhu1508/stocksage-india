@@ -22,18 +22,18 @@
     <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm p-6 flex flex-wrap items-end gap-6 relative z-10 transition-all">
       
       <div class="flex flex-col gap-2">
-        <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Symbol</label>
-        <input type="text" [(ngModel)]="nseSymbol" placeholder="Enter symbol" class="flex h-10 w-48 rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 uppercase" />
+        <label class="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-1">Symbol</label>
+        <input type="text" [(ngModel)]="nseSymbol" placeholder="Enter symbol" class="flex h-10 w-48 rounded-md border border-input bg-background/50 px-3 py-2 text-sm text-foreground ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 uppercase shadow-sm" />
       </div>
 
       <div class="flex flex-col gap-2">
-        <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">From Date</label>
-        <input type="date" [(ngModel)]="nseFromDate" class="flex h-10 w-40 rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" />
+        <label class="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-1">From Date</label>
+        <input type="date" [(ngModel)]="nseFromDate" class="flex h-10 w-40 rounded-md border border-input bg-background/50 px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 theme-date-input shadow-sm" />
       </div>
 
       <div class="flex flex-col gap-2">
-        <label class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">To Date</label>
-        <input type="date" [(ngModel)]="nseToDate" class="flex h-10 w-40 rounded-md border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" />
+        <label class="text-[10px] font-bold text-muted-foreground uppercase tracking-widest px-1">To Date</label>
+        <input type="date" [(ngModel)]="nseToDate" class="flex h-10 w-40 rounded-md border border-input bg-background/50 px-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 theme-date-input shadow-sm" />
       </div>
 
       <button (click)="loadNSEAnnouncements()" [disabled]="loading" class="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-6 min-w-[120px]">

@@ -1,3 +1,10 @@
-/* 
- * Removed old SCSS rules in favor of Tailwind CSS utility classes.
- */
+.theme-date-input {
+  &::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    filter: invert(0.5);
+    
+    @at-root .dark & {
+      filter: invert(1);
+    }
+  }
+}

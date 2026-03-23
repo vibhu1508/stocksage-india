@@ -4,6 +4,8 @@ import '../../config/theme.dart';
 import '../../core/models/stock.dart';
 import '../../core/services/stock_service.dart';
 import '../../core/services/announcement_service.dart';
+import '../../core/services/auth_service.dart';
+import '../../shared/widgets/profile_menu.dart';
 
 class StockComparisonScreen extends StatefulWidget {
   const StockComparisonScreen({super.key});
@@ -49,13 +51,9 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
       builder: (context, child) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         return Theme(
-          data: AppTheme.darkTheme.copyWith(
-            colorScheme: ColorScheme.dark(
-              primary: AppTheme.primaryColor,
-              surface: AppTheme.cardColor,
-            ),
-          ),
+          data: isDark ? AppTheme.darkTheme : AppTheme.lightTheme,
           child: child!,
         );
       },
@@ -121,11 +119,14 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
       _currentPage = 1;
     });
 
+    // Logic change: Symbol is no longer mandatory for comparison.
+    // If empty, the backend likely returns all/top stocks.
+    
     try {
       final comparison = await StockService.compareStocks(
         _formatDate(_date1),
         _formatDate(_date2),
-        _symbolController.text.isNotEmpty ? _symbolController.text : null,
+        _symbolController.text.trim(),
       );
       setState(() {
         _comparison = comparison;
@@ -179,7 +180,12 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Stock Comparison')),
+      appBar: AppBar(
+        title: const Text('Stock Comparison'),
+        actions: [
+          ProfileMenu(authService: AuthService()),
+        ],
+      ),
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onTap: () {
@@ -221,9 +227,9 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
                 controller: _symbolController,
                 decoration: InputDecoration(
                   hintText: 'Enter symbols (e.g., RELIANCE, TCS)',
-                  prefixIcon: const Icon(
+                  prefixIcon: Icon(
                     Icons.search,
-                    color: AppTheme.textSecondary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                   suffixIcon: _symbolController.text.isNotEmpty
                       ? IconButton(
@@ -244,10 +250,10 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
                   margin: const EdgeInsets.only(top: 4),
                   constraints: const BoxConstraints(maxHeight: 200),
                   decoration: BoxDecoration(
-                    color: AppTheme.cardColor,
+                    color: Theme.of(context).cardTheme.color,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
                     ),
                   ),
                   child: ListView.builder(
@@ -282,7 +288,7 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
                                     Text(
                                       s['company_name'] ?? '',
                                       style: TextStyle(
-                                        color: AppTheme.textSecondary,
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                                         fontSize: 12,
                                       ),
                                       maxLines: 1,
@@ -294,7 +300,11 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
                               Icon(
                                 Icons.north_east,
                                 size: 14,
-                                color: AppTheme.textSecondary,
+                                color: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.color
+                                    ?.withOpacity(0.6),
                               ),
                             ],
                           ),
@@ -375,7 +385,7 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
                     padding: const EdgeInsets.only(bottom: 12),
                     child: TextField(
                       controller: _tableSearchController,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: 'Search symbol...',
                         prefixIcon: Icon(Icons.search, size: 20),
                         isDense: true,
@@ -404,7 +414,7 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
                         Text(
                           'Page $_currentPage of $_totalPages',
                           style: TextStyle(
-                            color: AppTheme.textSecondary,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -425,7 +435,7 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
                     '${_allFilteredData.length} stocks total',
                     style: TextStyle(
                       fontSize: 12,
-                      color: AppTheme.textSecondary,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -443,16 +453,16 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppTheme.cardColor,
+          color: Theme.of(context).cardTheme.color,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white12),
+          border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               label,
-              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 4),
             Row(
@@ -486,7 +496,9 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: isActive ? AppTheme.primaryColor : AppTheme.cardColor,
+            color: isActive 
+                ? Theme.of(context).colorScheme.primary 
+                : Theme.of(context).cardTheme.color,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Center(
@@ -495,7 +507,7 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                color: isActive ? Colors.white : AppTheme.textSecondary,
+                color: isActive ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -514,8 +526,9 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppTheme.cardColor,
+        color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
       ),
       child: Row(
         children: [
@@ -534,7 +547,7 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
                 const SizedBox(height: 2),
                 Text(
                   '₹${item.oldPrice.toStringAsFixed(2)} → ₹${item.newPrice.toStringAsFixed(2)}',
-                  style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ],
             ),

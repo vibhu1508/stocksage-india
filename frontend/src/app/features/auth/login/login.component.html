@@ -1,4 +1,11 @@
-<div class="flex min-h-[calc(100vh-4rem)] w-full items-center justify-center bg-background p-4 md:p-8">
+<div class="relative flex min-h-[calc(100vh-4rem)] w-full items-center justify-center bg-background p-4 md:p-8">
+  <!-- Theme Toggle in Login Page -->
+  <div class="absolute top-4 right-4 z-50">
+    <button (click)="toggleTheme()" 
+            class="flex items-center justify-center h-10 w-10 rounded-full border border-border bg-card hover:bg-muted transition-all shadow-md">
+      <lucide-icon [name]="themeService.isDark ? 'sun' : 'moon'" [size]="20" class="text-foreground"></lucide-icon>
+    </button>
+  </div>
   <div class="flex w-full max-w-5xl flex-col md:flex-row shadow-2xl rounded-2xl border border-border bg-card overflow-hidden">
     
     <!-- Left side: Login Form -->

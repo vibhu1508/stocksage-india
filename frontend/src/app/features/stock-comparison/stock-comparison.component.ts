@@ -29,6 +29,9 @@ export class StockComparisonComponent implements OnInit {
   showSuggestions = false;
 
   tableSearchQuery = '';
+  currentPage = 1;
+  pageSize = 50;
+  math = Math;
   private searchSubject = new Subject<string>();
 
   constructor(private stockService: StockService) { }
@@ -134,14 +137,52 @@ export class StockComparisonComponent implements OnInit {
   get displayedData(): ComparisonItem[] {
     if (!this.comparison) return [];
 
+    let data: ComparisonItem[];
     switch (this.activeTab) {
       case 'gainers':
-        return this.comparison.gainers;
+        data = this.comparison.gainers; // Keep backend top 10
+        break;
       case 'losers':
-        return this.comparison.losers;
+        data = this.comparison.losers; // Keep backend bottom 10
+        break;
       default:
-        return this.filterByTableSearch(this.comparison.data);
+        data = this.filterByTableSearch(this.comparison.data);
     }
+
+    const startIndex = (this.currentPage - 1) * this.pageSize;
+    return data.slice(startIndex, startIndex + this.pageSize);
+  }
+
+  get totalItems(): number {
+    if (!this.comparison) return 0;
+    switch (this.activeTab) {
+      case 'gainers': return this.comparison.gainers.length;
+      case 'losers': return this.comparison.losers.length;
+      default: return this.filterByTableSearch(this.comparison.data).length;
+    }
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.totalItems / this.pageSize);
+  }
+
+  onPageChange(page: number): void {
+    this.currentPage = page;
+    const scrollContainer = document.querySelector('.overflow-auto');
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
+  onTabChange(tab: 'all' | 'gainers' | 'losers'): void {
+    this.activeTab = tab;
+    this.currentPage = 1;
+  }
+
+  onTableSearchChange(): void {
+    this.currentPage = 1;
   }
 
   private filterByTableSearch(data: ComparisonItem[]): ComparisonItem[] {

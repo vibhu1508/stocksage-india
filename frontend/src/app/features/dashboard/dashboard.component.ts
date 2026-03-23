@@ -27,20 +27,7 @@ import { LucideAngularModule } from 'lucide-angular';
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   user: User | null = null;
-  currentTime = new Date();
   greeting = '';
-  
-  get timeParts() {
-    const h = this.currentTime.getHours();
-    const m = this.currentTime.getMinutes();
-    const s = this.currentTime.getSeconds();
-    return {
-      hours: (h % 12 || 12).toString().padStart(2, '0'),
-      minutes: m.toString().padStart(2, '0'),
-      seconds: s.toString().padStart(2, '0'),
-      ampm: h >= 12 ? 'PM' : 'AM'
-    };
-  }
   marketData: MarketData | null = null;
   marketLoading = true;
 
@@ -73,10 +60,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     this.setGreeting();
 
-    setInterval(() => {
-      this.currentTime = new Date();
-    }, 1000);
-
     this.marketSub = this.marketService.getLiveDataStream(10000).subscribe(data => {
       this.marketData = data;
       this.marketLoading = false;
@@ -107,7 +90,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private setGreeting(): void {
-    const hour = this.currentTime.getHours();
+    const hour = new Date().getHours();
     if (hour < 12) {
       this.greeting = 'Good Morning';
     } else if (hour < 17) {

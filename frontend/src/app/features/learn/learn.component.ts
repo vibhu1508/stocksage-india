@@ -6,11 +6,12 @@ import { Subject, Subscription } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { MarketService, LearnVideo } from '../../core/services/market.service';
 import { LayoutService } from '../../core/services/layout.service';
+import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-learn',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   templateUrl: './learn.component.html',
   styleUrl: './learn.component.scss'
 })

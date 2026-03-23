@@ -58,13 +58,7 @@ class _LoginScreenState extends State<LoginScreen>
     return Scaffold(
       body: Container(
         width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF0A0A1A), Color(0xFF1A1A3E), Color(0xFF0A0A1A)],
-          ),
-        ),
+        color: const Color(0xFF09090B), // Standard Dark Theme Background
         child: SafeArea(
           child: FadeTransition(
             opacity: _fadeAnim,
@@ -168,8 +162,9 @@ class _LoginScreenState extends State<LoginScreen>
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _handleGoogleSignIn,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.black87,
+                        backgroundColor: const Color(0xFF18181B), // Zinc-900
+                        foregroundColor: Colors.white,
+                        side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
@@ -207,7 +202,7 @@ class _LoginScreenState extends State<LoginScreen>
                     'By signing in, you agree to our Terms of Service',
                     style: TextStyle(
                       fontSize: 12,
-                      color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                     ),
                   ),
                   const Spacer(),

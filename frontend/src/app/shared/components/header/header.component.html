@@ -4,29 +4,35 @@
     <!-- Mobile left spacer (sidebar toggle takes up space visually via position fixed, but here we just need spacing) -->
     <div class="lg:hidden w-10"></div>
 
-    <!-- Unlumen Favicon Search -->
-    <div class="relative w-full max-w-sm hidden md:flex items-center flex-1 lg:flex-none mr-auto lg:mr-4">
-      <div class="absolute left-2.5 flex h-5 w-5 items-center justify-center rounded-sm bg-primary/15 text-primary text-xs font-bold leading-none select-none">
+    <!-- Favicon Search -->
+    <div class="relative w-full max-w-[280px] lg:max-w-sm hidden md:flex items-center flex-1 lg:flex-none mr-auto ml-12 lg:ml-4 lg:mr-4">
+      <div class="absolute left-2.5 flex h-5 w-5 items-center justify-center rounded-sm bg-primary/15 text-primary text-[10px] font-black leading-none select-none">
         S
       </div>
-      <input type="text" placeholder="Search stocks and indices..." 
-             class="h-9 w-full rounded-md border border-input bg-background pl-10 pr-12 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
-      <kbd class="pointer-events-none absolute right-2.5 flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 text-muted-foreground">
-        <span class="text-xs">⌘</span>K
+      <input type="text" placeholder="Search stocks..." 
+             class="h-9 w-full rounded-md border border-input bg-background/50 pl-9 pr-12 py-1 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus:bg-background" />
+      <kbd class="pointer-events-none absolute right-2.5 flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[9px] font-medium opacity-100 text-muted-foreground">
+        <span class="text-[10px]">⌘</span>K
       </kbd>
     </div>
 
     <!-- Right Actions -->
     <div class="flex items-center gap-2">
+      @if (timeParts$ | async; as tp) {
+      <div class="hidden sm:flex items-center justify-center px-3 py-1.5 rounded-md border border-border bg-muted/30 text-xs font-mono font-bold text-foreground whitespace-nowrap mr-2">
+        <span class="text-primary mr-1">{{ tp.hours }}</span>:<span>{{ tp.minutes }}</span><span class="text-muted-foreground/60 ml-1 text-[10px]">{{ tp.ampm }}</span>
+      </div>
+      }
+
       <div class="hidden sm:flex items-center justify-center px-3 py-1.5 rounded-md border border-border bg-muted/30 text-xs font-medium text-muted-foreground whitespace-nowrap mr-2">
         <span class="mr-1 inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-        {{ currentDate | date:'EEE, MMM d' }}
+        {{ (timeParts$ | async) ? (clockService.currentTime$ | async | date:'EEE, MMM d') : '' }}
       </div>
 
       <!-- Theme Toggle -->
       <button (click)="toggleTheme()" 
               class="flex items-center justify-center h-9 w-9 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors shadow-sm">
-        <lucide-icon [name]="isDarkTheme ? 'sun' : 'moon'" [size]="18" class="text-foreground"></lucide-icon>
+        <lucide-icon [name]="themeService.isDark ? 'sun' : 'moon'" [size]="18" class="text-foreground"></lucide-icon>
       </button>
 
       <!-- Notifications -->
