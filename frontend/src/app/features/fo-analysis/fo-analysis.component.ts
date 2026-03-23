@@ -24,9 +24,6 @@ export class FOAnalysisComponent implements OnInit {
   futuresData: any[] = [];
   optionsData: any[] = [];
   momentumData: any = null;
-  
-  availableExpiries: string[] = [];
-  selectedMomentumExpiry: string = '';
 
   math = Math;
 
@@ -104,12 +101,9 @@ export class FOAnalysisComponent implements OnInit {
     this.loading = true;
     this.error = null;
 
-    this.foService.getFuturesAnalysis(this.selectedDate, this.selectedMomentumExpiry).subscribe({
+    this.foService.getFuturesAnalysis(this.selectedDate).subscribe({
       next: (data) => {
         this.momentumData = data;
-        if (data.available_expiries) {
-          this.availableExpiries = data.available_expiries;
-        }
         this.loading = false;
       },
       error: (err) => {
@@ -119,9 +113,6 @@ export class FOAnalysisComponent implements OnInit {
     });
   }
 
-  onMomentumExpiryChange(): void {
-    this.loadMomentumData();
-  }
 
   private processNiftyDataForFiltering(data: NiftyData): void {
     // Combine futures and options to find all unique symbols and expiries

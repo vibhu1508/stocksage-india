@@ -27,8 +27,6 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
   List<dynamic> _bottom10 = [];
   List<dynamic> _shortCovering = [];
   List<dynamic> _longUnwinding = [];
-  String _selectedMomentumExpiry = '';
-  List<String> _availableMomentumExpiries = [];
 
   // NIFTY tab
   NiftyData? _niftyData;
@@ -95,21 +93,13 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
       _error = null;
     });
     try {
-      final data = await FOService.getFuturesAnalysis(
-        null, // Auto-detect latest date
-        _selectedMomentumExpiry.isNotEmpty ? _selectedMomentumExpiry : null,
-      );
+      final data = await FOService.getFuturesAnalysis(null);
       setState(() {
         _momentumData = data;
         _top10 = data['top_10'] ?? [];
         _bottom10 = data['bottom_10'] ?? [];
         _shortCovering = data['short_covering'] ?? [];
         _longUnwinding = data['long_unwinding'] ?? [];
-        
-        if (data['available_expiries'] != null) {
-          _availableMomentumExpiries = List<String>.from(data['available_expiries']);
-        }
-        
         _loading = false;
       });
     } catch (e) {
@@ -659,60 +649,6 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Expiry filter
-          if (_availableMomentumExpiries.isNotEmpty) ...[
-            Text(
-              'Expiry Month',
-              style: TextStyle(fontSize: 13, color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6)),
-            ),
-            SizedBox(height: 8),
-            SizedBox(
-              height: 36,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: _availableMomentumExpiries.length + 1,
-                separatorBuilder: (_, __) => SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final exp = index == 0 ? '' : _availableMomentumExpiries[index - 1];
-                  final display = index == 0 ? 'Current Expiry' : exp;
-                  final isSelected = exp == _selectedMomentumExpiry;
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _selectedMomentumExpiry = exp;
-                        _loadMomentumData();
-                      });
-                    },
-                    child: Container(
-                      padding: EdgeInsets.symmetric(horizontal: 14),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? Theme.of(context).colorScheme.secondary
-                            : Theme.of(context).cardTheme.color,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: isSelected
-                              ? Theme.of(context).colorScheme.secondary
-                              : Theme.of(context).colorScheme.onSurface.withOpacity(0.12),
-                        ),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        display,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isSelected
-                              ? FontWeight.w600
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            SizedBox(height: 20),
-          ],
           
           if (_momentumData != null && _top10.isEmpty && _bottom10.isEmpty)
             Center(

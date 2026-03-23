@@ -17,12 +17,9 @@ class FOService {
   }
 
   // Get futures analysis
-  static Future<Map<String, dynamic>> getFuturesAnalysis(String? date, [String? expiryMonth]) async {
+  static Future<Map<String, dynamic>> getFuturesAnalysis(String? date) async {
     final params = <String, String>{};
     if (date != null) params['target_date'] = date;
-    if (expiryMonth != null && expiryMonth.isNotEmpty) {
-      params['expiry_month'] = expiryMonth;
-    }
 
     final response = await ApiService.get(
       ApiConfig.foFuturesAnalysis,
