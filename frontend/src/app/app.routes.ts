@@ -41,6 +41,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/learn/learn.component').then(m => m.LearnComponent),
     canActivate: [authGuard]
   },
+  {
+    path: 'strategy-builder',
+    loadComponent: () => import('./features/strategy-builder/strategy-builder.component').then(m => m.StrategyBuilderComponent),
+    canActivate: [authGuard]
+  },
 
   {
     path: '**',

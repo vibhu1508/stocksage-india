@@ -2,7 +2,7 @@ import { ApplicationConfig, provideZoneChangeDetection, importProvidersFrom } fr
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
-import { LucideAngularModule, Moon, Sun, Bell, Settings, LogOut, Search, LayoutDashboard, ArrowUpRight, LineChart, Megaphone, GraduationCap, Menu, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertCircle, TrendingUp, TrendingDown, Briefcase, BarChart2, AlertTriangle, ArrowUp, ArrowDown, Landmark, Building2, FileText, Paperclip, Rocket, Zap, RefreshCw, ChartColumn, X, Calendar } from 'lucide-angular';
+import { LucideAngularModule, Moon, Sun, Bell, Settings, LogOut, Search, LayoutDashboard, ArrowUpRight, LineChart, Megaphone, GraduationCap, Menu, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertCircle, TrendingUp, TrendingDown, Briefcase, BarChart2, AlertTriangle, ArrowUp, ArrowDown, Landmark, Building2, FileText, Paperclip, Rocket, Zap, RefreshCw, ChartColumn, X, Calendar, Trash2, ClipboardList, PencilRuler, Plus, Calculator, History } from 'lucide-angular';
 
 
 import { routes } from './app.routes';
@@ -15,7 +15,7 @@ export const appConfig: ApplicationConfig = {
     provideHttpClient(withInterceptors([authInterceptor])),
     provideAnimationsAsync(),
     importProvidersFrom(LucideAngularModule.pick({
-      Moon, Sun, Bell, Settings, LogOut, Search, LayoutDashboard, ArrowUpRight, LineChart, Megaphone, GraduationCap, Menu, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertCircle, TrendingUp, TrendingDown, Briefcase, BarChart2, AlertTriangle, ArrowUp, ArrowDown, Landmark, Building2, FileText, Paperclip, Rocket, Zap, RefreshCw, ChartColumn, X, Calendar
+      Moon, Sun, Bell, Settings, LogOut, Search, LayoutDashboard, ArrowUpRight, LineChart, Megaphone, GraduationCap, Menu, ChevronLeft, ChevronRight, CheckCircle2, XCircle, AlertCircle, TrendingUp, TrendingDown, Briefcase, BarChart2, AlertTriangle, ArrowUp, ArrowDown, Landmark, Building2, FileText, Paperclip, Rocket, Zap, RefreshCw, ChartColumn, X, Calendar, Trash2, ClipboardList, PencilRuler, Plus, Calculator, History
     }))
   ]
 };

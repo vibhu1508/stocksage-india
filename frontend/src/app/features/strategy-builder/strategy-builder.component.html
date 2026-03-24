@@ -1,0 +1,299 @@
+<div class="strategy-builder-container">
+  <!-- Top Selector Bar (Always Visible) -->
+  <div class="selector-bar">
+    <div class="symbol-container">
+      <label>Select Ticker</label>
+      <select [(ngModel)]="selectedSymbol" (change)="onSymbolChange()" class="symbol-select" [disabled]="isLoadingSymbols">
+        <option *ngIf="isLoadingSymbols" value="">Loading Symbols...</option>
+        <option *ngFor="let s of symbols" [value]="s">{{s}}</option>
+      </select>
+    </div>
+    
+    <!-- Stats (Only when loaded) -->
+    <div class="live-stats" *ngIf="symbolDetails">
+      <div class="stat">
+        <span class="label">Spot Price</span>
+        <span class="value">{{ (symbolDetails.lastPrice || 0) | number:'1.2-2' }}</span>
+      </div>
+      <div class="stat">
+        <span class="label">Futures Price</span>
+        <span class="value">{{ (futuresPrice || 0) | number:'1.2-2' }}</span>
+      </div>
+      <div class="stat">
+        <span class="label">Lot Size</span>
+        <span class="value">{{ symbolDetails.lotSize || 0 }}</span>
+      </div>
+      <div class="stat">
+        <span class="label">IV (Atm)</span>
+        <span class="value">{{ (currentIV || 0) | number:'1.1-1' }}%</span>
+      </div>
+      <div class="stat payoff-date-stat">
+        <span class="label">Payoff Date</span>
+        <input type="date" [(ngModel)]="payoffDate" (change)="updateChart()" class="payoff-date-input">
+      </div>
+    </div>
+  </div>
+
+  <div class="main-layout">
+    <!-- Left Sidebar: Strategy & Manual Entry -->
+    <div class="sidebar">
+      <!-- Strategy Presets -->
+      <div class="panel preset-panel">
+        <div class="panel-header">
+          <h3>Strategy Presets</h3>
+          <div class="tabs">
+            <button [class.active]="view === 'bullish'" (click)="setView('bullish')">Bullish</button>
+            <button [class.active]="view === 'bearish'" (click)="setView('bearish')">Bearish</button>
+            <button [class.active]="view === 'neutral'" (click)="setView('neutral')">Neutral</button>
+          </div>
+        </div>
+        <div class="preset-grid">
+          <div *ngFor="let preset of getFilteredStrategies()" class="preset-card" (click)="applyPreset(preset)">
+            <div class="thumb">
+              <svg viewBox="0 0 100 50">
+                <path [attr.d]="getThumbnailPath(preset.name)" fill="none" stroke="#10b981" stroke-width="2"/>
+              </svg>
+            </div>
+            <span>{{ preset.name }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Manual Entry Form -->
+      <div class="panel entry-panel">
+        <h3>Manual Position Entry</h3>
+        <div class="form">
+          <div class="row">
+            <label>Segment</label>
+            <div class="toggle">
+              <button [class.active]="newLeg.segment === 'FUTSTK'" (click)="newLeg.segment = 'FUTSTK'">Future</button>
+              <button [class.active]="newLeg.segment === 'OPTIDX'" (click)="newLeg.segment = 'OPTIDX'">Option</button>
+            </div>
+          </div>
+          <div class="row">
+            <label>Expiry</label>
+            <select [(ngModel)]="newLeg.expiry" (change)="onManualExpiryChange()">
+              <option *ngFor="let exp of expiries" [value]="exp">{{ exp }}</option>
+            </select>
+          </div>
+          <div class="row" *ngIf="newLeg.segment === 'OPTIDX'">
+            <label>Strike</label>
+            <select [(ngModel)]="newLeg.strike" (change)="onManualStrikeChange()">
+              <option *ngFor="let s of strikes" [value]="s">{{ s }}</option>
+            </select>
+          </div>
+          <div class="row" *ngIf="newLeg.segment === 'OPTIDX'">
+            <label>Type</label>
+            <div class="toggle">
+              <button [class.active]="newLeg.option_type === 'CE'" (click)="newLeg.option_type = 'CE'; onManualTypeChange()">CE</button>
+              <button [class.active]="newLeg.option_type === 'PE'" (click)="newLeg.option_type = 'PE'; onManualTypeChange()">PE</button>
+            </div>
+          </div>
+          <div class="row">
+            <label>Action</label>
+            <div class="toggle">
+              <button [class.active]="newLeg.action === 'BUY'" (click)="newLeg.action = 'BUY'; updateChart()">BUY</button>
+              <button [class.active]="newLeg.action === 'SELL'" (click)="newLeg.action = 'SELL'; updateChart()">SELL</button>
+            </div>
+          </div>
+          <div class="row">
+            <label>Lots</label>
+            <input type="number" [(ngModel)]="newLeg.qty" min="1">
+          </div>
+          <div class="row">
+            <label>Price (LTP)</label>
+            <span class="price-val">{{ newLeg.entry_price | number:'1.2-2' }}</span>
+          </div>
+          <button class="btn-primary" (click)="addManualLeg()">Add Position</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center/Right: Chart & Summary -->
+    <div class="analysis-area">
+      <div class="panel chart-panel">
+        <div class="chart-container">
+          <canvas id="payoffChart"></canvas>
+        </div>
+      </div>
+
+      <div class="summary-panel">
+        <div class="box">
+          <span class="label">Prob. of Profit</span>
+          <span class="value">{{ summary.pop | number:'1.1-1' }}%</span>
+        </div>
+        <div class="box">
+          <span class="label">Max Profit</span>
+          <span class="value text-success">
+            {{ summary.maxProfit === 'Unlimited' ? 'Unlimited' : ('₹' + (summary.maxProfit | number:'1.0-0')) }}
+          </span>
+        </div>
+        <div class="box">
+          <span class="label">Max Loss</span>
+          <span class="value text-danger">
+            {{ summary.maxLoss === 'Unlimited' ? 'Unlimited' : ('₹' + (summary.maxLoss | number:'1.0-0')) }}
+          </span>
+        </div>
+        <div class="box">
+          <span class="label">RR Ratio</span>
+          <span class="value">{{ summary.rrRatio }}</span>
+        </div>
+        <div class="box">
+          <span class="label">Breakevens</span>
+          <span class="value text-xs">{{ summary.breakeven.join(', ') || 'N/A' }}</span>
+        </div>
+        <div class="box">
+          <span class="label">Net Credit</span>
+          <span class="value" [class.text-success]="summary.netCredit > 0">
+            {{ summary.netCredit > 0 ? '+' : '' }}₹{{ summary.netCredit | number:'1.0-0' }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Active Strategies / Legs -->
+      <div class="panel legs-panel">
+        <div class="panel-header">
+          <h3>Active Strategy Legs</h3>
+          <button (click)="reset()" class="btn-clear text-xs">Clear All</button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Leg</th>
+                <th>Expiry</th>
+                <th>Strike</th>
+                <th>Action</th>
+                <th>Lots</th>
+                <th>Price</th>
+                <th>Delta</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let leg of legs; let i = index">
+                <td [class]="leg.option_type === 'CE' ? 'call' : 'put'">
+                  {{ leg.segment === 'FUTSTK' ? 'Future' : leg.option_type }}
+                </td>
+                <td>{{ leg.expiry }}</td>
+                <td>{{ leg.segment === 'FUTSTK' ? '-' : leg.strike }}</td>
+                <td [class]="leg.action === 'BUY' ? 'buy' : 'sell'">{{ leg.action }}</td>
+                <td>{{ leg.qty }}</td>
+                <td>{{ leg.entry_price | number:'1.2-2' }}</td>
+                <td>{{ getLegGreeks(leg).delta | number:'1.3-3' }}</td>
+                <td>
+                  <button (click)="removeLeg(i)" class="btn-del">×</button>
+                </td>
+              </tr>
+              <tr *ngIf="legs.length === 0">
+                <td colspan="8" class="empty">Click on presets or add manual positions above.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Full Option Chain -->
+      <div class="panel chain-panel">
+        <div class="panel-header">
+          <h3>Full Option Chain</h3>
+          <select [(ngModel)]="chainExpiry" (change)="loadOptionChain()">
+            <option *ngFor="let exp of expiries" [value]="exp">{{ exp }}</option>
+          </select>
+        </div>
+        <div class="table-scroll chain-table">
+          <table>
+            <thead>
+              <tr class="header-main">
+                <th colspan="5" class="ce-header">CALLS</th>
+                <th class="strike-header">STRIKE</th>
+                <th colspan="5" class="pe-header">PUTS</th>
+              </tr>
+              <tr class="header-sub">
+                <th>ITM Prob</th><th>IV</th><th>OI</th><th>Delta</th><th>LTP</th>
+                <th></th>
+                <th>LTP</th><th>Delta</th><th>OI</th><th>IV</th><th>ITM Prob</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let row of optionChainData" [class.atm]="Math.abs(row.strikePrice - symbolDetails.lastPrice) < 25" [class.hover-bg]="true">
+                <td class="text-xs">{{ row.CE?.probITM !== null ? (row.CE.probITM * 100 | number:'1.1-1') : '-' }}</td>
+                <td class="text-xs">{{ row.CE?.impliedVolatility > 0 ? (row.CE.impliedVolatility | number:'1.1-1') : '-' }}</td>
+                <td class="text-xs">{{ (row.CE?.openInterest * symbolDetails.lotSize) | number:'1.0-0' }}</td>
+                <td class="text-xs">{{ row.CE?.lastPrice > 0 ? (row.CE.delta | number:'1.2-2') : '-' }}</td>
+                <td class="ltp" (click)="addFromChain(row, 'CE')" [class.text-muted]="row.CE?.lastPrice === 0">
+                  {{ row.CE?.lastPrice > 0 ? (row.CE.lastPrice | number:'1.2-2') : '-' }}
+                </td>
+                <td class="strike font-bold">{{ row.strikePrice }}</td>
+                <td class="ltp" (click)="addFromChain(row, 'PE')" [class.text-muted]="row.PE?.lastPrice === 0">
+                  {{ row.PE?.lastPrice > 0 ? (row.PE.lastPrice | number:'1.2-2') : '-' }}
+                </td>
+                <td class="text-xs">{{ row.PE?.lastPrice > 0 ? (row.PE.delta | number:'1.2-2') : '-' }}</td>
+                <td class="text-xs">{{ (row.PE?.openInterest * symbolDetails.lotSize) | number:'1.0-0' }}</td>
+                <td class="text-xs">{{ row.PE?.impliedVolatility > 0 ? (row.PE.impliedVolatility | number:'1.1-1') : '-' }}</td>
+                <td class="text-xs">{{ row.PE?.probITM !== null ? (row.PE.probITM * 100 | number:'1.1-1') : '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preset Configuration Modal -->
+  <div class="modal-overlay" *ngIf="showPresetModal" (click)="closePresetModal()">
+    <div class="preset-modal" (click)="$event.stopPropagation()">
+      <button class="modal-close" (click)="closePresetModal()">×</button>
+      <h2 class="modal-title">{{ activePreset?.name }}</h2>
+      
+      <!-- Leg Configurators -->
+      <div class="modal-legs">
+        <div class="modal-leg" *ngFor="let leg of presetLegs; let i = index">
+          <span class="leg-mult" [class.buy]="leg.action === 'BUY'" [class.sell]="leg.action === 'SELL'">
+            {{ leg.mult }}x
+          </span>
+          <select [(ngModel)]="leg.strike" (change)="onPresetStrikeChange(i)" class="leg-strike-select">
+            <option *ngFor="let s of strikes" [value]="s">{{ s }}</option>
+          </select>
+          <span class="leg-label">Select {{ leg.type }} Strike{{ presetLegs.length > 1 ? (i+1) : '' }}</span>
+          <span class="leg-type" [class.ce]="leg.type === 'CE'" [class.pe]="leg.type === 'PE'">{{ leg.type }}</span>
+        </div>
+      </div>
+
+      <!-- Shared Controls -->
+      <div class="modal-controls">
+        <div class="control-row">
+          <label>Expiry:</label>
+          <select [(ngModel)]="presetExpiry" class="modal-select">
+            <option *ngFor="let exp of expiries" [value]="exp">{{ exp }}</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <label>Lot Qty:</label>
+          <div class="qty-control">
+            <button (click)="presetLotQty = Math.max(1, presetLotQty - 1)">−</button>
+            <input type="number" [(ngModel)]="presetLotQty" min="1">
+            <button (click)="presetLotQty = presetLotQty + 1">+</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Option Price & IV Display -->
+      <div class="modal-price-info">
+        <div class="price-tag" *ngFor="let leg of presetLegs; let i = index">
+          <span>Leg {{ i+1 }} Price:</span>
+          <span class="price-value">{{ leg.ltp | number:'1.2-2' }}</span>
+          <span class="iv-value" *ngIf="leg.iv > 0">IV: {{ leg.iv | number:'1.2-2' }}</span>
+        </div>
+      </div>
+
+      <!-- Confirm Button -->
+      <button class="modal-confirm-btn" 
+              [class.buy-btn]="presetLegs[0]?.action === 'BUY'" 
+              [class.sell-btn]="presetLegs[0]?.action === 'SELL'"
+              (click)="confirmPreset()">
+        {{ presetLegs.length > 1 ? 'ADD STRATEGY' : (presetLegs[0]?.action || 'ADD') }}
+      </button>
+    </div>
+  </div>
+</div>

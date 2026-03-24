@@ -26,6 +26,7 @@ export class SidebarComponent {
     { path: '/dashboard', icon: 'layout-dashboard', label: 'Dashboard' },
     { path: '/stocks', icon: 'arrow-up-right', label: 'Stock Comparison' },
     { path: '/fo', icon: 'line-chart', label: 'F&O Analysis' },
+    { path: '/strategy-builder', icon: 'pencil-ruler', label: 'Strategy Builder' },
     { path: '/announcements', icon: 'megaphone', label: 'Announcements' },
     { path: '/learn', icon: 'graduation-cap', label: 'Learn' }
   ];
