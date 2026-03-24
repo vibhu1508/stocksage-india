@@ -31,23 +31,18 @@ HEADERS = {
 
 
 # Cache for F&O data to avoid repeated downloads
+# Limit to 2 most recent dates to prevent memory bloat
 _fo_cache = {
     "data": {},  # Map date -> DataFrame
     "timestamp": {} # Map date -> timestamp
 }
 CACHE_DURATION = timedelta(minutes=30)
+MAX_CACHE_ENTRIES = 2
 
 def download_fo_bhavcopy(target_date: date) -> Optional[pd.DataFrame]:
     """
     Downloads the NSE F&O BhavCopy for a specific date and returns as DataFrame.
-    Includes caching and a 5-day look-back if the specific date has no data (unless a specific date was requested explicitly by the user, handling of that is in the caller).
-    Actually, to keep it simple and consistent with stocks.py:
-    If we want a SPECIFIC date, we try only that.
-    If we want 'latest', we try a range.
-    
-    However, the helper here takes 'target_date'. 
-    Let's stick to the simple download logic here, but add caching.
-    The caller will handle the "look back" if needed (or we can add a 'search_latest' flag).
+    Optimized for memory usage.
     """
     # Check cache first
     date_str = target_date.strftime("%Y-%m-%d")
@@ -80,23 +75,47 @@ def download_fo_bhavcopy(target_date: date) -> Optional[pd.DataFrame]:
         
         # Extract CSV from zip
         with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-            # Find the CSV file - sometimes naming might vary
             csv_filename = next((name for name in z.namelist() if name.endswith('.csv')), None)
             if not csv_filename:
                 return None
                 
             with z.open(csv_filename) as f:
-                df = pd.read_csv(f)
+                # OPTIMIZATION: Only load necessary columns to save RAM
+                # These cover all futures/options calculations and momentum analysis
+                target_cols = [
+                    'FinInstrmTp', 'TckrSymb', 'UndrlygVal', 'FinInstrmNm', 
+                    'OptnTp', 'StrikPric', 'XpryDt', 'ClsPric', 
+                    'PrvsClsgPric', 'OpnIntrst', 'ChngInOpnIntrst'
+                ]
+                
+                # Check headers first to ensure consistency
+                header_check = pd.read_csv(f, nrows=0)
+                available_cols = [c for c in target_cols if c in header_check.columns]
+                
+                f.seek(0) # Reset file pointer
+                df = pd.read_csv(f, usecols=available_cols)
+
+        # OPTIMIZATION: Downcast numeric types to float32 to save 50% memory per digit
+        for col in ['ClsPric', 'PrvsClsgPric', 'StrikPric', 'OpnIntrst', 'ChngInOpnIntrst']:
+            if col in df.columns:
+                if df[col].dtype == 'object':
+                    df[col] = df[col].astype(str).str.replace(',', '', regex=False)
+                df[col] = pd.to_numeric(df[col], errors='coerce').astype('float32')
         
-        # --- PRE-PROCESSING & CLEANING (Matches Streamlit logic) ---
-        # Ensure FinInstrmTp is treated as string, stripped of whitespace, and converted to uppercase
+        # --- PRE-PROCESSING & CLEANING ---
         if 'FinInstrmTp' in df.columns:
             df['FinInstrmTp'] = df['FinInstrmTp'].astype(str).str.strip().str.upper()
         
         if 'TckrSymb' in df.columns:
             df['TckrSymb'] = df['TckrSymb'].astype(str).str.strip()
 
-        # Update cache
+        # Update cache with size limit enforcement (LRU-ish)
+        if len(_fo_cache["data"]) >= MAX_CACHE_ENTRIES:
+            # Remove oldest entry
+            oldest_date = sorted(_fo_cache["timestamp"].items(), key=lambda x: x[1])[0][0]
+            del _fo_cache["data"][oldest_date]
+            del _fo_cache["timestamp"][oldest_date]
+
         _fo_cache["data"][date_str] = df
         _fo_cache["timestamp"][date_str] = now
         

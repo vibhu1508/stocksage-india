@@ -32,8 +32,7 @@ POLITE_DELAY = 1.5
 def download_bhavcopy(target_date: date) -> Optional[pd.DataFrame]:
     """
     Downloads the NSE BhavCopy for a specific date and returns as DataFrame.
-    Filters for EQ/BE series only and validates required columns.
-    (Matches logic from stock_comparison_tab.py)
+    Optimized for memory usage.
     """
     date_str = target_date.strftime("%Y%m%d")
     url = BASE_URL.format(date=date_str)
@@ -50,7 +49,7 @@ def download_bhavcopy(target_date: date) -> Optional[pd.DataFrame]:
         response = session.get(url, timeout=30)
         
         if response.status_code == 404:
-            return None  # No data for this date (holiday/weekend)
+            return None
         
         response.raise_for_status()
         
@@ -58,23 +57,24 @@ def download_bhavcopy(target_date: date) -> Optional[pd.DataFrame]:
         with zipfile.ZipFile(io.BytesIO(response.content)) as z:
             csv_filename = z.namelist()[0]
             with z.open(csv_filename) as f:
-                df = pd.read_csv(f)
+                # OPTIMIZATION: Only load necessary columns
+                target_cols = ['TradDt', 'SctySrs', 'FinInstrmNm', 'ClsPric', 'TckrSymb', 'TtlTradgVol']
+                
+                # Check headers
+                header_check = pd.read_csv(f, nrows=0)
+                available_cols = [c for c in target_cols if c in header_check.columns]
+                
+                f.seek(0)
+                df = pd.read_csv(f, usecols=available_cols)
         
-        # --- DATA PROCESSING (Matching stock_comparison_tab.py logic) ---
+        # OPTIMIZATION: Filter early to reduce memory before processing
+        if 'SctySrs' in df.columns:
+            df = df[df['SctySrs'].isin(['EQ', 'BE'])].copy()
         
-        # Required columns for proper comparison
-        required_columns = ['TradDt', 'SctySrs', 'FinInstrmNm', 'ClsPric', 'TckrSymb', 'TtlTradgVol']
-        for col in required_columns:
-            if col not in df.columns:
-                print(f"Missing required column: {col} for {target_date}")
-                return None
-        
-        # Filter to only EQ and BE series (like Streamlit version line 64)
-        df = df[df['SctySrs'].isin(['EQ', 'BE'])]
-        
-        # Convert numeric columns
-        df['ClsPric'] = pd.to_numeric(df['ClsPric'], errors='coerce')
-        df['TtlTradgVol'] = pd.to_numeric(df['TtlTradgVol'], errors='coerce')
+        # OPTIMIZATION: Downcast numeric types
+        for col in ['ClsPric', 'TtlTradgVol']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').astype('float32')
         
         # Drop rows with missing essential data
         df.dropna(subset=['ClsPric', 'TtlTradgVol'], inplace=True)

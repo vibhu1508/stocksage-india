@@ -84,7 +84,7 @@ class StrategySchema(BaseModel):
 # --- Helper Functions ---
 
 # --- Caching Mechanism ---
-_FO_DF_CACHE = None
+_LOT_SIZE_CACHE = {}  # Map symbol -> lot_size
 _SYMBOL_CACHE = []
 _CACHE_DATE = None
 
@@ -96,15 +96,15 @@ def get_latest_contract_date() -> date:
         return get_latest_market_date(now_ist - timedelta(hours=1)) # Slight offset to ensure cutoff
     return get_latest_market_date(now_ist)
 
-def fetch_fo_contracts() -> pd.DataFrame:
-    """Fetches and caches the latest FO contract master CSV"""
-    global _FO_DF_CACHE, _CACHE_DATE, _SYMBOL_CACHE
+def fetch_fo_contracts():
+    """Fetches and caches the latest FO lot sizes and symbols. Optimized for memory."""
+    global _LOT_SIZE_CACHE, _CACHE_DATE, _SYMBOL_CACHE
     
     target_date = get_latest_contract_date()
     
     # Return cache if valid
-    if _FO_DF_CACHE is not None and _CACHE_DATE == target_date:
-        return _FO_DF_CACHE
+    if _SYMBOL_CACHE and _CACHE_DATE == target_date:
+        return
         
     date_str = target_date.strftime("%d%m%Y")
     url = CONTRACT_URL_TEMPLATE.format(date=date_str)
@@ -113,29 +113,34 @@ def fetch_fo_contracts() -> pd.DataFrame:
     try:
         response = requests.get(url, headers=HEADERS, timeout=15)
         if response.status_code == 404:
-            # Fallback to previous day if today's not yet available
             prev_date = target_date - timedelta(days=1)
             response = requests.get(CONTRACT_URL_TEMPLATE.format(date=prev_date.strftime("%d%m%Y")), headers=HEADERS, timeout=10)
         
         response.raise_for_status()
         
         with gzip.open(io.BytesIO(response.content), 'rt') as f:
-            df = pd.read_csv(f)
-            _FO_DF_CACHE = df
+            # OPTIMIZATION: Read only the columns we need for lot sizes and symbols
+            # Contracts file is large, we only need a summary mapping
+            header_check = pd.read_csv(io.StringIO(f.read(1024)), nrows=0) # Read first 1k chars to get header
+            f.seek(0)
+            
+            symbol_col = 'TckrSymb' if 'TckrSymb' in header_check.columns else next((c for c in header_check.columns if 'Symb' in c), 'Symbol')
+            lot_col = 'MinLot' if 'MinLot' in header_check.columns else 'LotSize'
+            
+            df = pd.read_csv(f, usecols=[symbol_col, lot_col])
+            
+            # Map symbols and lot sizes to a lean dictionary instead of keeping the full DataFrame
+            # This saves significant memory (100k+ rows reduced to ~200 symbols)
+            temp_lot_map = df.groupby(symbol_col)[lot_col].first().to_dict()
+            
+            _LOT_SIZE_CACHE = {str(k).upper(): int(v) for k, v in temp_lot_map.items()}
+            _SYMBOL_CACHE = sorted(list(_LOT_SIZE_CACHE.keys()))
             _CACHE_DATE = target_date
             
-            # Map symbols efficiently (User requested: TckrSymb, MinLot)
-            symbol_col = 'TckrSymb'
-            if symbol_col not in df.columns:
-                symbol_col = next((c for c in df.columns if 'Symb' in c), 'Symbol')
-            
-            # Filter for indices and stocks only
-            _SYMBOL_CACHE = sorted(df[symbol_col].unique().astype(str).tolist())
-            
-            return df
+            print(f"Cached {len(_SYMBOL_CACHE)} F&O symbols and lot sizes.")
+            return
     except Exception as e:
         print(f"Error fetching FO contracts: {e}")
-        return _FO_DF_CACHE if _FO_DF_CACHE is not None else pd.DataFrame()
 
 # --- API Endpoints ---
 
@@ -164,16 +169,10 @@ async def get_dropdown_data(symbol: str, current_user: User = Depends(get_curren
     else:
         url = f"https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getOptionChainDropdown&symbol={symbol_upper}"
     
-    df = fetch_fo_contracts()
+    fetch_fo_contracts()
     
-    # Get lot size from CSV (MinLot)
-    lot_size = 1
-    if not df.empty:
-        symbol_col = 'TckrSymb' if 'TckrSymb' in df.columns else 'Symbol'
-        lot_col = 'MinLot' if 'MinLot' in df.columns else 'LotSize'
-        row = df[df[symbol_col] == symbol_upper]
-        if not row.empty:
-            lot_size = int(row.iloc[0][lot_col])
+    # Get lot size from lean cache
+    lot_size = _LOT_SIZE_CACHE.get(symbol_upper, 1)
 
     try:
         data = await nse_session.get_data(url)
