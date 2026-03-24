@@ -16,14 +16,14 @@
 .sb-type-btn {
   @apply w-full py-2.5 px-4 text-[11px] font-black rounded-lg border transition-all text-center tracking-wider uppercase;
   background: transparent;
-  border-color: rgba($text-muted, 0.2);
-  color: $text-muted;
+  border-color: hsl(var(--border));
+  color: hsl(var(--muted-foreground));
 
   &.bullish.active { @apply border-emerald-500 bg-emerald-500/10 text-emerald-500; }
   &.bearish.active { @apply border-rose-500 bg-rose-500/10 text-rose-500; }
   &.neutral.active { @apply border-sky-500 bg-sky-500/10 text-sky-500; }
   
-  &:not(.active):hover { @apply bg-muted/20 border-border; }
+  &:not(.active):hover { @apply bg-muted/30 border-border; color: hsl(var(--foreground)); }
 }
 
 // Compact Presets & Ticker Selector
