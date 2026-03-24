@@ -165,3 +165,28 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+// Strategy Builder Specific Mixins
+@mixin sb-label {
+  @apply text-[10px] font-bold text-muted-foreground uppercase tracking-widest;
+}
+
+@mixin sb-stat-value {
+  @apply text-base font-bold text-foreground tracking-tight;
+}
+
+@mixin sb-panel {
+  @apply rounded-xl border overflow-hidden shadow-sm;
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+@mixin sb-panel-header {
+  @apply flex items-center justify-between p-4 border-b;
+  border-color: hsl(var(--border));
+  background-color: rgba(0,0,0,0.05);
+
+  h3 {
+    @apply text-xs font-bold text-muted-foreground uppercase p-0 border-none bg-transparent tracking-wider;
+  }
+}

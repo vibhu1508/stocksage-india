@@ -1,317 +1,212 @@
+@use '../../../styles/variables' as *;
+@use '../../../styles/mixins' as *;
+
+// Scoped utility classes for this component
+.sb-label { @include sb-label; }
+.sb-stat-value { @include sb-stat-value; }
+.sb-panel { @include sb-panel; }
+.sb-panel-header { @include sb-panel-header; }
+
+.expiry-select-compact {
+  @apply bg-muted/40 border rounded-full px-3 py-1 text-xs font-semibold text-foreground outline-none transition-all cursor-pointer hover:bg-muted/60;
+  border-color: hsl(var(--border));
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 28px;
+  appearance: none;
+  &:focus { @apply border-primary ring-1 ring-primary/20; }
+}
+
 .strategy-builder-container {
   @apply min-h-screen p-6;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
   font-family: 'Inter', system-ui, sans-serif;
+}
 
-  .selector-bar {
-    @apply flex flex-wrap items-center gap-6 mb-6 p-5 rounded-xl border;
-    background-color: hsl(var(--card));
+.selector-bar {
+  @apply flex flex-wrap items-center gap-6 mb-6 p-5 rounded-xl border;
+  background-color: hsl(var(--card));
+  border-color: hsl(var(--border));
+  
+  .symbol-container {
+    @apply flex flex-col gap-1.5;
+    label { @extend .sb-label; }
+    .symbol-select { 
+      @apply bg-transparent border-none font-bold text-xl text-foreground outline-none cursor-pointer hover:bg-muted/20 rounded px-2 transition-all;
+      min-width: 140px;
+    }
+  }
+
+  .live-stats {
+    @apply flex flex-wrap items-center gap-8 pl-8 border-l;
     border-color: hsl(var(--border));
-    
-    .symbol-container {
-      @apply flex flex-col gap-1.5;
-      label { @apply text-[10px] font-bold text-muted-foreground uppercase tracking-widest; }
-      .symbol-select { 
-        @apply bg-transparent border-none font-bold text-xl text-foreground outline-none cursor-pointer hover:bg-muted/20 rounded px-2 transition-all;
-        min-width: 140px;
-      }
-    }
 
-    .live-stats {
-      @apply flex flex-wrap items-center gap-8 pl-8 border-l;
-      border-color: hsl(var(--border));
+    .stat {
+      @apply flex flex-col gap-1;
+      &.payoff-date-stat {
+        @apply pl-4 border-l ml-4;
+        border-color: rgba(255,255,255,0.05);
 
-      .stat {
-        @apply flex flex-col gap-1;
-        .label { @apply text-[10px] font-bold text-muted-foreground uppercase tracking-widest whitespace-nowrap; }
-        .value { @apply text-base font-bold text-emerald-400; }
-        
-        &.payoff-date-stat {
-          @apply pl-4 border-l ml-4;
-          border-color: rgba(255,255,255,0.05);
-
-          .payoff-date-input {
-            @apply bg-muted/40 border border-border rounded px-2 py-0.5 text-xs text-foreground outline-none transition-all cursor-pointer;
-            &:focus { @apply border-primary ring-1 ring-primary/20; }
-            &::-webkit-calendar-picker-indicator { @apply invert opacity-50; }
-          }
-        }
-      }
-    }
-  }
-
-  .main-layout {
-    @apply grid grid-cols-1 xl:grid-cols-12 gap-6;
-
-    .sidebar {
-      @apply xl:col-span-3 flex flex-col gap-6;
-    }
-
-    .analysis-area {
-      @apply xl:col-span-9 flex flex-col gap-6;
-    }
-  }
-
-  .panel {
-    @apply rounded-xl border overflow-hidden shadow-sm;
-    background-color: hsl(var(--card));
-    border-color: hsl(var(--border));
-    
-    h3 { @apply text-xs font-bold text-muted-foreground uppercase p-4 border-b tracking-wider; border-color: hsl(var(--border)); background-color: rgba(0,0,0,0.05); }
-
-    .panel-header {
-      @apply flex items-center justify-between p-4 border-b;
-      border-color: hsl(var(--border));
-      background-color: rgba(0,0,0,0.05);
-      h3 { @apply p-0 border-none bg-transparent; }
-    }
-  }
-
-  // Preset Panel
-  .preset-panel {
-    .panel-header {
-      flex-direction: column !important;
-      align-items: stretch !important;
-      gap: 10px;
-      h3 { margin-bottom: 0; }
-    }
-    .tabs {
-      @apply flex gap-1 bg-muted/30 p-1 rounded-lg border w-full;
-      border-color: hsl(var(--border));
-      button {
-        @apply flex-1 px-3 py-1.5 text-[11px] font-bold rounded-md transition-all text-muted-foreground hover:text-foreground text-center;
-        &.active { @apply bg-background text-foreground shadow-sm; }
-      }
-    }
-    .preset-grid {
-      @apply grid grid-cols-2 gap-3 p-4;
-      .preset-card {
-        @apply flex flex-col items-center gap-2.5 p-4 bg-muted/10 border rounded-lg cursor-pointer hover:border-primary hover:bg-muted/20 transition-all duration-300;
-        border-color: hsl(var(--border));
-        .thumb { @apply w-full h-12; svg { @apply w-full h-full; } }
-        span { @apply text-[10px] font-bold text-muted-foreground tracking-wide; }
-        &:hover { @apply transform -translate-y-0.5; }
-      }
-    }
-  }
-
-  // Entry Panel
-  .entry-panel {
-    .form {
-      @apply p-5 flex flex-col gap-5;
-      .row {
-        @apply flex flex-col gap-2;
-        label { @apply text-[10px] font-bold text-muted-foreground uppercase tracking-widest; }
-        select, input {
-          @apply w-full bg-background border rounded-lg h-9 px-3 text-sm focus:ring-1 focus:ring-primary outline-none transition-all;
-          border-color: hsl(var(--input));
-        }
-        .price-val { @apply text-base font-bold text-primary ml-1; }
-        .toggle {
-          @apply flex gap-1 bg-muted/30 p-1 rounded-lg border;
-          border-color: hsl(var(--border));
-          button {
-            @apply flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all text-muted-foreground hover:text-foreground;
-            &.active { @apply bg-background text-primary border shadow-sm; border-color: hsl(var(--border)); }
-          }
-        }
-      }
-      .btn-primary { 
-        @apply w-full mt-4 py-3 rounded-lg bg-primary text-primary-foreground font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all duration-300 active:scale-95; 
-      }
-    }
-  }
-
-  // Chart Panel
-  .chart-panel {
-    @apply h-[450px];
-    .chart-container { 
-      @apply w-full h-full p-6;
-      canvas { @apply w-full h-full; }
-    }
-  }
-
-  // Summary Panel
-  .summary-panel {
-    @apply grid grid-cols-2 lg:grid-cols-6 gap-4;
-    .box {
-      @apply p-4 rounded-xl flex flex-col gap-1.5 border shadow-sm transition-all hover:bg-muted/10;
-      background-color: hsl(var(--card));
-      border-color: hsl(var(--border));
-      .label { @apply text-[10px] font-bold text-muted-foreground uppercase tracking-widest; }
-      .value { @apply text-base font-bold tracking-tight text-foreground; }
-    }
-  }
-
-  // Legs Panel
-  .legs-panel {
-    .table-scroll { @apply overflow-x-auto; }
-    table {
-      @apply w-full text-left border-collapse;
-      th { @apply px-5 py-3 text-[10px] font-bold text-muted-foreground uppercase border-b bg-muted/20 tracking-widest; border-color: hsl(var(--border)); }
-      td { 
-        @apply px-5 py-4 text-sm border-b;
-        border-color: hsl(var(--border));
-        &.call { @apply text-emerald-500 font-bold; }
-        &.put { @apply text-rose-500 font-bold; }
-        &.buy { @apply text-sky-500 font-bold; }
-        &.sell { @apply text-amber-500 font-bold; }
-        &.empty { @apply text-center py-12 text-muted-foreground italic font-medium tracking-wide; }
-      }
-      .btn-del { @apply w-7 h-7 rounded-md flex items-center justify-center bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all font-bold text-lg; }
-    }
-  }
-
-  // Chain Panel
-  .chain-panel {
-    .chain-table {
-      @apply h-[450px] overflow-y-auto custom-scrollbar;
-      table {
-        @apply w-full text-center border-collapse;
-        th { @apply py-2.5; }
-        .ce-header { @apply bg-emerald-500/5 text-emerald-500 border-b-2; border-color: rgba(16, 185, 129, 0.2); }
-        .pe-header { @apply bg-rose-500/5 text-rose-500 border-b-2; border-color: rgba(244, 63, 94, 0.2); }
-        .strike-header { @apply bg-muted/40 font-black; }
-        .header-sub th { @apply text-[10px] font-bold text-muted-foreground border-b tracking-widest; border-color: hsl(var(--border)); }
-        
-        tr {
-          &.atm { @apply bg-primary/5; }
-          &:hover { @apply bg-muted/20; }
-        }
-        
-        td {
-          @apply py-2 border-b text-[13px] font-medium;
-          border-color: hsl(var(--border));
-          &.ltp { @apply font-black text-emerald-500 cursor-pointer hover:bg-emerald-500/10 rounded-md transition-all; }
-          &.strike { @apply bg-muted/20 text-foreground font-black; }
+        .payoff-date-input {
+          @apply bg-muted/40 border border-border rounded px-2 py-0.5 text-xs text-foreground outline-none transition-all cursor-pointer;
+          &:focus { @apply border-primary ring-1 ring-primary/20; }
+          &::-webkit-calendar-picker-indicator { @apply invert opacity-50; }
         }
       }
     }
   }
 }
 
-.custom-scrollbar::-webkit-scrollbar { width: 6px; }
-.custom-scrollbar::-webkit-scrollbar-track { background-color: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { @apply bg-muted rounded-full hover:bg-muted-foreground/30; }
+.main-layout {
+  @apply grid grid-cols-1 xl:grid-cols-12 gap-6;
+  .sidebar { @apply xl:col-span-3 flex flex-col gap-6; }
+  .analysis-area { @apply xl:col-span-9 flex flex-col gap-6; }
+}
+
+.preset-panel {
+  .sb-panel-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px;
+    h3 { margin-bottom: 0; }
+  }
+  .tabs {
+    @apply flex gap-1 bg-muted/30 p-1 rounded-lg border w-full;
+    border-color: hsl(var(--border));
+    button {
+      @apply flex-1 px-3 py-1.5 text-[11px] font-bold rounded-md transition-all text-muted-foreground hover:text-foreground text-center;
+      &.active { @apply bg-background text-foreground shadow-sm; }
+    }
+  }
+  .preset-grid {
+    @apply grid grid-cols-2 gap-3 p-4;
+    .preset-card {
+      @apply flex flex-col items-center gap-2.5 p-4 bg-muted/10 border rounded-lg cursor-pointer hover:border-primary hover:bg-muted/20 transition-all duration-300;
+      border-color: hsl(var(--border));
+      .thumb { @apply w-full h-12; svg { @apply w-full h-full; } }
+      span { @apply text-[10px] font-bold text-muted-foreground tracking-wide; }
+      &:hover { @apply transform -translate-y-0.5; }
+    }
+  }
+}
+
+.entry-panel {
+  .form {
+    @apply p-5 flex flex-col gap-5;
+    .row {
+      @apply flex flex-col gap-2;
+      label { @extend .sb-label; }
+      select, input {
+        @apply w-full bg-background border rounded-lg h-9 px-3 text-sm focus:ring-1 focus:ring-primary outline-none transition-all;
+        border-color: hsl(var(--input));
+      }
+      .price-val { @apply text-base font-bold text-primary ml-1; }
+      .toggle {
+        @apply flex gap-1 bg-muted/30 p-1 rounded-lg border;
+        border-color: hsl(var(--border));
+        button {
+          @apply flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all text-muted-foreground hover:text-foreground;
+          &.active { @apply bg-background text-primary border shadow-sm; border-color: hsl(var(--border)); }
+        }
+      }
+    }
+    .btn-primary { 
+      @apply w-full mt-4 py-3 rounded-lg bg-primary text-primary-foreground font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all duration-300 active:scale-95; 
+    }
+  }
+}
+
+.chart-panel {
+  @apply h-[450px];
+  .chart-container { @apply w-full h-full p-6; canvas { @apply w-full h-full; } }
+}
+
+.summary-panel {
+  @apply grid grid-cols-2 lg:grid-cols-6 gap-4;
+  .box { @apply p-4 flex flex-col gap-1.5 transition-all hover:bg-muted/10; }
+}
+
+.legs-panel {
+  .table-scroll { @apply overflow-x-auto; }
+  table {
+    @apply w-full text-left border-collapse;
+    th { @include sb-label; @apply px-5 py-3 border-b bg-muted/20; border-color: hsl(var(--border)); }
+    td { 
+      @apply px-5 py-4 text-sm border-b;
+      border-color: hsl(var(--border));
+      &.call { @apply text-emerald-500 font-bold; }
+      &.put { @apply text-rose-500 font-bold; }
+      &.buy { @apply text-sky-500 font-bold; }
+      &.sell { @apply text-amber-500 font-bold; }
+      &.empty { @apply text-center py-12 text-muted-foreground italic font-medium tracking-wide; }
+    }
+    .btn-del { @apply w-7 h-7 rounded-md flex items-center justify-center bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all font-bold text-lg; }
+  }
+}
+
+.chain-panel .chain-table {
+  @apply h-[450px] overflow-y-auto;
+  @include custom-scrollbar;
+  
+  table {
+    @apply w-full text-center border-collapse;
+    th { @apply py-2.5; }
+    .ce-header { @apply bg-emerald-500/5 text-emerald-500 border-b-2; border-color: rgba(16, 185, 129, 0.2); }
+    .pe-header { @apply bg-rose-500/5 text-rose-500 border-b-2; border-color: rgba(244, 63, 94, 0.2); }
+    .strike-header { @apply bg-muted/40 font-black; }
+    .header-sub th { @include sb-label; @apply border-b; border-color: hsl(var(--border)); }
+    tr {
+      &.atm { @apply bg-primary/5; }
+      &:hover { @apply bg-muted/20; }
+    }
+    td {
+      @apply py-2 border-b text-[13px] font-medium;
+      border-color: hsl(var(--border));
+      &.ltp { @apply font-black text-emerald-500 cursor-pointer hover:bg-emerald-500/10 rounded-md transition-all; }
+      &.strike { @apply bg-muted/20 text-foreground font-black; }
+    }
+  }
+}
 
 .text-success { color: #00d084; }
 .text-danger { @apply text-rose-500; }
 
-// Preset Configuration Modal
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: fadeIn 0.15s ease-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
+// Preset Configuration Modal Overrides
 .preset-modal {
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: 20px;
-  padding: 28px 32px;
-  width: 480px;
-  max-height: 85vh;
-  overflow-y: auto;
-  position: relative;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
+  @extend .sb-panel;
+  @apply p-8 w-[480px] max-h-[85vh] overflow-y-auto relative shadow-[0_25px_60px_rgba(0,0,0,0.5)];
   animation: slideUp 0.2s ease-out;
-
-  // Scrollbar styling
-  &::-webkit-scrollbar { width: 6px; }
-  &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb { background: hsl(var(--muted)); border-radius: 3px; }
+  @include custom-scrollbar;
 
   .modal-close {
-    position: absolute;
-    top: 14px;
-    right: 18px;
-    background: none;
-    border: none;
-    color: hsl(var(--muted-foreground));
-    font-size: 22px;
-    cursor: pointer;
-    line-height: 1;
-    padding: 6px 10px;
-    border-radius: 8px;
-    transition: all 0.15s;
+    @apply absolute top-[14px] right-[18px] bg-transparent border-none text-muted-foreground rounded-lg transition-all text-[22px] leading-none px-2.5 py-1.5 cursor-pointer;
     &:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
   }
 
-  .modal-title {
-    font-size: 22px;
-    font-weight: 700;
-    color: hsl(var(--foreground));
-    text-align: center;
-    margin-bottom: 22px;
-    letter-spacing: -0.5px;
-  }
+  .modal-title { @apply text-[22px] font-bold text-foreground text-center mb-[22px] tracking-[-0.5px]; }
 
   .modal-legs {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 22px;
-
+    @apply flex flex-col gap-3 mb-[22px];
     .modal-leg {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-
+      @apply flex items-center gap-3;
       .leg-mult {
-        font-weight: 800;
-        font-size: 16px;
-        min-width: 38px;
-        text-align: center;
+        @apply font-extrabold text-base min-w-[38px] text-center;
         &.buy { color: #10b981; }
         &.sell { color: #ef4444; }
       }
-
       .leg-strike-select {
-        flex: 1;
-        padding: 10px 14px;
-        border-radius: 10px;
-        border: 1px solid hsl(var(--border));
+        @apply flex-1 px-3.5 py-2.5 rounded-xl border font-semibold text-[17px] cursor-pointer appearance-none transition-all pr-9;
         background: hsl(var(--muted) / 0.3);
-        color: hsl(var(--foreground));
-        font-size: 17px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: border-color 0.15s;
-        appearance: none;
-        -webkit-appearance: none;
+        border-color: hsl(var(--border));
         background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
         background-position: right 14px center;
-        padding-right: 36px;
         &:focus { border-color: hsl(var(--primary)); outline: none; }
       }
-
-      .leg-label {
-        display: none;
-      }
-
       .leg-type {
-        font-weight: 800;
-        font-size: 17px;
-        min-width: 32px;
-        text-align: center;
+        @apply font-extrabold text-[17px] min-w-[32px] text-center;
         &.ce { color: #10b981; }
         &.pe { color: #ef4444; }
       }
@@ -319,133 +214,56 @@
   }
 
   .modal-controls {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    margin-bottom: 24px;
-
+    @apply flex flex-col gap-[18px] mb-6;
     .control-row {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-
-      label {
-        font-weight: 600;
-        color: hsl(var(--muted-foreground));
-        min-width: 80px;
-        font-size: 15px;
-      }
-
+      @apply flex items-center gap-[14px];
+      label { @apply font-semibold text-muted-foreground min-w-[80px] text-[15px]; }
       .modal-select {
-        flex: 1;
-        padding: 12px 16px;
-        border-radius: 10px;
-        border: 1px solid hsl(var(--border));
+        @apply flex-1 px-4 py-3 rounded-xl border font-semibold text-[17px] appearance-none pr-9;
         background: hsl(var(--muted) / 0.3);
-        color: hsl(var(--foreground));
-        font-size: 17px;
-        font-weight: 600;
-        appearance: none;
-        -webkit-appearance: none;
+        border-color: hsl(var(--border));
         background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
         background-position: right 14px center;
-        padding-right: 36px;
       }
-
       .qty-control {
-        display: flex;
-        align-items: center;
-        border: 1px solid hsl(var(--border));
-        border-radius: 10px;
-        overflow: hidden;
-
+        @apply flex items-center border rounded-xl overflow-hidden;
+        border-color: hsl(var(--border));
         button {
-          width: 44px;
-          height: 44px;
-          border: none;
+          @apply w-11 h-11 border-none font-bold text-xl cursor-pointer transition-all;
           background: hsl(var(--muted) / 0.3);
-          color: hsl(var(--foreground));
-          font-size: 20px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: background 0.15s;
           &:hover { background: hsl(var(--muted)); }
         }
-
         input {
-          width: 60px;
-          height: 44px;
-          text-align: center;
-          border: none;
-          border-left: 1px solid hsl(var(--border));
-          border-right: 1px solid hsl(var(--border));
-          background: transparent;
-          color: hsl(var(--foreground));
-          font-size: 18px;
-          font-weight: 700;
+          @apply w-[60px] h-11 text-center border-y-0 border-x font-bold text-[18px] bg-transparent;
+          border-color: hsl(var(--border));
           &:focus { outline: none; }
-          // Hide native number spinners
           -moz-appearance: textfield;
-          &::-webkit-inner-spin-button,
-          &::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+          &::-webkit-inner-spin-button, &::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         }
       }
     }
   }
 
   .modal-price-info {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 28px;
-    justify-content: center;
-
+    @apply flex flex-wrap gap-3 mb-7 justify-center;
     .price-tag {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 16px;
-      border-radius: 10px;
-      border: 1px solid hsl(var(--border));
+      @apply flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-sm text-muted-foreground;
       background: hsl(var(--muted) / 0.15);
-      font-size: 14px;
-      color: hsl(var(--muted-foreground));
-
-      .price-value {
-        font-weight: 700;
-        color: #10b981;
-        font-size: 16px;
-      }
-
-      .iv-value {
-        font-weight: 600;
-        color: hsl(var(--primary));
-        font-size: 13px;
-      }
+      border-color: hsl(var(--border));
+      .price-value { @apply font-bold text-[#10b981] text-base; }
+      .iv-value { @apply font-semibold text-primary text-[13px]; }
     }
   }
 
   .modal-confirm-btn {
-    width: 100%;
-    padding: 16px;
-    border: none;
-    border-radius: 12px;
-    font-weight: 800;
-    font-size: 17px;
-    letter-spacing: 1px;
-    cursor: pointer;
-    transition: all 0.2s;
-
+    @apply w-full p-4 border-none rounded-xl font-extrabold text-[17px] tracking-wider cursor-pointer transition-all text-white;
     &.buy-btn {
       background: linear-gradient(135deg, #10b981, #059669);
-      color: white;
       &:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3); }
     }
-
     &.sell-btn {
       background: linear-gradient(135deg, #ef4444, #dc2626);
-      color: white;
       &:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(239, 68, 68, 0.3); }
     }
   }

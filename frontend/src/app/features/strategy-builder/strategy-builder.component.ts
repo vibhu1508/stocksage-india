@@ -441,17 +441,18 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
           });
         }
         
-        // Auto-select ATM strike for newLeg
+        // Update newLeg price for the selected expiry/strike
         if (!this.newLeg.strike) {
             this.newLeg.strike = atm?.strikePrice || this.strikes[Math.floor(this.strikes.length / 2)];
-            this.updateNewLegPrice();
         }
+        this.updateNewLegPrice();
         this.updateChart();
       }
     });
   }
 
   onManualExpiryChange() {
+    this.chainExpiry = this.newLeg.expiry; // Sync chain with manual select
     this.fetchFuturesPrice();
     this.loadOptionChain();
   }
@@ -566,6 +567,33 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
       leg.ltp = 0;
       leg.iv = 0;
     }
+  }
+
+  onPresetExpiryChange() {
+    if (!this.activePreset || !this.presetExpiry) return;
+    this.isLoading = true;
+    
+    this.strategyService.getOptionChain(this.selectedSymbol, this.presetExpiry).subscribe({
+      next: (res: any) => {
+        const rawData = res.filtered?.data || res.data || [];
+        const spot = res.underlyingValue || res.records?.underlyingValue || this.symbolDetails?.lastPrice || 0;
+        
+        // Update each leg's price based on the new expiry's chain
+        this.presetLegs.forEach(leg => {
+          const row = rawData.find((d: any) => d.strikePrice === Number(leg.strike));
+          if (row) {
+            leg.ltp = (leg.type === 'CE' ? row.CE?.lastPrice : row.PE?.lastPrice) || 0;
+            leg.iv = (leg.type === 'CE' ? row.CE?.impliedVolatility : row.PE?.impliedVolatility) || 0;
+          } else {
+            leg.ltp = 0;
+            leg.iv = 0;
+          }
+        });
+        
+        this.isLoading = false;
+      },
+      error: () => this.isLoading = false
+    });
   }
 
   confirmPreset() {

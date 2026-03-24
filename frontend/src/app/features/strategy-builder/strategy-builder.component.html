@@ -12,23 +12,23 @@
     <!-- Stats (Only when loaded) -->
     <div class="live-stats" *ngIf="symbolDetails">
       <div class="stat">
-        <span class="label">Spot Price</span>
-        <span class="value">{{ (symbolDetails.lastPrice || 0) | number:'1.2-2' }}</span>
+        <span class="sb-label">Spot Price</span>
+        <span class="value text-emerald-400 font-bold">{{ (symbolDetails.lastPrice || 0) | number:'1.2-2' }}</span>
       </div>
       <div class="stat">
-        <span class="label">Futures Price</span>
-        <span class="value">{{ (futuresPrice || 0) | number:'1.2-2' }}</span>
+        <span class="sb-label">Futures Price</span>
+        <span class="value text-emerald-400 font-bold">{{ (futuresPrice || 0) | number:'1.2-2' }}</span>
       </div>
       <div class="stat">
-        <span class="label">Lot Size</span>
-        <span class="value">{{ symbolDetails.lotSize || 0 }}</span>
+        <span class="sb-label">Lot Size</span>
+        <span class="value text-emerald-400 font-bold">{{ symbolDetails.lotSize || 0 }}</span>
       </div>
       <div class="stat">
-        <span class="label">IV (Atm)</span>
-        <span class="value">{{ (currentIV || 0) | number:'1.1-1' }}%</span>
+        <span class="sb-label">IV (Atm)</span>
+        <span class="value text-emerald-400 font-bold">{{ (currentIV || 0) | number:'1.1-1' }}%</span>
       </div>
       <div class="stat payoff-date-stat">
-        <span class="label">Payoff Date</span>
+        <span class="sb-label">Payoff Date</span>
         <input type="date" [(ngModel)]="payoffDate" (change)="updateChart()" class="payoff-date-input">
       </div>
     </div>
@@ -38,8 +38,8 @@
     <!-- Left Sidebar: Strategy & Manual Entry -->
     <div class="sidebar">
       <!-- Strategy Presets -->
-      <div class="panel preset-panel">
-        <div class="panel-header">
+      <div class="sb-panel preset-panel">
+        <div class="sb-panel-header">
           <h3>Strategy Presets</h3>
           <div class="tabs">
             <button [class.active]="view === 'bullish'" (click)="setView('bullish')">Bullish</button>
@@ -60,8 +60,8 @@
       </div>
 
       <!-- Manual Entry Form -->
-      <div class="panel entry-panel">
-        <h3>Manual Position Entry</h3>
+      <div class="sb-panel entry-panel">
+        <h3 class="p-4 border-b text-xs font-bold text-muted-foreground uppercase tracking-wider bg-black/5">Manual Position Entry</h3>
         <div class="form">
           <div class="row">
             <label>Segment</label>
@@ -118,33 +118,33 @@
       </div>
 
       <div class="summary-panel">
-        <div class="box">
-          <span class="label">Prob. of Profit</span>
-          <span class="value">{{ summary.pop | number:'1.1-1' }}%</span>
+        <div class="box sb-panel">
+          <span class="sb-label">Prob. of Profit</span>
+          <span class="sb-stat-value">{{ summary.pop | number:'1.1-1' }}%</span>
         </div>
-        <div class="box">
-          <span class="label">Max Profit</span>
-          <span class="value text-success">
+        <div class="box sb-panel">
+          <span class="sb-label">Max Profit</span>
+          <span class="sb-stat-value text-success">
             {{ summary.maxProfit === 'Unlimited' ? 'Unlimited' : ('₹' + (summary.maxProfit | number:'1.0-0')) }}
           </span>
         </div>
-        <div class="box">
-          <span class="label">Max Loss</span>
-          <span class="value text-danger">
+        <div class="box sb-panel">
+          <span class="sb-label">Max Loss</span>
+          <span class="sb-stat-value text-danger">
             {{ summary.maxLoss === 'Unlimited' ? 'Unlimited' : ('₹' + (summary.maxLoss | number:'1.0-0')) }}
           </span>
         </div>
-        <div class="box">
-          <span class="label">RR Ratio</span>
-          <span class="value">{{ summary.rrRatio }}</span>
+        <div class="box sb-panel">
+          <span class="sb-label">RR Ratio</span>
+          <span class="sb-stat-value">{{ summary.rrRatio }}</span>
         </div>
-        <div class="box">
-          <span class="label">Breakevens</span>
-          <span class="value text-xs">{{ summary.breakeven.join(', ') || 'N/A' }}</span>
+        <div class="box sb-panel">
+          <span class="sb-label">Breakevens</span>
+          <span class="sb-stat-value text-xs">{{ summary.breakeven.join(', ') || 'N/A' }}</span>
         </div>
-        <div class="box">
-          <span class="label">Net Credit</span>
-          <span class="value" [class.text-success]="summary.netCredit > 0">
+        <div class="box sb-panel">
+          <span class="sb-label">Net Credit</span>
+          <span class="sb-stat-value" [class.text-success]="summary.netCredit > 0">
             {{ summary.netCredit > 0 ? '+' : '' }}₹{{ summary.netCredit | number:'1.0-0' }}
           </span>
         </div>
@@ -152,7 +152,7 @@
 
       <!-- Active Strategies / Legs -->
       <div class="panel legs-panel">
-        <div class="panel-header">
+        <div class="sb-panel-header">
           <h3>Active Strategy Legs</h3>
           <button (click)="reset()" class="btn-clear text-xs">Clear All</button>
         </div>
@@ -195,9 +195,9 @@
 
       <!-- Full Option Chain -->
       <div class="panel chain-panel">
-        <div class="panel-header">
+        <div class="sb-panel-header">
           <h3>Full Option Chain</h3>
-          <select [(ngModel)]="chainExpiry" (change)="loadOptionChain()">
+          <select class="expiry-select-compact" [(ngModel)]="chainExpiry" (change)="loadOptionChain()">
             <option *ngFor="let exp of expiries" [value]="exp">{{ exp }}</option>
           </select>
         </div>
@@ -264,7 +264,7 @@
       <div class="modal-controls">
         <div class="control-row">
           <label>Expiry:</label>
-          <select [(ngModel)]="presetExpiry" class="modal-select">
+          <select [(ngModel)]="presetExpiry" (change)="onPresetExpiryChange()" class="modal-select">
             <option *ngFor="let exp of expiries" [value]="exp">{{ exp }}</option>
           </select>
         </div>
