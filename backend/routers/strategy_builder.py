@@ -49,20 +49,30 @@ class NSESession:
             except Exception as e:
                 print(f"Session Init Error: {e}")
 
-    async def get_data(self, url: str):
-        await self.ensure_session()
-        try:
-            response = await self.client.get(url, headers=HEADERS)
-            if response.status_code == 401: # Potential session expiry
-                self.last_init = None
-                await self.ensure_session()
+    async def get_data(self, url: str, retries: int = 3):
+        for i in range(retries):
+            await self.ensure_session()
+            try:
                 response = await self.client.get(url, headers=HEADERS)
-            
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            print(f"API Fetch Error ({url}): {e}")
-            raise HTTPException(status_code=502, detail=f"NSE API Error: {str(e)}")
+                if response.status_code == 401:
+                    self.last_init = None
+                    await asyncio.sleep(1)
+                    continue
+                
+                if response.status_code == 200:
+                    return response.json()
+                
+                # If 403 or other, maybe session issue, clear and retry
+                self.last_init = None
+                await asyncio.sleep(1)
+                
+            except Exception as e:
+                print(f"Fetch Attempt {i+1} Error ({url}): {e}")
+                if i == retries - 1:
+                    raise HTTPException(status_code=502, detail=f"NSE API Error: {str(e)}")
+                await asyncio.sleep(1)
+        
+        raise HTTPException(status_code=502, detail="NSE API Max retries reached")
 
 nse_session = NSESession()
 
@@ -106,35 +116,24 @@ def fetch_fo_contracts() -> pd.DataFrame:
     if _FO_DF_CACHE is not None and _CACHE_DATE == target_date:
         return _FO_DF_CACHE
         
-    date_str = target_date.strftime("%d%m%Y")
-    url = CONTRACT_URL_TEMPLATE.format(date=date_str)
-    
-    print(f"Fetching FO contracts for {date_str}...")
-    try:
-        response = requests.get(url, headers=HEADERS, timeout=15)
-        if response.status_code == 404:
-            # Fallback to previous day if today's not yet available
-            prev_date = target_date - timedelta(days=1)
-            response = requests.get(CONTRACT_URL_TEMPLATE.format(date=prev_date.strftime("%d%m%Y")), headers=HEADERS, timeout=10)
+    # Try current and then last 7 days
+    for i in range(8):
+        check_date = target_date - timedelta(days=i)
+        date_str = check_date.strftime("%d%m%Y")
+        url = CONTRACT_URL_TEMPLATE.format(date=date_str)
         
-        response.raise_for_status()
-        
-        with gzip.open(io.BytesIO(response.content), 'rt') as f:
-            df = pd.read_csv(f)
-            _FO_DF_CACHE = df
-            _CACHE_DATE = target_date
-            
-            # Map symbols efficiently (User requested: TckrSymb, MinLot)
-            symbol_col = 'TckrSymb'
-            if symbol_col not in df.columns:
-                symbol_col = next((c for c in df.columns if 'Symb' in c), 'Symbol')
-            
-            # Filter for indices and stocks only
-            _SYMBOL_CACHE = sorted(df[symbol_col].unique().astype(str).tolist())
-            
-            return df
-    except Exception as e:
-        print(f"Error fetching FO contracts: {e}")
+        try:
+            print(f"Attempting to fetch FO contracts for {date_str}...")
+            response = requests.get(url, headers=HEADERS, timeout=10)
+            if response.status_code == 200:
+                with gzip.open(io.BytesIO(response.content), 'rt') as f:
+                    df = pd.read_csv(f)
+                    _FO_DF_CACHE = df
+                    _CACHE_DATE = target_date # Treat as valid for current session
+                    _SYMBOL_CACHE = sorted(df['TckrSymb' if 'TckrSymb' in df.columns else 'Symbol'].unique().astype(str).tolist())
+                    return df
+        except:
+            pass
         return _FO_DF_CACHE if _FO_DF_CACHE is not None else pd.DataFrame()
 
 # --- API Endpoints ---
@@ -182,12 +181,19 @@ async def get_dropdown_data(symbol: str, current_user: User = Depends(get_curren
             # Index response: { expiryDate: [...], strikePrice: [...], optionType: [...], ... }
             expiries = data.get('expiryDate', [])
             strike_prices = data.get('strikePrice', [])
-            # Filter out '0' from strike prices and convert to numbers
-            strikes = [float(s) for s in strike_prices if s and s.strip() != '0']
+            
+            # Map strikes safely (handle strings or numbers)
+            strikes = []
+            for s in strike_prices:
+                try:
+                    val = float(s)
+                    if val > 0: strikes.append(val)
+                except:
+                    continue
             
             result = {
                 'expiryDates': expiries,
-                'strikePrices': strikes,
+                'strikePrices': sorted(list(set(strikes))),
                 'lotSize': lot_size
             }
             return result
