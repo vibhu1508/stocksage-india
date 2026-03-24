@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Import routers
-from routers import auth, stocks, fo_analysis, announcements, market_data, learn
+from routers import auth, stocks, fo_analysis, announcements, market_data, learn, strategy_builder
 from database import engine, Base
 
 # Create database tables on startup
@@ -64,8 +64,9 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(stocks.router, prefix="/api/stocks", tags=["Stock Comparison"])
 app.include_router(fo_analysis.router, prefix="/api/fo", tags=["F&O Analysis"])
 app.include_router(announcements.router, prefix="/api/announcements", tags=["Announcements"])
-app.include_router(market_data.router, prefix="/api/market", tags=["Market Data"])
 app.include_router(learn.router, prefix="/api/learn", tags=["Learn"])
+app.include_router(strategy_builder.router, prefix="/api/strategy", tags=["Strategy Builder"])
+app.include_router(market_data.router, prefix="/api/market", tags=["Market Data"])
 @app.get("/")
 async def root():
     return {
