@@ -5,6 +5,7 @@ import '../../core/models/fo_data.dart';
 import '../../core/services/fo_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../shared/widgets/profile_menu.dart';
+import '../strategy_builder/strategy_builder_screen.dart';
 
 class FOAnalysisScreen extends StatefulWidget {
   const FOAnalysisScreen({super.key});
@@ -255,6 +256,16 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
         title: const Text('F&O Analysis'),
         actions: [
           ProfileMenu(authService: AuthService()),
+          IconButton(
+            icon: const Icon(Icons.add_chart),
+            tooltip: 'Strategy Builder',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const StrategyBuilderScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: Icon(Icons.refresh),
             onPressed: () => _onTabChange(_tabController.index),

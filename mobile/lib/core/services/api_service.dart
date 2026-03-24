@@ -65,6 +65,21 @@ class ApiService {
         .timeout(const Duration(seconds: 30));
   }
 
+  // DELETE request with auth header
+  static Future<http.Response> delete(String url) async {
+    final token = await getToken();
+
+    return await http
+        .delete(
+          Uri.parse(url),
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+        )
+        .timeout(const Duration(seconds: 30));
+  }
+
   // Helper to decode JSON response
   static Map<String, dynamic> decodeResponse(http.Response response) {
     if (response.statusCode == 200) {
