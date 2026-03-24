@@ -10,6 +10,7 @@
 
 @layer base {
   :root {
+    --select-arrow: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
     --background: 0 0% 100%;
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
@@ -258,7 +259,33 @@ input {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-// Table styles
+// Global Strategy Builder Utilities
+.sb-modal-btn {
+  @apply w-full p-4 border-none rounded-xl font-extrabold text-[17px] tracking-wider cursor-pointer transition-all text-white;
+  &:hover { transform: translateY(-1px); }
+  &.buy {
+    background: linear-gradient(135deg, #10b981, #059669);
+    &:hover { box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3); }
+  }
+  &.sell {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    &:hover { box-shadow: 0 6px 20px rgba(239, 68, 68, 0.3); }
+  }
+}
+
+.sb-input-base {
+  @apply px-4 py-3 rounded-xl border bg-muted/30 font-semibold text-[17px] transition-all outline-none;
+  border-color: hsl(var(--border));
+  &:focus { border-color: hsl(var(--primary)); }
+}
+
+.sb-select-base {
+  @extend .sb-input-base;
+  @apply appearance-none pr-9 cursor-pointer;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
 .data-table {
   width: 100%;
   border-collapse: collapse;

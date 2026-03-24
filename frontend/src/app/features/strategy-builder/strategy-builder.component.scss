@@ -1,179 +1,113 @@
 @use '../../../styles/variables' as *;
 @use '../../../styles/mixins' as *;
 
-// Scoped utility classes for this component
-.sb-label { @include sb-label; }
-.sb-stat-value { @include sb-stat-value; }
-.sb-panel { @include sb-panel; }
-.sb-panel-header { @include sb-panel-header; }
-
-.expiry-select-compact {
-  @apply bg-muted/40 border rounded-full px-3 py-1 text-xs font-semibold text-foreground outline-none transition-all cursor-pointer hover:bg-muted/60;
-  border-color: hsl(var(--border));
-  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 28px;
-  appearance: none;
-  &:focus { @apply border-primary ring-1 ring-primary/20; }
+:host {
+  display: block;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
 .strategy-builder-container {
   @apply min-h-screen p-6;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
-  font-family: 'Inter', system-ui, sans-serif;
 }
 
-.selector-bar {
-  @apply flex flex-wrap items-center gap-6 mb-6 p-5 rounded-xl border;
-  background-color: hsl(var(--card));
-  border-color: hsl(var(--border));
+// Opstra-style Type Buttons
+.sb-type-btn {
+  @apply w-full py-2.5 px-4 text-[11px] font-black rounded-lg border transition-all text-center tracking-wider uppercase;
+  background: transparent;
+  border-color: rgba($text-muted, 0.2);
+  color: $text-muted;
+
+  &.bullish.active { @apply border-emerald-500 bg-emerald-500/10 text-emerald-500; }
+  &.bearish.active { @apply border-rose-500 bg-rose-500/10 text-rose-500; }
+  &.neutral.active { @apply border-sky-500 bg-sky-500/10 text-sky-500; }
   
-  .symbol-container {
-    @apply flex flex-col gap-1.5;
-    label { @extend .sb-label; }
-    .symbol-select { 
-      @apply bg-transparent border-none font-bold text-xl text-foreground outline-none cursor-pointer hover:bg-muted/20 rounded px-2 transition-all;
-      min-width: 140px;
-    }
-  }
+  &:not(.active):hover { @apply bg-muted/20 border-border; }
+}
 
-  .live-stats {
-    @apply flex flex-wrap items-center gap-8 pl-8 border-l;
-    border-color: hsl(var(--border));
+// Compact Presets & Ticker Selector
+.preset-grid-compact {
+  @apply grid grid-cols-4 gap-3;
+}
 
-    .stat {
-      @apply flex flex-col gap-1;
-      &.payoff-date-stat {
-        @apply pl-4 border-l ml-4;
-        border-color: rgba(255,255,255,0.05);
-
-        .payoff-date-input {
-          @apply bg-muted/40 border border-border rounded px-2 py-0.5 text-xs text-foreground outline-none transition-all cursor-pointer;
-          &:focus { @apply border-primary ring-1 ring-primary/20; }
-          &::-webkit-calendar-picker-indicator { @apply invert opacity-50; }
-        }
-      }
-    }
+.ticker-search-container {
+  @apply relative flex items-center bg-muted/20 border border-border/60 rounded-lg px-3 h-9 transition-all hover:border-primary/50 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20;
+  input {
+    @apply bg-transparent border-none outline-none text-sm font-bold w-full uppercase;
   }
 }
 
-.main-layout {
-  @apply grid grid-cols-1 xl:grid-cols-12 gap-6;
-  .sidebar { @apply xl:col-span-3 flex flex-col gap-6; }
-  .analysis-area { @apply xl:col-span-9 flex flex-col gap-6; }
+.preset-card-mini {
+  @apply flex flex-col items-center gap-1.5 p-2 bg-muted/5 border border-border rounded-lg cursor-pointer hover:border-primary/50 hover:bg-muted/10 transition-all;
+  .thumb {
+    @apply w-full h-8 flex items-center justify-center;
+    svg { @apply max-h-full; }
+  }
+  span { @apply text-[9px] font-bold text-muted-foreground/80 text-center uppercase tracking-tighter; }
+  &:hover { @apply transform -translate-y-0.5; span { @apply text-foreground; } }
 }
 
-.preset-panel {
-  .sb-panel-header {
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 10px;
-    h3 { margin-bottom: 0; }
+// Option Chain Table & Shading
+.sb-table {
+  @apply w-full border-collapse;
+  th {
+    @apply py-3 px-4 text-left text-[11px] font-bold text-muted-foreground uppercase tracking-wider border-b border-border/40;
   }
-  .tabs {
-    @apply flex gap-1 bg-muted/30 p-1 rounded-lg border w-full;
-    border-color: hsl(var(--border));
-    button {
-      @apply flex-1 px-3 py-1.5 text-[11px] font-bold rounded-md transition-all text-muted-foreground hover:text-foreground text-center;
-      &.active { @apply bg-background text-foreground shadow-sm; }
-    }
-  }
-  .preset-grid {
-    @apply grid grid-cols-2 gap-3 p-4;
-    .preset-card {
-      @apply flex flex-col items-center gap-2.5 p-4 bg-muted/10 border rounded-lg cursor-pointer hover:border-primary hover:bg-muted/20 transition-all duration-300;
-      border-color: hsl(var(--border));
-      .thumb { @apply w-full h-12; svg { @apply w-full h-full; } }
-      span { @apply text-[10px] font-bold text-muted-foreground tracking-wide; }
-      &:hover { @apply transform -translate-y-0.5; }
-    }
+  td {
+    @apply py-3 px-4 text-[13px] border-b border-border/10;
   }
 }
 
-.entry-panel {
-  .form {
-    @apply p-5 flex flex-col gap-5;
-    .row {
-      @apply flex flex-col gap-2;
-      label { @extend .sb-label; }
-      select, input {
-        @apply w-full bg-background border rounded-lg h-9 px-3 text-sm focus:ring-1 focus:ring-primary outline-none transition-all;
-        border-color: hsl(var(--input));
-      }
-      .price-val { @apply text-base font-bold text-primary ml-1; }
-      .toggle {
-        @apply flex gap-1 bg-muted/30 p-1 rounded-lg border;
-        border-color: hsl(var(--border));
-        button {
-          @apply flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all text-muted-foreground hover:text-foreground;
-          &.active { @apply bg-background text-primary border shadow-sm; border-color: hsl(var(--border)); }
-        }
-      }
-    }
-    .btn-primary { 
-      @apply w-full mt-4 py-3 rounded-lg bg-primary text-primary-foreground font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all duration-300 active:scale-95; 
-    }
+.itm-call { background-color: rgba(251, 191, 36, 0.05) !important; }
+.itm-put { background-color: rgba(251, 191, 36, 0.05) !important; }
+.atm-strike { @apply bg-amber-400/10 font-bold text-amber-400 !important; }
+
+// Manual Entry Bar
+.sb-pill-qty {
+  @apply flex items-center bg-muted/20 border border-border/50 rounded-lg overflow-hidden;
+  input { 
+    @apply w-12 h-full bg-transparent text-center text-[13px] font-black border-x border-border/40 outline-none text-foreground; 
+    &::-webkit-inner-spin-button, &::-webkit-outer-spin-button { appearance: none; margin: 0; }
+    -moz-appearance: textfield;
   }
+  button { @apply w-8 h-full hover:bg-muted/40 text-foreground transition-all font-bold text-lg flex items-center justify-center; }
 }
 
-.chart-panel {
-  @apply h-[450px];
-  .chart-container { @apply w-full h-full p-6; canvas { @apply w-full h-full; } }
+.sb-select-minimal {
+  @apply w-full bg-transparent border-b border-border py-1 text-[13px] font-bold text-foreground outline-none cursor-pointer hover:border-primary transition-all;
+  appearance: none;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right center;
 }
 
-.summary-panel {
-  @apply grid grid-cols-2 lg:grid-cols-6 gap-4;
-  .box { @apply p-4 flex flex-col gap-1.5 transition-all hover:bg-muted/10; }
+// Chart & Summary Panels
+.chart-container {
+  @apply bg-card/10 rounded-2xl border border-border/30 p-6;
+  height: 400px;
+  position: relative;
+  canvas { @apply w-full h-full; }
 }
 
-.legs-panel {
-  .table-scroll { @apply overflow-x-auto; }
-  table {
-    @apply w-full text-left border-collapse;
-    th { @include sb-label; @apply px-5 py-3 border-b bg-muted/20; border-color: hsl(var(--border)); }
-    td { 
-      @apply px-5 py-4 text-sm border-b;
-      border-color: hsl(var(--border));
-      &.call { @apply text-emerald-500 font-bold; }
-      &.put { @apply text-rose-500 font-bold; }
-      &.buy { @apply text-sky-500 font-bold; }
-      &.sell { @apply text-amber-500 font-bold; }
-      &.empty { @apply text-center py-12 text-muted-foreground italic font-medium tracking-wide; }
-    }
-    .btn-del { @apply w-7 h-7 rounded-md flex items-center justify-center bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all font-bold text-lg; }
-  }
+.sb-summary-card {
+  @extend .sb-panel;
+  @apply p-4 flex flex-col gap-1.5 transition-all hover:bg-muted/10 items-center justify-center text-center;
+}
+.sb-summary-label { @apply text-[10px] uppercase font-bold text-muted-foreground tracking-widest; }
+.sb-summary-value { @apply text-2xl font-black tracking-tighter; }
+
+// Utilities
+.sb-label { @include sb-label; }
+.sb-panel { @include sb-panel; }
+.sb-panel-header { @include sb-panel-header; }
+.custom-scrollbar { @include custom-scrollbar; }
+
+.invert-calendar-icon::-webkit-calendar-picker-indicator {
+  @apply invert opacity-50;
 }
 
-.chain-panel .chain-table {
-  @apply h-[450px] overflow-y-auto;
-  @include custom-scrollbar;
-  
-  table {
-    @apply w-full text-center border-collapse;
-    th { @apply py-2.5; }
-    .ce-header { @apply bg-emerald-500/5 text-emerald-500 border-b-2; border-color: rgba(16, 185, 129, 0.2); }
-    .pe-header { @apply bg-rose-500/5 text-rose-500 border-b-2; border-color: rgba(244, 63, 94, 0.2); }
-    .strike-header { @apply bg-muted/40 font-black; }
-    .header-sub th { @include sb-label; @apply border-b; border-color: hsl(var(--border)); }
-    tr {
-      &.atm { @apply bg-primary/5; }
-      &:hover { @apply bg-muted/20; }
-    }
-    td {
-      @apply py-2 border-b text-[13px] font-medium;
-      border-color: hsl(var(--border));
-      &.ltp { @apply font-black text-emerald-500 cursor-pointer hover:bg-emerald-500/10 rounded-md transition-all; }
-      &.strike { @apply bg-muted/20 text-foreground font-black; }
-    }
-  }
-}
-
-.text-success { color: #00d084; }
-.text-danger { @apply text-rose-500; }
-
-// Preset Configuration Modal Overrides
+// Modal
 .preset-modal {
   @extend .sb-panel;
   @apply p-8 w-[480px] max-h-[85vh] overflow-y-auto relative shadow-[0_25px_60px_rgba(0,0,0,0.5)];
@@ -183,88 +117,5 @@
   .modal-close {
     @apply absolute top-[14px] right-[18px] bg-transparent border-none text-muted-foreground rounded-lg transition-all text-[22px] leading-none px-2.5 py-1.5 cursor-pointer;
     &:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
-  }
-
-  .modal-title { @apply text-[22px] font-bold text-foreground text-center mb-[22px] tracking-[-0.5px]; }
-
-  .modal-legs {
-    @apply flex flex-col gap-3 mb-[22px];
-    .modal-leg {
-      @apply flex items-center gap-3;
-      .leg-mult {
-        @apply font-extrabold text-base min-w-[38px] text-center;
-        &.buy { color: #10b981; }
-        &.sell { color: #ef4444; }
-      }
-      .leg-strike-select {
-        @apply flex-1 px-3.5 py-2.5 rounded-xl border font-semibold text-[17px] cursor-pointer appearance-none transition-all pr-9;
-        background: hsl(var(--muted) / 0.3);
-        border-color: hsl(var(--border));
-        background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
-        background-repeat: no-repeat;
-        background-position: right 14px center;
-        &:focus { border-color: hsl(var(--primary)); outline: none; }
-      }
-      .leg-type {
-        @apply font-extrabold text-[17px] min-w-[32px] text-center;
-        &.ce { color: #10b981; }
-        &.pe { color: #ef4444; }
-      }
-    }
-  }
-
-  .modal-controls {
-    @apply flex flex-col gap-[18px] mb-6;
-    .control-row {
-      @apply flex items-center gap-[14px];
-      label { @apply font-semibold text-muted-foreground min-w-[80px] text-[15px]; }
-      .modal-select {
-        @apply flex-1 px-4 py-3 rounded-xl border font-semibold text-[17px] appearance-none pr-9;
-        background: hsl(var(--muted) / 0.3);
-        border-color: hsl(var(--border));
-        background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
-        background-repeat: no-repeat;
-        background-position: right 14px center;
-      }
-      .qty-control {
-        @apply flex items-center border rounded-xl overflow-hidden;
-        border-color: hsl(var(--border));
-        button {
-          @apply w-11 h-11 border-none font-bold text-xl cursor-pointer transition-all;
-          background: hsl(var(--muted) / 0.3);
-          &:hover { background: hsl(var(--muted)); }
-        }
-        input {
-          @apply w-[60px] h-11 text-center border-y-0 border-x font-bold text-[18px] bg-transparent;
-          border-color: hsl(var(--border));
-          &:focus { outline: none; }
-          -moz-appearance: textfield;
-          &::-webkit-inner-spin-button, &::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        }
-      }
-    }
-  }
-
-  .modal-price-info {
-    @apply flex flex-wrap gap-3 mb-7 justify-center;
-    .price-tag {
-      @apply flex items-center gap-2.5 px-4 py-2.5 rounded-xl border text-sm text-muted-foreground;
-      background: hsl(var(--muted) / 0.15);
-      border-color: hsl(var(--border));
-      .price-value { @apply font-bold text-[#10b981] text-base; }
-      .iv-value { @apply font-semibold text-primary text-[13px]; }
-    }
-  }
-
-  .modal-confirm-btn {
-    @apply w-full p-4 border-none rounded-xl font-extrabold text-[17px] tracking-wider cursor-pointer transition-all text-white;
-    &.buy-btn {
-      background: linear-gradient(135deg, #10b981, #059669);
-      &:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3); }
-    }
-    &.sell-btn {
-      background: linear-gradient(135deg, #ef4444, #dc2626);
-      &:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(239, 68, 68, 0.3); }
-    }
   }
 }

@@ -3,6 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 export interface Position {
+  symbol?: string;
   segment: string;
   expiry: string;
   strike?: number;
@@ -10,6 +11,11 @@ export interface Position {
   action: string;
   qty: number;
   entry_price: number;
+  iv?: number;
+  delta?: number;
+  theta?: number;
+  gamma?: number;
+  vega?: number;
 }
 
 export interface Strategy {

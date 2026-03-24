@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { trigger, state, style, transition, animate } from '@angular/animations';
 import { FormsModule } from '@angular/forms';
 import { StrategyService, Position, Strategy, UserStrategies } from '../../core/services/strategy.service';
 import { Chart, registerables } from 'chart.js';
@@ -210,7 +211,26 @@ const STRATEGY_PRESETS = [
   standalone: true,
   imports: [CommonModule, FormsModule, LucideAngularModule],
   templateUrl: './strategy-builder.component.html',
-  styleUrls: ['./strategy-builder.component.scss']
+  styleUrls: ['./strategy-builder.component.scss'],
+  animations: [
+    trigger('expandCollapse', [
+      state('collapsed', style({
+        height: '0',
+        opacity: '0',
+        overflow: 'hidden',
+        paddingTop: '0',
+        paddingBottom: '0'
+      })),
+      state('expanded', style({
+        height: '*',
+        opacity: '1',
+        overflow: 'visible'
+      })),
+      transition('collapsed <=> expanded', [
+        animate('300ms cubic-bezier(0.4, 0, 0.2, 1)')
+      ])
+    ])
+  ]
 })
 export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestroy {
   private destroy$ = new Subject<void>();
@@ -230,7 +250,45 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
   strikes: number[] = [];
   chainExpiry: string = '';
   optionChainData: any[] = [];
+  isChainOpen: boolean = true;
   Math = Math;
+
+  isITM(strike: number, type: 'CE' | 'PE'): boolean {
+    const spot = this.symbolDetails?.lastPrice || 0;
+    if (spot === 0) return false;
+    return type === 'CE' ? strike < spot : strike > spot;
+  }
+
+  getAtmStrike(): number {
+    const spot = this.symbolDetails?.lastPrice || 0;
+    if (spot === 0 || this.strikes.length === 0) return 0;
+    return this.strikes.reduce((prev, curr) => 
+      Math.abs(curr - spot) < Math.abs(prev - spot) ? curr : prev
+    );
+  }
+
+  // Searchable Ticker
+  searchQuery: string = 'NIFTY';
+  filteredSymbols: string[] = [];
+  showSymbolDropdown = false;
+
+  filterSymbols() {
+    if (!this.searchQuery) {
+      this.filteredSymbols = this.symbols.slice(0, 10);
+      return;
+    }
+    const q = this.searchQuery.toUpperCase();
+    this.filteredSymbols = this.symbols
+      .filter(s => s.toUpperCase().includes(q))
+      .slice(0, 10);
+  }
+
+  selectSymbol(s: string) {
+    this.selectedSymbol = s;
+    this.searchQuery = s;
+    this.showSymbolDropdown = false;
+    this.onSymbolChange();
+  }
   
   legs: Position[] = [];
   newLeg: Position = {
@@ -310,47 +368,57 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
   }
 
   onSymbolChange() {
+    this.searchQuery = this.selectedSymbol;
+    this.filterSymbols();
     this.isLoading = true;
     const isIndex = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'].includes(this.selectedSymbol.toUpperCase());
     
-    forkJoin({
-      dropdowns: this.strategyService.getDropdowns(this.selectedSymbol),
-      spot: this.strategyService.getSymbolData(this.selectedSymbol)
-    }).subscribe({
+    this.strategyService.getDropdowns(this.selectedSymbol).subscribe({
       next: (res: any) => {
-        // 1. Process Dropdowns (Expiries & Lot Size)
-        this.expiries = res.dropdowns.expiryDates || res.dropdowns.expiryDate || [];
+        this.expiries = res.expiryDates || res.expiryDate || [];
+        const lotSize = res.lotSize || 1;
         
-        // Parse spot price based on symbol type
-        let lastPrice = 0;
-        if (isIndex) {
-          // Backend returns getIndexData item: { indexName, last, open, high, low, previousClose, ... }
-          lastPrice = res.spot?.last || res.spot?.lastPrice || 0;
+        if (!this.symbolDetails) {
+          this.symbolDetails = { lastPrice: 0, lotSize: lotSize };
         } else {
-          // Stock response: tradeInfo > priceInfo > metadata > equityResponse
-          lastPrice = res.spot?.tradeInfo?.lastPrice || 
-                     res.spot?.priceInfo?.lastPrice || 
-                     res.spot?.metadata?.lastPrice ||
-                     res.spot?.equityResponse?.[0]?.orderBook?.lastPrice || 0;
+          this.symbolDetails.lotSize = lotSize;
         }
 
-        this.symbolDetails = {
-          lastPrice: lastPrice,
-          lotSize: res.dropdowns.lotSize || 1
-        };
-        
-        // 2. Initial Expiry Selection
         if (this.expiries.length > 0) {
-          if (!this.newLeg.expiry) this.newLeg.expiry = this.expiries[0];
           this.chainExpiry = this.expiries[0];
-          this.fetchFuturesPrice();
+          this.newLeg.expiry = this.chainExpiry;
           this.loadOptionChain();
+          this.fetchFuturesPrice();
         }
-
         this.isLoading = false;
         this.updateChart();
       },
-      error: () => this.isLoading = false
+      error: () => {
+        this.isLoading = false;
+        this.updateChart();
+      }
+    });
+
+    this.strategyService.getSymbolData(this.selectedSymbol).subscribe({
+      next: (res: any) => {
+        let lastPrice = 0;
+        if (isIndex) {
+          lastPrice = res?.last || res?.lastPrice || 0;
+        } else {
+          lastPrice = res?.tradeInfo?.lastPrice || 
+                      res?.priceInfo?.lastPrice || 
+                      res?.metadata?.lastPrice ||
+                      res?.equityResponse?.[0]?.orderBook?.lastPrice || 0;
+        }
+
+        if (!this.symbolDetails) {
+          this.symbolDetails = { lastPrice: lastPrice, lotSize: 1 };
+        } else {
+          this.symbolDetails.lastPrice = lastPrice;
+        }
+        this.currentIV = res?.iv || 20;
+        this.updateChart();
+      }
     });
   }
 
@@ -503,14 +571,20 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
       qty: 1,
       entry_price: ltp
     });
-    this.updateChart();
+    setTimeout(() => {
+      this.initChart();
+      this.updateChart();
+    }, 100);
     // Scroll to active legs
     document.querySelector('.legs-panel')?.scrollIntoView({ behavior: 'smooth' });
   }
 
   addManualLeg() {
     this.legs.push({ ...this.newLeg });
-    this.updateChart();
+    setTimeout(() => {
+      this.initChart();
+      this.updateChart();
+    }, 100);
     document.querySelector('.legs-panel')?.scrollIntoView({ behavior: 'smooth' });
   }
 
@@ -612,7 +686,10 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
     
     this.showPresetModal = false;
     this.activePreset = null;
-    this.updateChart();
+    setTimeout(() => {
+      this.initChart();
+      this.updateChart();
+    }, 100);
   }
 
   closePresetModal() {

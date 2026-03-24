@@ -190,3 +190,19 @@
     @apply text-xs font-bold text-muted-foreground uppercase p-0 border-none bg-transparent tracking-wider;
   }
 }
+
+@mixin sb-input-base {
+  @apply w-full bg-background border rounded-lg h-9 px-3 text-[13px] font-medium transition-all;
+  border-color: hsl(var(--input));
+  line-height: 2.25rem; // Matches h-9 (36px) exactly to center text
+  &:focus { @apply border-primary ring-1 ring-primary/20 outline-none; }
+}
+
+@mixin sb-select-base {
+  @include sb-input-base;
+  @apply cursor-pointer pr-8;
+  appearance: none;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
