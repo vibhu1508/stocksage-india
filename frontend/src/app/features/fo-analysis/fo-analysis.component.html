@@ -122,7 +122,7 @@
                 <div>
                   <h4 class="font-bold text-foreground">{{ item.TckrSymb }}</h4>
                   <div class="flex items-center gap-2 mt-0.5">
-                    <span class="text-sm font-medium">{{ item.ClsPric }}</span>
+                    <span class="text-sm font-medium">{{ item.ClsPric | number:'1.2-2' }}</span>
                     <span class="text-[11px] font-bold" [class.text-green-500]="item.pct_price_change > 0" [class.text-red-500]="item.pct_price_change < 0">
                       ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
                     </span>
@@ -133,7 +133,8 @@
                 <span class="text-sm font-bold block" [class.text-green-500]="item.pct_oi_change > 0" [class.text-red-500]="item.pct_oi_change < 0">
                   {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
                 </span>
-                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold">OI Chg</span>
+                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold block">OI Chg</span>
+                <span class="text-[11px] text-muted-foreground font-semibold block mt-0.5">OI: {{ item.OpnIntrst | number:'1.0-0' }}</span>
               </div>
             </div>
             <div class="w-full bg-muted rounded-full h-1.5 overflow-hidden mt-1">
@@ -165,7 +166,7 @@
                 <div>
                   <h4 class="font-bold text-foreground">{{ item.TckrSymb }}</h4>
                   <div class="flex items-center gap-2 mt-0.5">
-                    <span class="text-sm font-medium">{{ item.ClsPric }}</span>
+                    <span class="text-sm font-medium">{{ item.ClsPric | number:'1.2-2' }}</span>
                     <span class="text-[11px] font-bold" [class.text-green-500]="item.pct_price_change > 0" [class.text-red-500]="item.pct_price_change < 0">
                       ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
                     </span>
@@ -176,7 +177,8 @@
                 <span class="text-sm font-bold block" [class.text-green-500]="item.pct_oi_change > 0" [class.text-red-500]="item.pct_oi_change < 0">
                   {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
                 </span>
-                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold">OI Chg</span>
+                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold block">OI Chg</span>
+                <span class="text-[11px] text-muted-foreground font-semibold block mt-0.5">OI: {{ item.OpnIntrst | number:'1.0-0' }}</span>
               </div>
             </div>
             <div class="w-full bg-muted rounded-full h-1.5 overflow-hidden mt-1">
@@ -210,7 +212,7 @@
                 <div>
                   <h4 class="font-bold text-foreground">{{ item.TckrSymb }}</h4>
                   <div class="flex items-center gap-2 mt-0.5">
-                    <span class="text-sm font-medium">{{ item.ClsPric }}</span>
+                    <span class="text-sm font-medium">{{ item.ClsPric | number:'1.2-2' }}</span>
                     <span class="text-[11px] font-bold" [class.text-green-500]="item.pct_price_change > 0" [class.text-red-500]="item.pct_price_change < 0">
                       ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
                     </span>
@@ -221,7 +223,8 @@
                 <span class="text-sm font-bold block text-red-500">
                   {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
                 </span>
-                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold">OI Drop</span>
+                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold block">OI Drop</span>
+                <span class="text-[11px] text-muted-foreground font-semibold block mt-0.5">OI: {{ item.OpnIntrst | number:'1.0-0' }}</span>
               </div>
             </div>
             <div class="w-full bg-muted rounded-full h-1.5 overflow-hidden mt-1">
@@ -252,7 +255,7 @@
                 <div>
                   <h4 class="font-bold text-foreground">{{ item.TckrSymb }}</h4>
                   <div class="flex items-center gap-2 mt-0.5">
-                    <span class="text-sm font-medium">{{ item.ClsPric }}</span>
+                    <span class="text-sm font-medium">{{ item.ClsPric | number:'1.2-2' }}</span>
                     <span class="text-[11px] font-bold" [class.text-green-500]="item.pct_price_change > 0" [class.text-red-500]="item.pct_price_change < 0">
                       ({{ item.pct_price_change > 0 ? '+' : ''}}{{ item.pct_price_change | number:'1.2-2' }}%)
                     </span>
@@ -263,7 +266,8 @@
                 <span class="text-sm font-bold block text-red-500">
                   {{ item.pct_oi_change > 0 ? '+' : ''}}{{ item.pct_oi_change | number:'1.2-2' }}%
                 </span>
-                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold">OI Drop</span>
+                <span class="text-[9px] uppercase tracking-widest text-muted-foreground font-semibold block">OI Drop</span>
+                <span class="text-[11px] text-muted-foreground font-semibold block mt-0.5">OI: {{ item.OpnIntrst | number:'1.0-0' }}</span>
               </div>
             </div>
             <div class="w-full bg-muted rounded-full h-1.5 overflow-hidden mt-1">

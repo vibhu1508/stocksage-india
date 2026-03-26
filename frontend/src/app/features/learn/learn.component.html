@@ -1,14 +1,21 @@
 <div class="learn-page fade-in">
-  <h1 class="page-title">🎓 Learn with Girish Gupta</h1>
+  <h1 class="page-title">
+    <span class="title-icon" aria-hidden="true">
+      <lucide-icon name="graduation-cap" [size]="20"></lucide-icon>
+    </span>
+    <span>Learn with Girish Gupta</span>
+  </h1>
 
   <!-- Search -->
   <div class="relative max-w-xl mb-8 group">
-    <lucide-icon name="search" [size]="20" class="absolute left-4 top-3.5 text-muted-foreground group-focus-within:text-primary transition-colors"></lucide-icon>
+    <span class="search-icon-wrap" aria-hidden="true">
+      <lucide-icon name="search" [size]="20" class="search-icon text-muted-foreground group-focus-within:text-primary transition-colors"></lucide-icon>
+    </span>
     <input type="text" [(ngModel)]="searchQuery" (input)="onSearchInput(searchQuery)"
       placeholder="Search for your stock..." 
       class="w-full h-12 pl-12 pr-12 rounded-xl border border-border bg-background/80 text-foreground ring-offset-background placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-ring transition-all shadow-sm" />
     @if (searchQuery) {
-    <button class="absolute right-4 top-3.5 text-muted-foreground hover:text-foreground transition-colors" (click)="clearSearch()">
+    <button class="clear-search-btn text-muted-foreground hover:text-foreground transition-colors" (click)="clearSearch()">
       <lucide-icon name="x" [size]="18"></lucide-icon>
     </button>
     }

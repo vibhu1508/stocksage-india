@@ -7,8 +7,51 @@
 }
 
 .page-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
   font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
   margin-bottom: $spacing-lg;
+}
+
+.title-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: $accent-primary;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.15);
+}
+
+.search-icon-wrap {
+  position: absolute;
+  left: 1rem;
+  top: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.search-icon {
+  display: inline-flex;
+  line-height: 1;
+}
+
+.clear-search-btn {
+  position: absolute;
+  right: 1rem;
+  top: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 

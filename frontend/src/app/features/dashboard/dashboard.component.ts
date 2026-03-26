@@ -164,6 +164,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         icon: this.marketStatus === 'Open' ? 'check-circle-2' : this.marketStatus === 'Closed' ? 'x-circle' : 'alert-circle',
         iconClass: this.marketStatus === 'Open' ? 'text-green-500' : this.marketStatus === 'Closed' ? 'text-red-500' : 'text-yellow-500',
         change: null as string | null,
+        route: null as string | null,
         changePositive: true
       },
       {
@@ -172,6 +173,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         icon: this.niftyPositive ? 'trending-up' : 'trending-down',
         iconClass: this.niftyPositive ? 'text-green-500' : 'text-red-500',
         change: this.niftyChange || null,
+        route: null as string | null,
         changePositive: this.niftyPositive
       },
       {
@@ -180,6 +182,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         icon: this.sensexPositive ? 'trending-up' : 'trending-down',
         iconClass: this.sensexPositive ? 'text-green-500' : 'text-red-500',
         change: this.sensexChange || null,
+        route: null as string | null,
         changePositive: this.sensexPositive
       },
       {
@@ -187,7 +190,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
         value: 'View',
         icon: 'briefcase',
         iconClass: 'text-primary',
-        change: 'Coming Soon' as string | null,
+        change: 'Manage Holdings' as string | null,
+        route: '/portfolio',
         changePositive: true
       }
     ];

@@ -17,6 +17,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/auth/callback/callback.component').then(m => m.CallbackComponent)
   },
   {
+    path: 'onboarding',
+    loadComponent: () => import('./features/onboarding/onboarding.component').then(m => m.OnboardingComponent),
+    canActivate: [authGuard]
+  },
+  {
     path: 'dashboard',
     loadComponent: () => import('./features/dashboard/dashboard.component').then(m => m.DashboardComponent),
     canActivate: [authGuard]
@@ -44,6 +49,16 @@ export const routes: Routes = [
   {
     path: 'strategy-builder',
     loadComponent: () => import('./features/strategy-builder/strategy-builder.component').then(m => m.StrategyBuilderComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'portfolio',
+    loadComponent: () => import('./features/portfolio/portfolio.component').then(m => m.PortfolioComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'profile',
+    loadComponent: () => import('./features/profile/profile.component').then(m => m.ProfileComponent),
     canActivate: [authGuard]
   },
 

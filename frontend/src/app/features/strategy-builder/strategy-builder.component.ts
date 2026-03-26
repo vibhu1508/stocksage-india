@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, AfterViewInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { trigger, state, style, transition, animate } from '@angular/animations';
 import { FormsModule } from '@angular/forms';
-import { StrategyService, Position, Strategy, UserStrategies } from '../../core/services/strategy.service';
+import { StrategyService, Position, Strategy, UserStrategies, PortfolioSyncedHolding } from '../../core/services/strategy.service';
 import { Chart, registerables } from 'chart.js';
 import { LucideAngularModule } from 'lucide-angular';
 import { Subject, forkJoin } from 'rxjs';
@@ -234,6 +234,7 @@ const STRATEGY_PRESETS = [
 })
 export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestroy {
   private destroy$ = new Subject<void>();
+  private portfolioSyncTimer: ReturnType<typeof setInterval> | null = null;
   Infinity = Infinity;
   
   symbols: string[] = ['NIFTY', 'BANKNIFTY', 'FINNIFTY'];
@@ -327,11 +328,17 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
   showSaveModal = false;
   strategyName = '';
   isLoading = false;
+  portfolioPositions: PortfolioSyncedHolding[] = [];
+  portfolioPositionsLoading = false;
+  portfolioPositionsError = '';
+  portfolioPositionsUpdatedAt: Date | null = null;
 
   constructor(private strategyService: StrategyService) {}
 
   ngOnInit() {
     this.loadSymbols();
+    this.loadPortfolioPositions();
+    this.startPortfolioSync();
   }
 
   ngAfterViewInit() {
@@ -341,6 +348,83 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
   ngOnDestroy() {
     this.destroy$.next();
     this.destroy$.complete();
+    if (this.portfolioSyncTimer) {
+      clearInterval(this.portfolioSyncTimer);
+      this.portfolioSyncTimer = null;
+    }
+  }
+
+  get optionPortfolioPositions(): PortfolioSyncedHolding[] {
+    return this.portfolioPositions.filter((p) => p.instrument_type === 'OPTION');
+  }
+
+  get matchingOptionPositions(): PortfolioSyncedHolding[] {
+    const symbol = this.selectedSymbol.toUpperCase();
+    return this.optionPortfolioPositions.filter((p) => p.symbol.toUpperCase() === symbol);
+  }
+
+  private startPortfolioSync() {
+    this.portfolioSyncTimer = setInterval(() => {
+      this.loadPortfolioPositions(true);
+    }, 30000);
+  }
+
+  loadPortfolioPositions(silent = false) {
+    if (!silent) {
+      this.portfolioPositionsLoading = true;
+    }
+    this.portfolioPositionsError = '';
+
+    this.strategyService.getPortfolioHoldings().subscribe({
+      next: (res) => {
+        this.portfolioPositions = Array.isArray(res?.holdings) ? res.holdings : [];
+        this.portfolioPositionsUpdatedAt = new Date();
+        this.portfolioPositionsLoading = false;
+      },
+      error: () => {
+        this.portfolioPositionsLoading = false;
+        if (!silent) {
+          this.portfolioPositionsError = 'Unable to load synced portfolio positions right now.';
+        }
+      }
+    });
+  }
+
+  addPortfolioOptionToBuilder(position: PortfolioSyncedHolding) {
+    if (!position.expiry || !position.strike || !position.option_type || !position.action) {
+      return;
+    }
+
+    const positionSymbol = position.symbol.toUpperCase();
+    if (positionSymbol && positionSymbol !== this.selectedSymbol.toUpperCase()) {
+      this.selectedSymbol = positionSymbol;
+      this.searchQuery = positionSymbol;
+      this.onSymbolChange();
+    }
+
+    this.chainExpiry = position.expiry;
+    this.newLeg.expiry = position.expiry;
+
+    const lotSize = Math.max(1, Number(position.lot_size || this.symbolDetails?.lotSize || 1));
+    const lots = Math.max(1, Number(position.lots || Math.round(position.qty / lotSize) || 1));
+    const indexSymbols = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY'];
+    const segment = indexSymbols.includes(position.symbol.toUpperCase()) ? 'OPTIDX' : 'OPTSTK';
+
+    this.legs.push({
+      segment,
+      expiry: position.expiry,
+      strike: Number(position.strike),
+      option_type: position.option_type,
+      action: position.action,
+      qty: lots,
+      entry_price: Number(position.avg_price || 0),
+      symbol: position.symbol,
+    });
+
+    setTimeout(() => {
+      this.initChart();
+      this.updateChart();
+    }, 100);
   }
 
   loadSymbols() {
@@ -884,7 +968,7 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
     const steps = 200; // Fine resolution for precise breakeven
     const stepSize = (range * 2) / steps;
     const sigma = (this.currentIV || 20) / 100; // Actual market IV
-    const dte = this.getDTE() / 365;
+    const chartDte = this.getEffectiveDTE() / 365;
     const r = 0.07;
     
     const payoffData: {x: number, y: number}[] = [];
@@ -907,8 +991,9 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
         
         // T+0 Payoff (Black-Scholes with ACTUAL IV)
         let legT0 = 0;
-        if (dte > 0.0001) {
-          const greeks = this.calculateBS(curS, strike, dte, r, sigma, leg.option_type || 'CE');
+        const legDte = this.getLegDTE(leg.expiry) / 365;
+        if (legDte > 0.0001) {
+          const greeks = this.calculateBS(curS, strike, legDte, r, sigma, leg.option_type || 'CE');
           legT0 = (greeks.price - leg.entry_price) * mult;
         } else {
           legT0 = legP; // At expiry, T+0 = expiry payoff
@@ -974,13 +1059,13 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
     let displayMaxLoss: string | number = maxLoss;
 
     if (rightSlope > 1 || leftSlope < -1) displayMaxProfit = 'Unlimited';
-    if (rightSlope < -1 || leftSlope > 1) displayMaxLoss = 'Unlimited';
+    if (rightSlope < -1) displayMaxLoss = 'Unlimited';
 
     // 4. POP: Use breakeven-based N(d2) for accuracy
     let pop = 0;
-    if (dte > 0.0001 && sigma > 0 && spot > 0 && bePoints.length > 0) {
-      const sqrtT = sigma * Math.sqrt(dte);
-      const drift = (r - 0.5 * sigma * sigma) * dte;
+    if (chartDte > 0.0001 && sigma > 0 && spot > 0 && bePoints.length > 0) {
+      const sqrtT = sigma * Math.sqrt(chartDte);
+      const drift = (r - 0.5 * sigma * sigma) * chartDte;
 
       // For a long call (profit above breakeven): POP = P(S > BE)
       // For a long put (profit below breakeven): POP = P(S < BE)
@@ -1018,6 +1103,13 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
       }
     }
 
+    if (bePoints.length === 0) {
+      const allPositive = payoffData.every((p) => p.y > 0);
+      const allNegative = payoffData.every((p) => p.y < 0);
+      if (allPositive) pop = 100;
+      if (allNegative) pop = 0;
+    }
+
     // 5. Net Premium
     let netPremium = 0;
     this.legs.forEach(l => {
@@ -1037,11 +1129,57 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
 
   getDTE(): number {
     if (!this.chainExpiry) return 0;
-    // NSE format: 30-Mar-2026
-    const exp = new Date(this.chainExpiry);
+    const exp = this.parseExpiryDate(this.chainExpiry);
+    if (!exp) return 0;
     const now = new Date();
     const diff = exp.getTime() - now.getTime();
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  }
+
+  private getLegDTE(expiry?: string): number {
+    if (!expiry) return this.getDTE();
+    const parsed = this.parseExpiryDate(expiry);
+    if (!parsed) return this.getDTE();
+    const now = new Date();
+    const diff = parsed.getTime() - now.getTime();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  }
+
+  private getEffectiveDTE(): number {
+    const legDtes = this.legs
+      .map((l) => this.getLegDTE(l.expiry))
+      .filter((v) => Number.isFinite(v) && v >= 0);
+    if (legDtes.length === 0) {
+      return this.getDTE();
+    }
+    return Math.min(...legDtes);
+  }
+
+  private parseExpiryDate(value: string): Date | null {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+
+    const direct = new Date(raw);
+    if (!Number.isNaN(direct.getTime())) {
+      return direct;
+    }
+
+    const match = raw.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+    if (!match) return null;
+
+    const months: Record<string, number> = {
+      JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
+      JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
+    };
+
+    const day = Number(match[1]);
+    const mon = months[match[2].toUpperCase()];
+    const year = Number(match[3]);
+    if (!Number.isFinite(day) || mon === undefined || !Number.isFinite(year)) {
+      return null;
+    }
+
+    return new Date(year, mon, day);
   }
 
   getPayoffDTE(): number {

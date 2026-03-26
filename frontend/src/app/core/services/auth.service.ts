@@ -9,6 +9,19 @@ export interface User {
   name: string;
   picture: string;
   is_admin: boolean;
+  phone?: string | null;
+  address?: string | null;
+  occupation?: string | null;
+  trading_experience?: string | null;
+  onboarding_completed?: boolean;
+  onboarding_skipped?: boolean;
+}
+
+export interface OnboardingPayload {
+  phone: string;
+  address: string;
+  occupation: string;
+  trading_experience: string;
 }
 
 @Injectable({
@@ -35,9 +48,9 @@ export class AuthService {
           this.currentUserSubject.next(user);
         },
         error: (err) => {
-          // If token is invalid/expired (401), clear everything
+          // If token is invalid/expired (401), clear session and redirect to login.
           if (err.status === 401) {
-            this.clearSession();
+            this.handleUnauthorizedSession(this.router.url || '/dashboard');
           }
         }
       });
@@ -50,7 +63,17 @@ export class AuthService {
   }
 
   getToken(): string | null {
-    return localStorage.getItem('access_token');
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      return null;
+    }
+
+    if (this.isTokenExpired(token)) {
+      this.clearSession();
+      return null;
+    }
+
+    return token;
   }
 
   setToken(token: string): void {
@@ -59,6 +82,12 @@ export class AuthService {
 
   isAuthenticated(): boolean {
     return !!this.getToken();
+  }
+
+  handleUnauthorizedSession(returnUrl?: string): void {
+    const targetUrl = returnUrl || this.router.url || '/dashboard';
+    const isAuthRoute = targetUrl.startsWith('/login') || targetUrl.startsWith('/auth/callback');
+    this.finalizeLogout(isAuthRoute ? null : targetUrl);
   }
 
   get currentUser(): User | null {
@@ -73,7 +102,13 @@ export class AuthService {
   handleCallback(token: string): void {
     this.setToken(token);
     this.fetchCurrentUser().subscribe({
-      next: () => this.router.navigate(['/dashboard']),
+      next: (user) => {
+        if (!user.onboarding_completed && !user.onboarding_skipped) {
+          this.router.navigate(['/onboarding']);
+          return;
+        }
+        this.router.navigate(['/dashboard']);
+      },
       error: () => {
         this.logout();
         this.router.navigate(['/login']);
@@ -87,22 +122,85 @@ export class AuthService {
     );
   }
 
-  logout(): void {
-    const token = this.getToken();
-    if (token) {
-      // Best effort logout on backend
-      this.http.post(`${this.apiUrl}/logout`, {}).subscribe({
-        next: () => this.finalizeLogout(),
-        error: () => this.finalizeLogout()
-      });
-    } else {
-      this.finalizeLogout();
-    }
+  saveOnboarding(payload: OnboardingPayload): Observable<{ message: string; user: User }> {
+    return this.http.put<{ message: string; user: User }>(`${this.apiUrl}/onboarding`, payload).pipe(
+      tap((response) => this.currentUserSubject.next(response.user))
+    );
   }
 
-  private finalizeLogout(): void {
+  skipOnboarding(): Observable<{ message: string; onboarding_skipped: boolean }> {
+    return this.http.post<{ message: string; onboarding_skipped: boolean }>(`${this.apiUrl}/onboarding/skip`, {}).pipe(
+      tap(() => {
+        const current = this.currentUserSubject.value;
+        if (!current) return;
+        this.currentUserSubject.next({
+          ...current,
+          onboarding_skipped: true,
+        });
+      })
+    );
+  }
+
+  logout(): void {
+    const token = this.getToken();
+    // Always clear local auth state immediately so logout feels instant.
+    this.finalizeLogout();
+
+    if (!token) {
+      return;
+    }
+
+    // Best effort server-side session invalidation in the background.
+    this.http.post(
+      `${this.apiUrl}/logout`,
+      {},
+      {
+        headers: new HttpHeaders({
+          Authorization: `Bearer ${token}`
+        })
+      }
+    ).subscribe({
+      next: () => {},
+      error: () => {}
+    });
+  }
+
+  private finalizeLogout(returnUrl: string | null = null): void {
     localStorage.removeItem('access_token');
     this.currentUserSubject.next(null);
+
+    if (returnUrl) {
+      this.router.navigate(['/login'], { queryParams: { returnUrl } });
+      return;
+    }
+
     this.router.navigate(['/login']);
+  }
+
+  private isTokenExpired(token: string): boolean {
+    const payload = this.decodeJwtPayload(token);
+    if (!payload || typeof payload.exp !== 'number') {
+      return true;
+    }
+
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+    return payload.exp <= nowInSeconds;
+  }
+
+  private decodeJwtPayload(token: string): any | null {
+    try {
+      const tokenParts = token.split('.');
+      if (tokenParts.length < 2) {
+        return null;
+      }
+
+      const base64Payload = tokenParts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const paddingLength = (4 - (base64Payload.length % 4)) % 4;
+      const paddedBase64 = base64Payload + '='.repeat(paddingLength);
+      const decodedPayload = atob(paddedBase64);
+      return JSON.parse(decodedPayload);
+    } catch {
+      return null;
+    }
   }
 }

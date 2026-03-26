@@ -24,6 +24,7 @@ export class SidebarComponent {
 
   menuItems = [
     { path: '/dashboard', icon: 'layout-dashboard', label: 'Dashboard' },
+    { path: '/portfolio', icon: 'briefcase', label: 'Portfolio' },
     { path: '/stocks', icon: 'arrow-up-right', label: 'Stock Comparison' },
     { path: '/fo', icon: 'line-chart', label: 'F&O Analysis' },
     { path: '/strategy-builder', icon: 'pencil-ruler', label: 'Strategy Builder' },

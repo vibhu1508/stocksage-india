@@ -1,0 +1,211 @@
+<div class="flex flex-col gap-6 w-full fade-in">
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h1 class="text-3xl font-extrabold tracking-tight text-foreground" style="font-family: 'Plus Jakarta Sans', sans-serif;">My Portfolio</h1>
+      <p class="text-sm text-muted-foreground mt-1">Manage your holdings and derivatives in one place.</p>
+    </div>
+    <div class="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+      <p class="text-xs uppercase text-muted-foreground font-semibold">Total Invested</p>
+      <p class="text-xl font-bold">₹{{ totalInvested | number:'1.2-2' }}</p>
+    </div>
+  </div>
+
+  <div class="rounded-xl border border-border bg-card p-5 shadow-sm">
+    <h2 class="text-lg font-bold mb-4">Add Holding</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <select
+        [(ngModel)]="symbolSearchType"
+        (ngModelChange)="onSearchTypeChange()"
+        class="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+      >
+        <option value="derivatives">Search in Derivatives</option>
+        <option value="equity">Search in Equity</option>
+        <option value="etf">Search in ETF</option>
+      </select>
+
+      <div class="relative">
+        <input
+          type="text"
+          [(ngModel)]="form.symbol"
+          (ngModelChange)="onSymbolInput($event)"
+          (blur)="hideSuggestionsWithDelay()"
+          placeholder="Search symbol (min 2 chars, e.g. AN)"
+          autocomplete="off"
+          class="rounded-lg border border-border bg-background px-3 py-2 text-sm w-full"
+        />
+
+        @if (showSymbolSuggestions) {
+        <div class="symbol-suggestions absolute z-20 mt-1 w-full rounded-lg border border-border bg-card shadow-lg max-h-56 overflow-y-auto">
+          @for (item of symbolSuggestions; track item.symbol + item.name) {
+          <button
+            type="button"
+            (mousedown)="selectSuggestion(item)"
+            class="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors"
+          >
+            <div class="text-sm font-semibold">{{ item.symbol }} @if (item.series) { <span class="text-xs text-muted-foreground">({{ item.series }})</span> }</div>
+            <div class="text-xs text-muted-foreground truncate">{{ item.name }}</div>
+          </button>
+          }
+        </div>
+        }
+      </div>
+
+      <select [(ngModel)]="form.instrument_type" (ngModelChange)="onInstrumentTypeChange()" class="rounded-lg border border-border bg-background px-3 py-2 text-sm">
+        @for (type of allowedInstrumentTypes; track type) {
+        <option [value]="type">{{ type === 'EQUITY' ? 'Equity' : (type === 'FUTURE' ? 'Future' : 'Option') }}</option>
+        }
+      </select>
+
+      @if (!isDerivative) {
+      <input
+        type="number"
+        [(ngModel)]="form.qty"
+        placeholder="Quantity (e.g. 100)"
+        class="number-input rounded-lg border border-border bg-background px-3 py-2 text-sm"
+      />
+      } @else {
+      <input
+        type="number"
+        [(ngModel)]="form.lots"
+        placeholder="Lots (e.g. 1)"
+        min="1"
+        class="number-input rounded-lg border border-border bg-background px-3 py-2 text-sm"
+      />
+      }
+
+      <input
+        type="text"
+        inputmode="decimal"
+        [(ngModel)]="form.avg_price"
+        placeholder="Average Buy Price (e.g. 102.45)"
+        class="number-input rounded-lg border border-border bg-background px-3 py-2 text-sm"
+      />
+
+      @if (form.instrument_type !== 'EQUITY') {
+      <select
+        [(ngModel)]="form.expiry"
+        (ngModelChange)="onExpiryChange()"
+        class="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+      >
+        <option value="" disabled>Select Expiry</option>
+        @for (exp of expiryOptions; track exp) {
+        <option [value]="exp">{{ exp }}</option>
+        }
+      </select>
+      }
+
+      @if (form.instrument_type === 'OPTION') {
+      <select [(ngModel)]="form.option_type" class="rounded-lg border border-border bg-background px-3 py-2 text-sm">
+        <option value="CE">CE</option>
+        <option value="PE">PE</option>
+      </select>
+      }
+
+      @if (form.instrument_type !== 'EQUITY') {
+      <select [(ngModel)]="form.action" class="rounded-lg border border-border bg-background px-3 py-2 text-sm">
+        <option value="BUY">BUY</option>
+        <option value="SELL">SELL</option>
+      </select>
+      }
+
+      @if (form.instrument_type === 'OPTION') {
+      <select [(ngModel)]="form.strike" class="rounded-lg border border-border bg-background px-3 py-2 text-sm">
+        <option [ngValue]="0" disabled>Select Strike</option>
+        @for (s of strikeOptions; track s) {
+        <option [ngValue]="s">{{ s }}</option>
+        }
+      </select>
+      }
+
+      <input
+        type="text"
+        [(ngModel)]="form.notes"
+        placeholder="Notes (optional)"
+        class="rounded-lg border border-border bg-background px-3 py-2 text-sm md:col-span-2"
+      />
+
+      @if (isDerivative) {
+      <div class="md:col-span-2 text-xs text-muted-foreground px-1">
+        Lot Size: <span class="font-semibold text-foreground">{{ lotSize }}</span>
+        | Total Quantity: <span class="font-semibold text-foreground">{{ effectiveQuantity }}</span>
+        @if (contractsSource) {
+        <span class="ml-2">| Contracts Source: {{ contractsSource.toUpperCase() }}</span>
+        }
+        @if (lotLoading) {
+        <span class="ml-2">Fetching lot size...</span>
+        }
+        @if (contractsLoading) {
+        <span class="ml-2">Fetching expiries/strikes...</span>
+        }
+      </div>
+      }
+
+      <button
+        type="button"
+        (click)="addHolding()"
+        [disabled]="saving"
+        class="rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-60"
+      >
+        {{ saving ? 'Adding...' : 'Add Holding' }}
+      </button>
+    </div>
+
+    @if (error) {
+    <p class="text-sm text-red-500 mt-3">{{ error }}</p>
+    }
+  </div>
+
+  <div class="rounded-xl border border-border bg-card p-5 shadow-sm">
+    <h2 class="text-lg font-bold mb-4">Current Holdings</h2>
+
+    @if (loading) {
+    <p class="text-sm text-muted-foreground">Loading holdings...</p>
+    } @else if (holdings.length === 0) {
+    <p class="text-sm text-muted-foreground">No holdings yet. Add your first position above.</p>
+    } @else {
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-muted-foreground border-b border-border">
+            <th class="py-2">Symbol</th>
+            <th class="py-2">Type</th>
+            <th class="py-2">Qty</th>
+            <th class="py-2">Avg Price</th>
+            <th class="py-2">Invested</th>
+            <th class="py-2">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (holding of holdings; track holding.id) {
+          <tr class="border-b border-border/70">
+            <td class="py-2 font-semibold">{{ holding.symbol }}</td>
+            <td class="py-2">{{ holding.instrument_type }}</td>
+            <td class="py-2">
+              @if (holding.instrument_type === 'EQUITY') {
+              {{ holding.qty }}
+              } @else {
+              {{ holding.lots || (holding.qty / (holding.lot_size || 1)) }} lots
+              <span class="text-xs text-muted-foreground">({{ holding.qty }} units)</span>
+              }
+            </td>
+            <td class="py-2">₹{{ holding.avg_price | number:'1.2-2' }}</td>
+            <td class="py-2">₹{{ holding.invested | number:'1.2-2' }}</td>
+            <td class="py-2">
+              <button
+                type="button"
+                (click)="removeHolding(holding.id)"
+                class="inline-flex items-center gap-1 text-red-500 hover:text-red-400 font-semibold"
+              >
+                <lucide-icon name="trash-2" [size]="14"></lucide-icon>
+                Delete
+              </button>
+            </td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    }
+  </div>
+</div>

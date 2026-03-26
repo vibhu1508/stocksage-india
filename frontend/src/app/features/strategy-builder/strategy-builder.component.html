@@ -1,5 +1,18 @@
 <div class="strategy-builder-container">
-  <div class="flex items-center justify-between px-6 py-4 bg-card/40 border-b border-border mb-4">
+  <div class="mb-5">
+    <div>
+      <div class="inline-flex items-center gap-3">
+        <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-primary/10 text-primary shadow-sm">
+          <lucide-icon name="pencil-ruler" [size]="18" [strokeWidth]="2.5"></lucide-icon>
+        </span>
+        <h1 class="text-3xl font-extrabold tracking-tight text-foreground" style="font-family: 'Plus Jakarta Sans', sans-serif;">Strategy Builder</h1>
+      </div>
+      <p class="text-sm text-muted-foreground mt-1">Design, test, and compare option strategies with live market context.</p>
+    </div>
+  </div>
+
+  <div class="mb-4 rounded-xl border border-border bg-card/40 p-4 md:p-5">
+    <div class="flex items-center justify-between">
     <div class="flex items-center gap-6">
       <div class="flex flex-col relative border border-border rounded-lg px-3 py-2">
         <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-0.5">Ticker</span>
@@ -50,6 +63,7 @@
       <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-0.5">Payoff Date</span>
       <input type="date" [(ngModel)]="payoffDate" (change)="updateChart()" 
              class="bg-muted/40 border border-border rounded px-3 py-1 text-[13px] font-bold text-foreground outline-none transition-all cursor-pointer focus:border-primary focus:ring-1 focus:ring-primary/20 appearance-none invert-calendar-icon">
+    </div>
     </div>
   </div>
 
@@ -159,6 +173,75 @@
           <button class="px-8 py-2.5 rounded-lg bg-[#4b6574] text-white font-black text-[11px] uppercase tracking-wider hover:bg-[#3d525e] transition-all shadow-lg active:scale-95" 
                   (click)="addManualLeg()">Add Position</button>
         </div>
+      </div>
+    </div>
+
+    <div class="sb-panel mt-6">
+      <div class="sb-panel-header">
+        <div class="flex items-center gap-3">
+          <h3>My Positions (Synced from Portfolio)</h3>
+          <span class="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">{{ optionPortfolioPositions.length }} Options</span>
+          <span *ngIf="matchingOptionPositions.length > 0" class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-bold">
+            {{ matchingOptionPositions.length }} Matching {{ selectedSymbol }}
+          </span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-[10px] text-muted-foreground" *ngIf="portfolioPositionsUpdatedAt">
+            Synced: {{ portfolioPositionsUpdatedAt | date:'shortTime' }}
+          </span>
+          <button (click)="loadPortfolioPositions()" class="text-[10px] font-black text-sky-400 hover:text-sky-300 transition-all uppercase tracking-wider">
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div *ngIf="portfolioPositionsLoading" class="px-5 py-4 text-sm text-muted-foreground">Loading synced positions...</div>
+      <div *ngIf="!portfolioPositionsLoading && portfolioPositionsError" class="px-5 py-4 text-sm text-rose-500">{{ portfolioPositionsError }}</div>
+      <div *ngIf="!portfolioPositionsLoading && !portfolioPositionsError && optionPortfolioPositions.length === 0" class="px-5 py-4 text-sm text-muted-foreground">
+        No options found in portfolio yet.
+      </div>
+
+      <div class="overflow-x-auto" *ngIf="!portfolioPositionsLoading && !portfolioPositionsError && optionPortfolioPositions.length > 0">
+        <table class="sb-table">
+          <thead>
+            <tr class="bg-muted/20 border-b border-border">
+              <th class="sb-label px-5 py-3 !tracking-widest">SYMBOL</th>
+              <th class="sb-label px-5 py-3 !tracking-widest">EXPIRY</th>
+              <th class="sb-label px-5 py-3 !tracking-widest">STRIKE</th>
+              <th class="sb-label px-5 py-3 !tracking-widest">TYPE</th>
+              <th class="sb-label px-5 py-3 !tracking-widest">ACTION</th>
+              <th class="sb-label px-5 py-3 !tracking-widest">LOTS</th>
+              <th class="sb-label px-5 py-3 !tracking-widest">UNITS</th>
+              <th class="sb-label px-5 py-3 !tracking-widest">AVG PRICE</th>
+              <th class="sb-label px-5 py-3 !tracking-widest">INVESTED</th>
+              <th class="sb-label px-5 py-3 !tracking-widest">NOTES</th>
+              <th class="sb-label px-5 py-3 !tracking-widest"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let p of optionPortfolioPositions" class="border-b border-border/60 hover:bg-muted/10 transition-colors">
+              <td class="px-5 py-4 text-sm font-extrabold" [class.text-emerald-400]="p.symbol.toUpperCase() === selectedSymbol.toUpperCase()">{{ p.symbol }}</td>
+              <td class="px-5 py-4 text-sm font-semibold opacity-80">{{ p.expiry || '-' }}</td>
+              <td class="px-5 py-4 text-sm font-bold">{{ p.strike || '-' }}</td>
+              <td class="px-5 py-4 text-sm font-black" [class.text-emerald-500]="p.option_type === 'CE'" [class.text-rose-500]="p.option_type === 'PE'">{{ p.option_type || '-' }}</td>
+              <td class="px-5 py-4 text-sm font-bold" [class.text-sky-500]="p.action === 'BUY'" [class.text-amber-500]="p.action === 'SELL'">{{ p.action || '-' }}</td>
+              <td class="px-5 py-4 text-sm font-bold">{{ p.lots || (p.qty / (p.lot_size || 1)) }}</td>
+              <td class="px-5 py-4 text-sm font-semibold">{{ p.qty }}</td>
+              <td class="px-5 py-4 text-sm font-bold text-emerald-400">₹{{ p.avg_price | number:'1.2-2' }}</td>
+              <td class="px-5 py-4 text-sm font-bold">₹{{ p.invested | number:'1.2-2' }}</td>
+              <td class="px-5 py-4 text-sm max-w-[180px] truncate" [title]="p.notes || ''">{{ p.notes || '-' }}</td>
+              <td class="px-5 py-4 text-right">
+                <button
+                  type="button"
+                  (click)="addPortfolioOptionToBuilder(p)"
+                  class="px-3 py-1.5 rounded-md bg-primary/90 hover:bg-primary text-primary-foreground text-[10px] font-black uppercase tracking-wider transition-all"
+                >
+                  Add to Builder
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 

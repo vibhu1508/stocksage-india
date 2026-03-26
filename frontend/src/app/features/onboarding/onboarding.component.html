@@ -1,0 +1,82 @@
+<div class="max-w-3xl mx-auto w-full fade-in">
+  <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm p-6 md:p-8">
+    <div class="flex items-start justify-between gap-3 mb-6">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight" style="font-family: 'Plus Jakarta Sans', sans-serif;">Complete Your Profile</h1>
+        <p class="text-sm text-muted-foreground mt-1">This helps personalize your portfolio, strategy insights, and AI guidance. You can also skip and do it later.</p>
+      </div>
+      <lucide-icon name="user-circle-2" [size]="30" class="text-primary"></lucide-icon>
+    </div>
+
+    <form class="grid grid-cols-1 md:grid-cols-2 gap-4" (ngSubmit)="save()">
+      <div>
+        <label class="block text-xs font-semibold text-muted-foreground mb-1 uppercase">Mobile Number</label>
+        <input
+          type="tel"
+          [(ngModel)]="form.phone"
+          name="phone"
+          placeholder="e.g. 9876543210"
+          class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+        />
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-muted-foreground mb-1 uppercase">Occupation</label>
+        <input
+          type="text"
+          [(ngModel)]="form.occupation"
+          name="occupation"
+          placeholder="e.g. Engineer, Trader, Student"
+          class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+        />
+      </div>
+
+      <div class="md:col-span-2">
+        <label class="block text-xs font-semibold text-muted-foreground mb-1 uppercase">Address</label>
+        <textarea
+          [(ngModel)]="form.address"
+          name="address"
+          rows="3"
+          placeholder="City, state, country"
+          class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+        ></textarea>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-muted-foreground mb-1 uppercase">Trading Experience</label>
+        <select
+          [(ngModel)]="form.trading_experience"
+          name="trading_experience"
+          class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+        >
+          <option>Beginner</option>
+          <option>Intermediate</option>
+          <option>Advanced</option>
+        </select>
+      </div>
+
+      @if (error) {
+      <p class="md:col-span-2 text-sm text-red-500">{{ error }}</p>
+      }
+
+      <div class="md:col-span-2 flex items-center justify-end gap-3 pt-2">
+        <button
+          type="button"
+          (click)="skip()"
+          [disabled]="loading"
+          class="px-4 py-2 rounded-lg border border-border text-sm font-semibold hover:bg-muted/40 disabled:opacity-60"
+        >
+          Skip For Now
+        </button>
+
+        <button
+          type="submit"
+          [disabled]="loading"
+          class="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-60"
+        >
+          {{ loading ? 'Saving...' : 'Save And Continue' }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

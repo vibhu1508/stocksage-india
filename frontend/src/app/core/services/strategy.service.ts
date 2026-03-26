@@ -31,11 +31,36 @@ export interface UserStrategies {
   history: Strategy[];
 }
 
+export interface PortfolioSyncedHolding {
+  id: number;
+  symbol: string;
+  instrument_type: 'EQUITY' | 'FUTURE' | 'OPTION';
+  qty: number;
+  lots?: number;
+  lot_size?: number;
+  avg_price: number;
+  invested: number;
+  expiry?: string | null;
+  strike?: number | null;
+  option_type?: 'CE' | 'PE' | null;
+  action?: 'BUY' | 'SELL' | null;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PortfolioSyncedResponse {
+  count: number;
+  total_invested: number;
+  holdings: PortfolioSyncedHolding[];
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class StrategyService {
   private apiUrl = `${import.meta.env.NG_APP_BACKEND}/api/strategy`;
+  private portfolioApiUrl = `${import.meta.env.NG_APP_BACKEND}/api/portfolio`;
 
   constructor(private http: HttpClient) { }
 
@@ -73,5 +98,9 @@ export class StrategyService {
 
   deleteStrategy(id: number): Observable<any> {
     return this.http.delete<any>(`${this.apiUrl}/strategy/${id}`);
+  }
+
+  getPortfolioHoldings(): Observable<PortfolioSyncedResponse> {
+    return this.http.get<PortfolioSyncedResponse>(`${this.portfolioApiUrl}/holdings`);
   }
 }
