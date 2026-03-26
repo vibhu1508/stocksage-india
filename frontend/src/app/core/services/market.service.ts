@@ -20,6 +20,14 @@ export interface MarketData {
   timestamp: string;
 }
 
+export interface MarketSessionStatus {
+  market_status: string;
+  is_open: boolean;
+  is_trading_day: boolean;
+  reason: string;
+  timestamp: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -31,6 +39,18 @@ export class MarketService {
 
   getLiveData(): Observable<MarketData> {
     return this.http.get<MarketData>(`${this.apiUrl}/live`);
+  }
+
+  getSessionStatus(): Observable<MarketSessionStatus> {
+    return this.http.get<MarketSessionStatus>(`${this.apiUrl}/session-status`).pipe(
+      catchError(() => of({
+        market_status: this.getLocalMarketStatus(),
+        is_open: this.getLocalMarketStatus() === 'Open',
+        is_trading_day: this.getLocalMarketStatus() !== 'Closed',
+        reason: 'local_fallback',
+        timestamp: new Date().toISOString(),
+      }))
+    );
   }
 
   /**

@@ -1,0 +1,155 @@
+<div class="stock-detail-page">
+  <div class="crumb">
+    <a routerLink="/stocks" class="crumb-link">
+      <lucide-icon name="chevron-left" [size]="16"></lucide-icon>
+      Back To Stocks
+    </a>
+  </div>
+
+  @if (loading) {
+  <div class="state-card">Loading stock details...</div>
+  }
+
+  @if (!loading && error) {
+  <div class="state-card error">{{ error }}</div>
+  }
+
+  @if (!loading && !error) {
+  <section class="hero">
+    <div>
+      <p class="symbol-pill">{{ symbol }}</p>
+      <h1>{{ displayName }}</h1>
+      <p class="meta">As on {{ quoteTime }}</p>
+    </div>
+    <div class="price-wrap">
+      <p class="label">Last Price</p>
+      <p class="price">{{ lastPrice | number:'1.2-2' }}</p>
+      <p [class]="isPositive ? 'delta up' : 'delta down'">
+        {{ isPositive ? '+' : '' }}{{ priceChange | number:'1.2-2' }}
+        ({{ isPositive ? '+' : '' }}{{ pctChange | number:'1.2-2' }}%)
+      </p>
+    </div>
+  </section>
+
+  <section class="chart-card">
+    <div class="chart-header">
+      <h2>Live Candles</h2>
+      <div class="tf-group">
+        <button [class.active]="liveTimeframe === '1'" (click)="setLiveTimeframe('1')">1m</button>
+        <button [class.active]="liveTimeframe === '5'" (click)="setLiveTimeframe('5')">5m</button>
+        <button [class.active]="liveTimeframe === '15'" (click)="setLiveTimeframe('15')">15m</button>
+        <button [class.active]="liveTimeframe === '60'" (click)="setLiveTimeframe('60')">1h</button>
+        <button [class.active]="liveTimeframe === 'D'" (click)="setLiveTimeframe('D')">1D</button>
+      </div>
+    </div>
+
+    @if (liveTimeframe === 'D') {
+    <div class="range-group">
+      @for (r of dailyRangeOptions; track r) {
+      <button [class.active]="dailyRange === r" (click)="setDailyRange(r)">{{ r }}</button>
+      }
+    </div>
+
+    <div class="custom-range-row">
+      <label>
+        From
+        <input type="date" [(ngModel)]="customFromDate" (change)="applyCustomDateRange()" />
+      </label>
+      <label>
+        To
+        <input type="date" [(ngModel)]="customToDate" (change)="applyCustomDateRange()" />
+      </label>
+      <button class="clear-range" (click)="clearCustomDateRange()">Reset</button>
+    </div>
+
+    @if (customRangeError) {
+    <p class="chart-state error">{{ customRangeError }}</p>
+    }
+    }
+
+    <div id="stockDetailChart" class="chart-host"></div>
+
+    <div class="chart-meta">
+      <span>Last Tick: {{ liveLastPrice | number:'1.2-2' }}</span>
+      <span>Candles: {{ liveCandleCount }}</span>
+      <span>@if (liveChartUpdatedAt) { Updated {{ liveChartUpdatedAt | date:'shortTime' }} } @else { Waiting... }</span>
+    </div>
+
+    @if (liveChartLoading) {
+    <p class="chart-state">Loading chart data...</p>
+    }
+    @if (liveChartError) {
+    <p class="chart-state error">{{ liveChartError }}</p>
+    }
+  </section>
+
+  <section class="perf-card">
+    <div class="perf-head">
+      <h2>Absolute Returns</h2>
+      <span class="index-name">{{ performanceData?.index_name || 'NIFTY 50' }}</span>
+    </div>
+
+    @if (performanceLoading) {
+    <p class="chart-state">Loading return profile...</p>
+    }
+
+    @if (!performanceLoading && performanceCards.length > 0) {
+    <div class="perf-grid">
+      @for (card of performanceCards; track card.label) {
+      <article class="perf-item">
+        <p class="k">{{ card.label }}</p>
+        <div class="vals">
+          <span [class]="card.stock >= 0 ? 'v up' : 'v down'">
+            <span class="value-label">Stock</span>
+            {{ card.stock >= 0 ? '+' : '' }}{{ card.stock | number:'1.2-2' }}%
+          </span>
+          <span [class]="card.index >= 0 ? 'v up muted' : 'v down muted'">
+            <span class="value-label">Index</span>
+            {{ card.index >= 0 ? '+' : '' }}{{ card.index | number:'1.2-2' }}%
+          </span>
+        </div>
+      </article>
+      }
+    </div>
+    }
+  </section>
+
+  <section class="stats-grid">
+    @for (s of stats; track s.label) {
+    <article class="stat-card">
+      <p class="k">{{ s.label }}</p>
+      <p class="v">{{ s.value }}</p>
+    </article>
+    }
+  </section>
+
+  <section class="ann-card">
+    <div class="ann-head">
+      <h2>Corporate Announcements</h2>
+      <a routerLink="/announcements">View All</a>
+    </div>
+
+    @if (announcementsLoading) {
+    <p class="chart-state">Loading announcements...</p>
+    }
+
+    @if (!announcementsLoading && announcements.length === 0) {
+    <p class="chart-state">No announcements found.</p>
+    }
+
+    @if (announcements.length > 0) {
+    <div class="ann-list">
+      @for (a of announcements; track a.attachment_link + a.broadcast_date) {
+      <article class="ann-item">
+        <p class="subject">{{ a.subject }}</p>
+        <p class="meta">{{ a.broadcast_date }}</p>
+        @if (a.attachment_link) {
+        <a [href]="a.attachment_link" target="_blank" rel="noopener noreferrer">Open Document</a>
+        }
+      </article>
+      }
+    </div>
+    }
+  </section>
+  }
+</div>

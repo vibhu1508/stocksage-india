@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { StockService, StockComparison, ComparisonItem, SymbolSearchResult } from '../../core/services/stock.service';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
@@ -9,7 +10,7 @@ import { LucideAngularModule } from 'lucide-angular';
 @Component({
   selector: 'app-stock-comparison',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule, RouterLink],
   templateUrl: './stock-comparison.component.html',
   styleUrl: './stock-comparison.component.scss'
 })

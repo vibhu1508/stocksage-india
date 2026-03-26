@@ -1,0 +1,443 @@
+.stock-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.crumb-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #334155;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.state-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.state-card.error,
+.chart-state.error {
+  color: #b91c1c;
+}
+
+.hero {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.9rem;
+  padding: 1rem;
+  background: linear-gradient(130deg, #ffffff 0%, #f8fafc 100%);
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.symbol-pill {
+  display: inline-block;
+  background: #1e3a8a;
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.hero h1 {
+  margin: 0.55rem 0 0;
+  font-size: 1.7rem;
+  color: #0f172a;
+}
+
+.meta {
+  color: #64748b;
+  margin-top: 0.35rem;
+}
+
+.price-wrap {
+  text-align: right;
+  min-width: 240px;
+}
+
+.price-wrap .label {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.price-wrap .price {
+  margin: 0.35rem 0;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.delta {
+  font-weight: 700;
+}
+
+.delta.up {
+  color: #15803d;
+}
+
+.delta.down {
+  color: #b91c1c;
+}
+
+.chart-card,
+.ann-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.9rem;
+  padding: 1rem;
+  background: #ffffff;
+}
+
+.chart-header,
+.ann-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.chart-header h2,
+.ann-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.tf-group {
+  display: inline-flex;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 0.15rem;
+  gap: 0.2rem;
+}
+
+.tf-group button {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+  color: #334155;
+  font-weight: 600;
+}
+
+.tf-group button.active {
+  background: #1e40af;
+  color: #fff;
+}
+
+.range-group {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.range-group button {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.range-group button.active {
+  border-color: #1e40af;
+  background: #1e40af;
+  color: #fff;
+}
+
+.custom-range-row {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.custom-range-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.custom-range-row input {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.45rem;
+  padding: 0.25rem 0.45rem;
+  color: #0f172a;
+  background: #fff;
+}
+
+.clear-range {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.45rem;
+  background: #fff;
+  color: #334155;
+  padding: 0.28rem 0.6rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chart-host {
+  width: 100%;
+  height: 360px;
+  margin-top: 0.75rem;
+}
+
+.chart-meta {
+  margin-top: 0.6rem;
+  display: flex;
+  justify-content: space-between;
+  color: #64748b;
+  font-size: 0.82rem;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.chart-state {
+  margin: 0.6rem 0 0;
+  color: #64748b;
+}
+
+.perf-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.9rem;
+  padding: 1rem;
+  background: #ffffff;
+}
+
+.perf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.8rem;
+  gap: 0.5rem;
+}
+
+.perf-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.index-name {
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.perf-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.perf-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.7rem;
+  padding: 0.6rem;
+  background: #f8fafc;
+}
+
+.perf-item .k {
+  margin: 0;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.vals {
+  margin-top: 0.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.v {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.value-label {
+  display: inline-block;
+  min-width: 2.9rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-right: 0.35rem;
+}
+
+.v.muted {
+  opacity: 0.75;
+  font-size: 0.82rem;
+}
+
+.v.up {
+  color: #15803d;
+}
+
+.v.down {
+  color: #b91c1c;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.stat-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.7rem;
+  padding: 0.8rem;
+  background: #fff;
+}
+
+.stat-card .k {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.stat-card .v {
+  margin: 0.45rem 0 0;
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.ann-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.8rem;
+}
+
+.ann-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+}
+
+.ann-item .subject {
+  margin: 0;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ann-item .meta {
+  margin: 0.35rem 0;
+}
+
+.ann-item a,
+.ann-head a {
+  color: #1d4ed8;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+:host-context(.dark) .crumb-link {
+  color: #94a3b8;
+}
+
+:host-context(.dark) .state-card,
+:host-context(.dark) .chart-card,
+:host-context(.dark) .ann-card,
+:host-context(.dark) .perf-card,
+:host-context(.dark) .stat-card,
+:host-context(.dark) .ann-item,
+:host-context(.dark) .perf-item {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+:host-context(.dark) .hero {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+
+:host-context(.dark) .hero h1,
+:host-context(.dark) .price-wrap .price,
+:host-context(.dark) .chart-header h2,
+:host-context(.dark) .ann-head h2,
+:host-context(.dark) .perf-head h2,
+:host-context(.dark) .stat-card .v,
+:host-context(.dark) .ann-item .subject {
+  color: hsl(var(--foreground));
+}
+
+:host-context(.dark) .meta,
+:host-context(.dark) .price-wrap .label,
+:host-context(.dark) .chart-meta,
+:host-context(.dark) .chart-state,
+:host-context(.dark) .index-name,
+:host-context(.dark) .stat-card .k,
+:host-context(.dark) .value-label,
+:host-context(.dark) .perf-item .k,
+:host-context(.dark) .custom-range-row label {
+  color: hsl(var(--muted-foreground));
+}
+
+:host-context(.dark) .tf-group,
+:host-context(.dark) .tf-group button,
+:host-context(.dark) .range-group button,
+:host-context(.dark) .custom-range-row input,
+:host-context(.dark) .clear-range {
+  background: hsl(var(--background));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+:host-context(.dark) .range-group button.active,
+:host-context(.dark) .tf-group button.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+:host-context(.dark) .ann-item a,
+:host-context(.dark) .ann-head a {
+  color: #93c5fd;
+}
+
+@media (max-width: 1024px) {
+  .perf-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .perf-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .price-wrap {
+    text-align: left;
+  }
+}

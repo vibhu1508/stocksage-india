@@ -55,6 +55,35 @@ export interface PortfolioSyncedResponse {
   holdings: PortfolioSyncedHolding[];
 }
 
+export interface YearwiseDataPoint {
+  yesterday_chng_per?: number;
+  one_week_chng_per?: number;
+  one_month_chng_per?: number;
+  three_month_chng_per?: number;
+  six_month_chng_per?: number;
+  one_year_chng_per?: number;
+  two_year_chng_per?: number;
+  three_year_chng_per?: number;
+  five_year_chng_per?: number;
+  index_yesterday_chng_per?: number;
+  index_one_week_chng_per?: number;
+  index_one_month_chng_per?: number;
+  index_three_month_chng_per?: number;
+  index_six_month_chng_per?: number;
+  index_one_year_chng_per?: number;
+  index_two_year_chng_per?: number;
+  index_three_year_chng_per?: number;
+  index_five_year_chng_per?: number;
+  index_name?: string;
+}
+
+export interface YearwiseDataResponse {
+  symbol: string;
+  identifier: string;
+  count: number;
+  data: YearwiseDataPoint[];
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -74,6 +103,10 @@ export class StrategyService {
 
   getSymbolData(symbol: string): Observable<any> {
     return this.http.get<any>(`${this.apiUrl}/symbol-data/${symbol}`);
+  }
+
+  getYearwiseData(symbol: string): Observable<YearwiseDataResponse> {
+    return this.http.get<YearwiseDataResponse>(`${this.apiUrl}/yearwise-data/${symbol}`);
   }
 
   getFuturesData(symbol: string, expiry: string, identifier: string): Observable<any> {

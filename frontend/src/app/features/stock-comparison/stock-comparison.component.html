@@ -126,7 +126,7 @@
               @for (item of displayedData; track item.Symbol + item.InstrumentName) {
               <tr class="border-b border-border/50 transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
                 <td class="p-4 align-middle">
-                  <span class="inline-flex items-center rounded-md border border-border px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary">{{ item.Symbol }}</span>
+                  <a class="inline-flex items-center rounded-md border border-border px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors" [routerLink]="['/stocks', item.Symbol]">{{ item.Symbol }}</a>
                 </td>
                 <td class="p-4 align-middle text-muted-foreground max-w-[200px] truncate hidden sm:table-cell">{{ item.InstrumentName }}</td>
                 <td class="p-4 align-middle text-right font-medium text-foreground">{{ item.OldPrice | number:'1.2-2' }}</td>

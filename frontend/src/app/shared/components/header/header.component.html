@@ -9,11 +9,29 @@
       <div class="absolute left-2.5 flex h-5 w-5 items-center justify-center rounded-sm bg-primary/15 text-primary text-[10px] font-black leading-none select-none">
         S
       </div>
-      <input type="text" placeholder="Search stocks..." 
+      <input
+             type="text"
+             [(ngModel)]="searchQuery"
+             (input)="onSearchInput()"
+             (focus)="showSuggestions = suggestions.length > 0"
+             (blur)="hideSuggestions()"
+             (keydown.enter)="submitSearch()"
+             placeholder="Search stocks..."
              class="h-9 w-full rounded-md border border-input bg-background/50 pl-9 pr-12 py-1 text-sm shadow-sm transition-all placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus:bg-background" />
       <kbd class="pointer-events-none absolute right-2.5 flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[9px] font-medium opacity-100 text-muted-foreground">
         <span class="text-[10px]">⌘</span>K
       </kbd>
+
+      @if (showSuggestions && suggestions.length > 0) {
+      <div class="absolute top-[calc(100%+6px)] left-0 right-0 rounded-md border border-border bg-popover text-popover-foreground shadow-md max-h-72 overflow-y-auto z-50">
+        @for (s of suggestions; track s.symbol) {
+        <button type="button" (mousedown)="selectSuggestion(s.symbol)" class="w-full text-left px-3 py-2 border-b border-border/50 last:border-b-0 hover:bg-accent/70 transition-colors">
+          <div class="text-xs font-bold text-primary">{{ s.symbol }}</div>
+          <div class="text-[11px] text-muted-foreground truncate">{{ s.name }}</div>
+        </button>
+        }
+      </div>
+      }
     </div>
 
     <!-- Right Actions -->

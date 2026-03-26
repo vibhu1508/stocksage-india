@@ -57,7 +57,7 @@
       @for (g of [currentGainer]; track gainerIndex) {
       <div class="flex justify-between items-center" @slideUp>
         <div class="flex flex-col gap-1">
-          <span class="text-xl md:text-2xl font-bold text-foreground">{{ g!.symbol }}</span>
+          <a class="text-xl md:text-2xl font-bold text-foreground hover:text-primary transition-colors" [routerLink]="['/stocks', g!.symbol]">{{ g!.symbol }}</a>
           <span class="text-sm font-medium text-muted-foreground">₹{{ g!.price | number:'1.2-2' }}</span>
         </div>
         <div class="flex flex-col items-end gap-1">
@@ -90,7 +90,7 @@
       @for (l of [currentLoser]; track loserIndex) {
       <div class="flex justify-between items-center" @slideUp>
         <div class="flex flex-col gap-1">
-          <span class="text-xl md:text-2xl font-bold text-foreground">{{ l!.symbol }}</span>
+          <a class="text-xl md:text-2xl font-bold text-foreground hover:text-primary transition-colors" [routerLink]="['/stocks', l!.symbol]">{{ l!.symbol }}</a>
           <span class="text-sm font-medium text-muted-foreground">₹{{ l!.price | number:'1.2-2' }}</span>
         </div>
         <div class="flex flex-col items-end gap-1">

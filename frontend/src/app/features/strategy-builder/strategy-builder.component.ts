@@ -3,10 +3,24 @@ import { CommonModule } from '@angular/common';
 import { trigger, state, style, transition, animate } from '@angular/animations';
 import { FormsModule } from '@angular/forms';
 import { StrategyService, Position, Strategy, UserStrategies, PortfolioSyncedHolding } from '../../core/services/strategy.service';
+import {
+  DhanChartRequest,
+  DhanChartTickResponse,
+  DhanLiveChartService,
+} from '../../core/services/dhan-live-chart.service';
 import { Chart, registerables } from 'chart.js';
 import { LucideAngularModule } from 'lucide-angular';
 import { Subject, forkJoin } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
+import {
+  CandlestickData,
+  CandlestickSeries,
+  ColorType,
+  IChartApi,
+  ISeriesApi,
+  UTCTimestamp,
+  createChart,
+} from 'lightweight-charts';
 
 Chart.register(...registerables);
 
@@ -235,6 +249,15 @@ const STRATEGY_PRESETS = [
 export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestroy {
   private destroy$ = new Subject<void>();
   private portfolioSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private liveTickTimer: ReturnType<typeof setInterval> | null = null;
+  private liveChartApi: IChartApi | null = null;
+  private liveCandleSeries: ISeriesApi<'Candlestick'> | null = null;
+  private readonly chartSymbolMap: Record<string, { securityId: string; exchangeSegment: string; instrument: string }> = {
+    NIFTY: { securityId: '13', exchangeSegment: 'IDX_I', instrument: 'INDEX' },
+    BANKNIFTY: { securityId: '25', exchangeSegment: 'IDX_I', instrument: 'INDEX' },
+    FINNIFTY: { securityId: '27', exchangeSegment: 'IDX_I', instrument: 'INDEX' },
+    MIDCPNIFTY: { securityId: '442', exchangeSegment: 'IDX_I', instrument: 'INDEX' },
+  };
   Infinity = Infinity;
   
   symbols: string[] = ['NIFTY', 'BANKNIFTY', 'FINNIFTY'];
@@ -328,12 +351,20 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
   showSaveModal = false;
   strategyName = '';
   isLoading = false;
+  liveTimeframe: '1' | '5' | '15' | '60' = '5';
+  liveChartLoading = false;
+  liveChartError = '';
+  liveChartUpdatedAt: Date | null = null;
+  liveLastPrice = 0;
   portfolioPositions: PortfolioSyncedHolding[] = [];
   portfolioPositionsLoading = false;
   portfolioPositionsError = '';
   portfolioPositionsUpdatedAt: Date | null = null;
 
-  constructor(private strategyService: StrategyService) {}
+  constructor(
+    private strategyService: StrategyService,
+    private dhanLiveChartService: DhanLiveChartService,
+  ) {}
 
   ngOnInit() {
     this.loadSymbols();
@@ -352,6 +383,15 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
       clearInterval(this.portfolioSyncTimer);
       this.portfolioSyncTimer = null;
     }
+    if (this.liveTickTimer) {
+      clearInterval(this.liveTickTimer);
+      this.liveTickTimer = null;
+    }
+    if (this.liveChartApi) {
+      this.liveChartApi.remove();
+      this.liveChartApi = null;
+    }
+    this.liveCandleSeries = null;
   }
 
   get optionPortfolioPositions(): PortfolioSyncedHolding[] {
@@ -504,6 +544,148 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
         this.updateChart();
       }
     });
+
+  }
+
+  setLiveTimeframe(tf: '1' | '5' | '15' | '60') {
+    if (this.liveTimeframe === tf) return;
+    this.liveTimeframe = tf;
+    this.reloadLiveChart();
+  }
+
+  private getLiveChartRequest(): DhanChartRequest {
+    const symbol = (this.selectedSymbol || '').toUpperCase().trim();
+    const mapping = this.chartSymbolMap[symbol];
+
+    return {
+      symbol,
+      timeframe: this.liveTimeframe,
+      securityId: mapping?.securityId,
+      exchangeSegment: mapping?.exchangeSegment,
+      instrument: mapping?.instrument,
+    };
+  }
+
+  private initLiveChart() {
+    const container = document.getElementById('liveCandlesChart') as HTMLDivElement | null;
+    if (!container) return;
+
+    if (this.liveChartApi) {
+      this.liveChartApi.remove();
+      this.liveChartApi = null;
+      this.liveCandleSeries = null;
+    }
+
+    this.liveChartApi = createChart(container, {
+      width: Math.max(320, container.clientWidth),
+      height: 340,
+      layout: {
+        textColor: '#cbd5e1',
+        background: { type: ColorType.Solid, color: '#0b1220' },
+      },
+      grid: {
+        vertLines: { color: 'rgba(148, 163, 184, 0.12)' },
+        horzLines: { color: 'rgba(148, 163, 184, 0.12)' },
+      },
+      rightPriceScale: {
+        borderColor: 'rgba(148, 163, 184, 0.25)',
+      },
+      timeScale: {
+        borderColor: 'rgba(148, 163, 184, 0.25)',
+        timeVisible: true,
+        secondsVisible: false,
+      },
+    });
+
+    this.liveCandleSeries = this.liveChartApi.addSeries(CandlestickSeries, {
+      upColor: '#10b981',
+      downColor: '#ef4444',
+      borderVisible: false,
+      wickUpColor: '#10b981',
+      wickDownColor: '#ef4444',
+    });
+  }
+
+  private reloadLiveChart() {
+    if (!this.liveCandleSeries) {
+      return;
+    }
+
+    if (this.liveTickTimer) {
+      clearInterval(this.liveTickTimer);
+      this.liveTickTimer = null;
+    }
+
+    this.liveChartLoading = true;
+    this.liveChartError = '';
+
+    this.dhanLiveChartService.getBootstrap(this.getLiveChartRequest()).subscribe({
+      next: (res) => {
+        const candles: CandlestickData[] = (res.candles || []).map((c) => ({
+          time: c.time as UTCTimestamp,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+        }));
+
+        this.liveCandleSeries?.setData(candles);
+        if (candles.length > 0) {
+          this.liveLastPrice = candles[candles.length - 1].close;
+        }
+        this.liveChartApi?.timeScale().fitContent();
+        this.liveChartUpdatedAt = new Date();
+        this.liveChartLoading = false;
+        this.startLiveTickPolling();
+      },
+      error: () => {
+        this.liveChartLoading = false;
+        this.liveChartError = 'Unable to load live chart bootstrap from Dhan.';
+      },
+    });
+  }
+
+  private startLiveTickPolling() {
+    if (this.liveTickTimer) {
+      clearInterval(this.liveTickTimer);
+      this.liveTickTimer = null;
+    }
+
+    this.liveTickTimer = setInterval(() => {
+      this.dhanLiveChartService.getLatestTick(this.getLiveChartRequest()).subscribe({
+        next: (tick) => {
+          this.applyLiveTick(tick);
+          this.liveChartError = '';
+        },
+        error: () => {
+          this.liveChartError = 'Live chart updates paused. Retrying...';
+        },
+      });
+    }, 2000);
+  }
+
+  private applyLiveTick(tick: DhanChartTickResponse) {
+    if (!this.liveCandleSeries) return;
+
+    const intervalMinutes = Number(this.liveTimeframe);
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
+
+    const bucketSize = intervalMinutes * 60;
+    const bucketStart = Math.floor(Number(tick.timestamp) / bucketSize) * bucketSize;
+    const price = Number(tick.price);
+    if (!Number.isFinite(price) || price <= 0) return;
+
+    const candle: CandlestickData = {
+      time: bucketStart as UTCTimestamp,
+      open: price,
+      high: price,
+      low: price,
+      close: price,
+    };
+
+    this.liveCandleSeries.update(candle);
+    this.liveLastPrice = price;
+    this.liveChartUpdatedAt = new Date(Number(tick.timestamp) * 1000);
   }
 
   fetchFuturesPrice() {
