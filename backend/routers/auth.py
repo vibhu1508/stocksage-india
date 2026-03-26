@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from authlib.integrations.starlette_client import OAuth
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import os
 import hashlib
@@ -38,13 +38,17 @@ oauth.register(
 )
 
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """Create JWT access token"""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = _utc_now() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = _utc_now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt, expire
@@ -107,7 +111,12 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if session.expires_at and session.expires_at <= datetime.utcnow():
+    expires_at = session.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        # Older rows may contain naive timestamps; treat them as UTC.
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at and expires_at <= _utc_now():
         session.is_valid = False
         db.commit()
         raise HTTPException(
@@ -165,7 +174,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
                 db.add(user)
         
         # Update last login
-        user.last_login = datetime.utcnow()
+        user.last_login = _utc_now()
         db.commit()
         db.refresh(user)
         
@@ -261,7 +270,7 @@ async def google_mobile_auth(request: MobileAuthRequest, db: Session = Depends(g
                 )
                 db.add(user)
         
-        user.last_login = datetime.utcnow()
+        user.last_login = _utc_now()
         db.commit()
         db.refresh(user)
         
@@ -393,7 +402,7 @@ async def logout(
     exp = payload.get("exp") if payload else None
     ttl_seconds = 60
     if isinstance(exp, (int, float)):
-        ttl_seconds = max(60, floor(float(exp) - datetime.utcnow().timestamp()))
+        ttl_seconds = max(60, floor(float(exp) - _utc_now().timestamp()))
 
     await revoke_token(token_hash, ttl_seconds)
     
