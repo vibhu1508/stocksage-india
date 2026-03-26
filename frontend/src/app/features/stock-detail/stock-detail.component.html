@@ -93,6 +93,15 @@
     }
     }
 
+    @if (activeCandle) {
+    <div class="ohlc-row">
+      <span>O {{ activeCandle.open | number:'1.2-2' }}</span>
+      <span class="h">H {{ activeCandle.high | number:'1.2-2' }}</span>
+      <span class="l">L {{ activeCandle.low | number:'1.2-2' }}</span>
+      <span>C {{ activeCandle.close | number:'1.2-2' }}</span>
+    </div>
+    }
+
     <div id="stockDetailChart" class="chart-host"></div>
 
     <div class="chart-meta">

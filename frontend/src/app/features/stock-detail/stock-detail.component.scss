@@ -275,6 +275,32 @@
   color: #15803d;
 }
 
+.ohlc-row {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  font-size: 0.82rem;
+  color: var(--foreground);
+}
+
+.ohlc-row span {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+}
+
+.ohlc-row .h {
+  color: #15803d;
+}
+
+.ohlc-row .l {
+  color: #b91c1c;
+}
+
 .perf-card {
   border: 1px solid #e2e8f0;
   border-radius: 0.9rem;

@@ -8,8 +8,10 @@ import {
   CandlestickData,
   CandlestickSeries,
   ColorType,
+  CrosshairMode,
   IChartApi,
   ISeriesApi,
+  MouseEventParams,
   Time,
   UTCTimestamp,
   createChart,
@@ -64,6 +66,8 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   quickAddSaving = false;
   quickAddError = '';
   quickAddSuccess = '';
+  hoveredCandle: CandlestickData | null = null;
+  lastVisibleCandle: CandlestickData | null = null;
 
   private routeSub?: Subscription;
   private chartApi: IChartApi | null = null;
@@ -83,6 +87,16 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     FINNIFTY: { securityId: '27', exchangeSegment: 'IDX_I', instrument: 'INDEX' },
     MIDCPNIFTY: { securityId: '442', exchangeSegment: 'IDX_I', instrument: 'INDEX' },
   };
+  private readonly onCrosshairMove = (param: MouseEventParams<Time>) => {
+    if (!this.candleSeries) return;
+
+    const candle = param.seriesData.get(this.candleSeries) as CandlestickData | undefined;
+    this.hoveredCandle = candle ?? null;
+  };
+
+  get activeCandle(): CandlestickData | null {
+    return this.hoveredCandle ?? this.lastVisibleCandle;
+  }
 
   constructor(
     private route: ActivatedRoute,
@@ -147,6 +161,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     if (this.chartApi) {
+      this.chartApi.unsubscribeCrosshairMove(this.onCrosshairMove);
       this.chartApi.remove();
       this.chartApi = null;
     }
@@ -332,6 +347,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!container) return false;
 
     if (this.chartApi) {
+      this.chartApi.unsubscribeCrosshairMove(this.onCrosshairMove);
       this.chartApi.remove();
       this.chartApi = null;
       this.candleSeries = null;
@@ -368,6 +384,18 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
         secondsVisible: false,
         tickMarkFormatter: (time: Time) => this.formatIstTime(time),
       },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+      },
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+      },
+      handleScale: {
+        mouseWheel: true,
+        pinch: true,
+        axisPressedMouseMove: true,
+      },
     });
 
     this.candleSeries = this.chartApi.addSeries(CandlestickSeries, {
@@ -386,6 +414,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.chartApi.timeScale().fitContent();
     });
     this.resizeObserver.observe(container);
+    this.chartApi.subscribeCrosshairMove(this.onCrosshairMove);
 
     return true;
   }
@@ -460,6 +489,10 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private applyCandlesToChart(candles: CandlestickData[], resolved: ChartTimeframe): void {
     this.candleSeries?.setData(candles);
+    this.lastVisibleCandle = candles.length > 0 ? candles[candles.length - 1] : null;
+    if (!this.hoveredCandle) {
+      this.hoveredCandle = this.lastVisibleCandle;
+    }
     this.liveCandleCount = candles.length;
     this.liveResolvedTimeframe = resolved;
     if (candles.length > 0) {
