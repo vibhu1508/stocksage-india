@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'config/theme.dart';
+import 'core/navigation/app_tabs.dart';
 import 'core/services/auth_service.dart';
 import 'features/auth/login_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
+import 'features/portfolio/portfolio_screen.dart';
+import 'features/profile/profile_screen.dart';
+import 'features/strategy_builder/strategy_builder_screen.dart';
 import 'features/stocks/stock_comparison_screen.dart';
 import 'features/fo_analysis/fo_analysis_screen.dart';
 import 'features/announcements/announcements_screen.dart';
-import 'features/learn/learn_screen.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 
 void main() {
@@ -62,6 +65,12 @@ class _StockSageAppState extends State<StockSageApp> {
       return LoginScreen(authService: _authService);
     }
 
+    final user = _authService.currentUser;
+    final shouldShowOnboarding = user != null && !user.onboardingCompleted && !user.onboardingSkipped;
+    if (shouldShowOnboarding) {
+      return ProfileScreen(authService: _authService, onboardingRequired: true);
+    }
+
     return MainShell(authService: _authService);
   }
 }
@@ -75,12 +84,12 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  int _currentIndex = 0;
+  int _currentIndex = AppTabs.home;
   final _announcementsKey = GlobalKey<AnnouncementsScreenState>();
 
   void _switchTab(int index, {int? subTab}) {
     setState(() => _currentIndex = index);
-    if (index == 3 && subTab == 1) {
+    if (index == AppTabs.news && subTab == 1) {
       // Small delay so the screen is visible before switching sub-tab
       Future.delayed(const Duration(milliseconds: 100), () {
         _announcementsKey.currentState?.switchToBSE();
@@ -98,20 +107,21 @@ class _MainShellState extends State<MainShell> {
         authService: widget.authService,
         onNavigateToTab: _switchTab,
       ),
-      const StockComparisonScreen(),
-      const FOAnalysisScreen(),
-      AnnouncementsScreen(key: _announcementsKey),
-      const LearnScreen(),
+      PortfolioScreen(authService: widget.authService),
+      StockComparisonScreen(authService: widget.authService),
+      FOAnalysisScreen(authService: widget.authService),
+      const StrategyBuilderScreen(),
+      AnnouncementsScreen(key: _announcementsKey, authService: widget.authService),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _currentIndex == 0,
+      canPop: _currentIndex == AppTabs.home,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
-          setState(() => _currentIndex = 0);
+          setState(() => _currentIndex = AppTabs.home);
         }
       },
       child: Scaffold(
@@ -137,7 +147,11 @@ class _MainShellState extends State<MainShell> {
             items: const [
               BottomNavigationBarItem(
                 icon: Icon(LucideIcons.layoutDashboard),
-                label: 'Dashboard',
+                label: 'Home',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(LucideIcons.briefcase),
+                label: 'Portfolio',
               ),
               BottomNavigationBarItem(
                 icon: Icon(LucideIcons.arrowUpRight),
@@ -148,12 +162,12 @@ class _MainShellState extends State<MainShell> {
                 label: 'F&O',
               ),
               BottomNavigationBarItem(
-                icon: Icon(LucideIcons.megaphone),
-                label: 'News',
+                icon: Icon(Icons.account_tree_outlined),
+                label: 'Strategy',
               ),
               BottomNavigationBarItem(
-                icon: Icon(LucideIcons.graduationCap),
-                label: 'Learn',
+                icon: Icon(LucideIcons.megaphone),
+                label: 'News',
               ),
             ],
           ),

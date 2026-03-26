@@ -5,8 +5,13 @@ import '../../core/services/auth_service.dart';
 
 class ProfileMenu extends StatelessWidget {
   final AuthService authService;
+  final VoidCallback? onOpenProfile;
 
-  const ProfileMenu({super.key, required this.authService});
+  const ProfileMenu({
+    super.key,
+    required this.authService,
+    this.onOpenProfile,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +41,8 @@ class ProfileMenu extends StatelessWidget {
           await authService.logout();
         } else if (value == 'theme') {
           themeNotifier.value = isDark ? ThemeMode.light : ThemeMode.dark;
+        } else if (value == 'profile') {
+          onOpenProfile?.call();
         }
       },
       itemBuilder: (context) => [
@@ -64,6 +71,16 @@ class ProfileMenu extends StatelessWidget {
           ),
         ),
         // Settings / Theme Toggle
+        PopupMenuItem(
+          value: 'profile',
+          child: Row(
+            children: const [
+              Icon(LucideIcons.userCog, size: 18),
+              SizedBox(width: 12),
+              Text('Profile'),
+            ],
+          ),
+        ),
         PopupMenuItem(
           value: 'theme',
           child: Row(

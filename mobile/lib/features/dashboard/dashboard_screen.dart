@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import '../../core/navigation/app_tabs.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/market_service.dart';
 import '../../config/theme.dart';
 import '../../shared/widgets/profile_menu.dart';
+import '../learn/learn_screen.dart';
+import '../profile/profile_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final AuthService authService;
@@ -208,7 +211,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                         ],
                       ),
                     ),
-                    ProfileMenu(authService: widget.authService),
+                    ProfileMenu(
+                      authService: widget.authService,
+                      onOpenProfile: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ProfileScreen(authService: widget.authService),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -681,7 +694,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         'value': 'View',
         'icon': Icons.account_balance_wallet_rounded,
         'color': AppTheme.warningColor,
-        'sub': 'Coming Soon',
+        'sub': 'Open',
       },
     ];
 
@@ -714,6 +727,9 @@ class _DashboardScreenState extends State<DashboardScreen>
             pulseGlow: isMarketStatus,
             showChart: isIndex,
             chartGoingUp: chartUp,
+            onTap: label == 'My Portfolio'
+                ? () => widget.onNavigateToTab(AppTabs.portfolio)
+                : null,
           ),
         );
       },
@@ -726,26 +742,38 @@ class _DashboardScreenState extends State<DashboardScreen>
         'label': 'Compare Stocks',
         'desc': 'Analyze price changes',
         'icon': Icons.compare_arrows_rounded,
-        'tab': 1,
+        'tab': AppTabs.stocks,
       },
       {
         'label': 'F&O Analysis',
         'desc': 'Futures & options data',
         'icon': Icons.candlestick_chart_rounded,
-        'tab': 2,
+        'tab': AppTabs.fo,
+      },
+      {
+        'label': 'Strategy Builder',
+        'desc': 'Build option strategies',
+        'icon': Icons.account_tree_rounded,
+        'tab': AppTabs.strategy,
       },
       {
         'label': 'NSE Announcements',
         'desc': 'Corporate filings',
         'icon': Icons.article_rounded,
-        'tab': 3,
+        'tab': AppTabs.news,
       },
       {
         'label': 'BSE Announcements',
         'desc': 'BSE filings',
         'icon': Icons.newspaper_rounded,
-        'tab': 3,
+        'tab': AppTabs.news,
         'subTab': 1,
+      },
+      {
+        'label': 'Learn',
+        'desc': 'Videos by Girish Gupta',
+        'icon': Icons.school_rounded,
+        'route': 'learn',
       },
     ];
 
@@ -756,6 +784,16 @@ class _DashboardScreenState extends State<DashboardScreen>
           desc: action['desc'] as String,
           icon: action['icon'] as IconData,
           onTap: () {
+            final route = action['route'] as String?;
+            if (route == 'learn') {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => LearnScreen(authService: widget.authService),
+                ),
+              );
+              return;
+            }
             final tab = action['tab'] as int;
             final subTab = action['subTab'] as int?;
             widget.onNavigateToTab(tab, subTab: subTab);
@@ -775,6 +813,7 @@ class _StatCard extends StatefulWidget {
   final bool pulseGlow;
   final bool showChart;
   final bool? chartGoingUp;
+  final VoidCallback? onTap;
   const _StatCard({
     required this.label,
     required this.value,
@@ -784,6 +823,7 @@ class _StatCard extends StatefulWidget {
     this.pulseGlow = false,
     this.showChart = false,
     this.chartGoingUp,
+    this.onTap,
   });
 
   @override
@@ -837,6 +877,7 @@ class _StatCardState extends State<_StatCard> with TickerProviderStateMixin {
       onTapDown: (_) => _scaleController.reverse(),
       onTapUp: (_) => _scaleController.forward(),
       onTapCancel: () => _scaleController.forward(),
+      onTap: widget.onTap,
       child: ScaleTransition(
         scale: _scale,
         child: AnimatedBuilder(

@@ -80,6 +80,25 @@ class ApiService {
         .timeout(const Duration(seconds: 30));
   }
 
+  // PUT request with auth header
+  static Future<http.Response> put(
+    String url, {
+    Map<String, dynamic>? body,
+  }) async {
+    final token = await getToken();
+
+    return await http
+        .put(
+          Uri.parse(url),
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+          body: body != null ? jsonEncode(body) : null,
+        )
+        .timeout(const Duration(seconds: 30));
+  }
+
   // Helper to decode JSON response
   static Map<String, dynamic> decodeResponse(http.Response response) {
     if (response.statusCode == 200) {

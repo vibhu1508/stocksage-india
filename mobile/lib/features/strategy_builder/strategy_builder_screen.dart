@@ -81,7 +81,14 @@ class _PayoffPainter extends CustomPainter {
 
 // ── Main Screen ──
 class StrategyBuilderScreen extends StatefulWidget {
-  const StrategyBuilderScreen({super.key});
+  final String? initialSymbol;
+  final List<StrategyPosition>? initialPositions;
+
+  const StrategyBuilderScreen({
+    super.key,
+    this.initialSymbol,
+    this.initialPositions,
+  });
   @override
   State<StrategyBuilderScreen> createState() => _StrategyBuilderScreenState();
 }
@@ -99,9 +106,12 @@ class _StrategyBuilderScreenState extends State<StrategyBuilderScreen> {
   List<dynamic> _chainData = [];
   bool _loading = true, _dataReady = false;
   List<StrategyPosition> _legs = [];
+  List<StrategyPosition> _portfolioOptionPositions = [];
+  bool _loadingPortfolioOptions = false;
   String _cat = 'bullish';
   double _maxP = 0, _maxL = 0;
   List<double> _bes = [];
+  bool _appliedInitialPositions = false;
 
   // Search
   final _searchCtrl = TextEditingController(text: 'NIFTY');
@@ -112,7 +122,15 @@ class _StrategyBuilderScreenState extends State<StrategyBuilderScreen> {
   bool get _isIdx => _idx.contains(_sym.toUpperCase());
 
   @override
-  void initState() { super.initState(); _loadSymbols(); }
+  void initState() {
+    super.initState();
+    final initial = widget.initialSymbol?.toUpperCase().trim();
+    if (initial != null && initial.isNotEmpty) {
+      _sym = initial;
+      _searchCtrl.text = initial;
+    }
+    _loadSymbols();
+  }
 
   @override
   void dispose() { _searchCtrl.dispose(); super.dispose(); }
@@ -171,11 +189,61 @@ class _StrategyBuilderScreenState extends State<StrategyBuilderScreen> {
       if (_fut <= 0) _fut = _spot;
 
       _dataReady = true;
+      await _loadPortfolioOptionPositions();
+      _applyInitialPositionsIfNeeded();
       _calcMetrics();
     } catch (e) {
       debugPrint('Load error: $e');
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  void _applyInitialPositionsIfNeeded() {
+    if (_appliedInitialPositions) {
+      return;
+    }
+
+    final initialPositions = widget.initialPositions;
+    if (initialPositions == null || initialPositions.isEmpty) {
+      return;
+    }
+
+    _appliedInitialPositions = true;
+    setState(() {
+      _legs.addAll(initialPositions);
+    });
+  }
+
+  Future<void> _loadPortfolioOptionPositions() async {
+    setState(() {
+      _loadingPortfolioOptions = true;
+    });
+
+    try {
+      final positions = await _svc.getPortfolioOptionPositions(_sym);
+      if (!mounted) return;
+      setState(() {
+        _portfolioOptionPositions = positions;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _portfolioOptionPositions = [];
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingPortfolioOptions = false;
+        });
+      }
+    }
+  }
+
+  void _addPortfolioOptionToBuilder(StrategyPosition p) {
+    setState(() {
+      _legs.add(p.copyWith(segment: p.segment.isNotEmpty ? p.segment : 'OPTIDX'));
+    });
+    _calcMetrics();
   }
 
   double _toDouble(dynamic v) {
@@ -349,6 +417,7 @@ class _StrategyBuilderScreenState extends State<StrategyBuilderScreen> {
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(onRefresh: _onSymChange, child: ListView(padding: const EdgeInsets.only(bottom: 100), children: [
               _buildTopBar(theme),
+              _buildPortfolioSync(theme),
               _buildPresets(theme),
               if (_legs.isNotEmpty) ...[_buildChart(theme), _buildStats(theme), _buildLegs(theme)],
               if (_chainData.isNotEmpty) _buildChain(theme),
@@ -396,6 +465,76 @@ class _StrategyBuilderScreenState extends State<StrategyBuilderScreen> {
           ]),
         ],
       ]),
+    );
+  }
+
+  Widget _buildPortfolioSync(ThemeData theme) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white10),
+        color: theme.cardColor,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.sync_alt_rounded, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'My Portfolio Options',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface),
+              ),
+              const Spacer(),
+              if (_loadingPortfolioOptions)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _portfolioOptionPositions.isEmpty
+                ? 'No option positions found in your portfolio for $_sym.'
+                : '${_portfolioOptionPositions.length} synced position(s) available',
+            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.7)),
+          ),
+          if (_portfolioOptionPositions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ..._portfolioOptionPositions.map((p) {
+              return Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white10),
+                  color: Colors.white.withValues(alpha: 0.03),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${p.action} ${p.optionType} ${p.strike?.toStringAsFixed(0)} • ${p.expiry} • ${p.qty} lots',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    TextButton(
+                      onPressed: () => _addPortfolioOptionToBuilder(p),
+                      child: const Text('Add'),
+                    )
+                  ],
+                ),
+              );
+            }),
+          ],
+        ],
+      ),
     );
   }
 

@@ -7,6 +7,8 @@ class ApiConfig {
   static const String authGoogle = '$apiUrl/auth/google/mobile';
   static const String authMe = '$apiUrl/auth/me';
   static const String authLogout = '$apiUrl/auth/logout';
+  static const String authOnboarding = '$apiUrl/auth/onboarding';
+  static const String authOnboardingSkip = '$apiUrl/auth/onboarding/skip';
 
   // Stock endpoints
   static const String stockSymbols = '$apiUrl/stocks/symbols';
@@ -39,4 +41,9 @@ class ApiConfig {
   // Learn
   static const String learnVideos = '$apiUrl/learn/videos';
   static const String learnSearch = '$apiUrl/learn/search';
+
+  // Portfolio endpoints
+  static const String portfolioHoldings = '$apiUrl/portfolio/holdings';
+  static String portfolioLotSize(String symbol) => '$apiUrl/portfolio/lot-size/$symbol';
+  static String portfolioDerivativeContracts(String symbol) => '$apiUrl/portfolio/derivatives/contracts/$symbol';
 }

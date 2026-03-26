@@ -5,10 +5,13 @@ import '../../core/models/fo_data.dart';
 import '../../core/services/fo_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../shared/widgets/profile_menu.dart';
+import '../profile/profile_screen.dart';
 import '../strategy_builder/strategy_builder_screen.dart';
 
 class FOAnalysisScreen extends StatefulWidget {
-  const FOAnalysisScreen({super.key});
+  final AuthService authService;
+
+  const FOAnalysisScreen({super.key, required this.authService});
 
   @override
   State<FOAnalysisScreen> createState() => _FOAnalysisScreenState();
@@ -255,7 +258,17 @@ class _FOAnalysisScreenState extends State<FOAnalysisScreen>
       appBar: AppBar(
         title: const Text('F&O Analysis'),
         actions: [
-          ProfileMenu(authService: AuthService()),
+          ProfileMenu(
+            authService: widget.authService,
+            onOpenProfile: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfileScreen(authService: widget.authService),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.add_chart),
             tooltip: 'Strategy Builder',

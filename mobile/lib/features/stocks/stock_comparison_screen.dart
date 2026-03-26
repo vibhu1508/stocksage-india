@@ -6,9 +6,12 @@ import '../../core/services/stock_service.dart';
 import '../../core/services/announcement_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../shared/widgets/profile_menu.dart';
+import '../profile/profile_screen.dart';
 
 class StockComparisonScreen extends StatefulWidget {
-  const StockComparisonScreen({super.key});
+  final AuthService authService;
+
+  const StockComparisonScreen({super.key, required this.authService});
 
   @override
   State<StockComparisonScreen> createState() => _StockComparisonScreenState();
@@ -183,7 +186,17 @@ class _StockComparisonScreenState extends State<StockComparisonScreen> {
       appBar: AppBar(
         title: const Text('Stock Comparison'),
         actions: [
-          ProfileMenu(authService: AuthService()),
+          ProfileMenu(
+            authService: widget.authService,
+            onOpenProfile: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfileScreen(authService: widget.authService),
+                ),
+              );
+            },
+          ),
         ],
       ),
       body: GestureDetector(

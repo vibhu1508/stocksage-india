@@ -4,10 +4,13 @@ import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../core/services/auth_service.dart';
 import '../../shared/widgets/profile_menu.dart';
+import '../profile/profile_screen.dart';
 import 'video_player_screen.dart';
 
 class LearnScreen extends StatefulWidget {
-  const LearnScreen({super.key});
+  final AuthService authService;
+
+  const LearnScreen({super.key, required this.authService});
 
   @override
   State<LearnScreen> createState() => _LearnScreenState();
@@ -201,7 +204,17 @@ class _LearnScreenState extends State<LearnScreen> {
           style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
         ),
         actions: [
-          ProfileMenu(authService: AuthService()),
+          ProfileMenu(
+            authService: widget.authService,
+            onOpenProfile: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfileScreen(authService: widget.authService),
+                ),
+              );
+            },
+          ),
         ],
         centerTitle: false,
         elevation: 0,

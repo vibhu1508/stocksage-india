@@ -6,9 +6,12 @@ import '../../core/models/announcement.dart';
 import '../../core/services/announcement_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../shared/widgets/profile_menu.dart';
+import '../profile/profile_screen.dart';
 
 class AnnouncementsScreen extends StatefulWidget {
-  const AnnouncementsScreen({super.key});
+  final AuthService authService;
+
+  const AnnouncementsScreen({super.key, required this.authService});
 
   @override
   AnnouncementsScreenState createState() => AnnouncementsScreenState();
@@ -32,7 +35,6 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
   List<Map<String, String>> _nseSuggestions = [];
   bool _showNseSuggestions = false;
   String _selectedNseSymbol = '';
-  String _selectedNseCompany = '';
 
   // BSE
   final _bseCompanyController = TextEditingController();
@@ -133,7 +135,6 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
     FocusScope.of(context).unfocus();
     setState(() {
       _selectedNseSymbol = suggestion['symbol'] ?? '';
-      _selectedNseCompany = suggestion['company_name'] ?? '';
       _nseSymbolController.text = _selectedNseSymbol;
       _nseSuggestions = [];
       _showNseSuggestions = false;
@@ -209,7 +210,17 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
       appBar: AppBar(
         title: const Text('Announcements'),
         actions: [
-          ProfileMenu(authService: AuthService()),
+          ProfileMenu(
+            authService: widget.authService,
+            onOpenProfile: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ProfileScreen(authService: widget.authService),
+                ),
+              );
+            },
+          ),
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -255,7 +266,6 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                               setState(() {
                                 _nseSymbolController.clear();
                                 _selectedNseSymbol = '';
-                                _selectedNseCompany = '';
                                 _showNseSuggestions = false;
                               });
                             },

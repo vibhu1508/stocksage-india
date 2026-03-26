@@ -99,4 +99,68 @@ class AuthService extends ChangeNotifier {
     _currentUser = null;
     notifyListeners();
   }
+
+  Future<bool> updateProfile({
+    String? phone,
+    String? address,
+    String? occupation,
+    String? tradingExperience,
+  }) async {
+    try {
+      final response = await ApiService.put(
+        ApiConfig.authOnboarding,
+        body: {
+          'phone': phone ?? '',
+          'address': address ?? '',
+          'occupation': occupation ?? '',
+          'trading_experience': tradingExperience ?? '',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final updatedUser = data['user'];
+        if (updatedUser is Map<String, dynamic>) {
+          _currentUser = User.fromJson(updatedUser);
+          notifyListeners();
+        } else {
+          await fetchCurrentUser();
+        }
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Update profile error: $e');
+    }
+    return false;
+  }
+
+  Future<bool> skipOnboarding() async {
+    try {
+      final response = await ApiService.post(ApiConfig.authOnboardingSkip);
+      if (response.statusCode == 200) {
+        if (_currentUser != null) {
+          _currentUser = User(
+            id: _currentUser!.id,
+            email: _currentUser!.email,
+            name: _currentUser!.name,
+            picture: _currentUser!.picture,
+            isAdmin: _currentUser!.isAdmin,
+            phone: _currentUser!.phone,
+            address: _currentUser!.address,
+            occupation: _currentUser!.occupation,
+            tradingExperience: _currentUser!.tradingExperience,
+            onboardingCompleted: _currentUser!.onboardingCompleted,
+            onboardingSkipped: true,
+          );
+          notifyListeners();
+        } else {
+          await fetchCurrentUser();
+        }
+        return true;
+      }
+    } catch (e) {
+      debugPrint('Skip onboarding error: $e');
+    }
+    return false;
+  }
 }
