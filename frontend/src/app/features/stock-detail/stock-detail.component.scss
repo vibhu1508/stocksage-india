@@ -91,11 +91,65 @@
 }
 
 .chart-card,
-.ann-card {
+.ann-card,
+.quick-add-card {
   border: 1px solid #e2e8f0;
   border-radius: 0.9rem;
   padding: 1rem;
   background: #ffffff;
+}
+
+.quick-add-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.quick-add-head p {
+  margin: 0.35rem 0 0;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.quick-add-form {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.quick-add-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.quick-add-form input {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.5rem;
+  color: #0f172a;
+  background: #fff;
+  min-width: 8rem;
+}
+
+.quick-add-form button {
+  border: 0;
+  border-radius: 0.45rem;
+  background: #1e40af;
+  color: #fff;
+  padding: 0.42rem 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.quick-add-form button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .chart-header,
@@ -215,6 +269,10 @@
 .chart-state {
   margin: 0.6rem 0 0;
   color: #64748b;
+}
+
+.chart-state.success {
+  color: #15803d;
 }
 
 .perf-card {
@@ -360,6 +418,7 @@
 :host-context(.dark) .state-card,
 :host-context(.dark) .chart-card,
 :host-context(.dark) .ann-card,
+:host-context(.dark) .quick-add-card,
 :host-context(.dark) .perf-card,
 :host-context(.dark) .stat-card,
 :host-context(.dark) .ann-item,
@@ -378,6 +437,7 @@
 :host-context(.dark) .price-wrap .price,
 :host-context(.dark) .chart-header h2,
 :host-context(.dark) .ann-head h2,
+:host-context(.dark) .quick-add-head h2,
 :host-context(.dark) .perf-head h2,
 :host-context(.dark) .stat-card .v,
 :host-context(.dark) .ann-item .subject {
@@ -388,6 +448,7 @@
 :host-context(.dark) .price-wrap .label,
 :host-context(.dark) .chart-meta,
 :host-context(.dark) .chart-state,
+:host-context(.dark) .quick-add-head p,
 :host-context(.dark) .index-name,
 :host-context(.dark) .stat-card .k,
 :host-context(.dark) .value-label,
@@ -396,10 +457,15 @@
   color: hsl(var(--muted-foreground));
 }
 
+:host-context(.dark) .quick-add-form label {
+  color: hsl(var(--muted-foreground));
+}
+
 :host-context(.dark) .tf-group,
 :host-context(.dark) .tf-group button,
 :host-context(.dark) .range-group button,
 :host-context(.dark) .custom-range-row input,
+:host-context(.dark) .quick-add-form input,
 :host-context(.dark) .clear-range {
   background: hsl(var(--background));
   border-color: hsl(var(--border));

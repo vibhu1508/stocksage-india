@@ -20,6 +20,7 @@ import { StrategyService, YearwiseDataPoint } from '../../core/services/strategy
 import { AnnouncementService, NSEAnnouncement } from '../../core/services/announcement.service';
 import { MarketService } from '../../core/services/market.service';
 import { ThemeService } from '../../core/services/theme.service';
+import { PortfolioService } from '../../core/services/portfolio.service';
 import {
   ChartTimeframe,
   DhanChartRequest,
@@ -58,6 +59,11 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   customFromDate = '';
   customToDate = '';
   customRangeError = '';
+  quickAddQty = 1;
+  quickAddAvgPrice = '';
+  quickAddSaving = false;
+  quickAddError = '';
+  quickAddSuccess = '';
 
   private routeSub?: Subscription;
   private chartApi: IChartApi | null = null;
@@ -85,6 +91,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     private marketService: MarketService,
     private themeService: ThemeService,
     private dhanLiveChartService: DhanLiveChartService,
+    private portfolioService: PortfolioService,
   ) {}
 
   ngOnInit(): void {
@@ -115,6 +122,11 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.customFromDate = '';
       this.customToDate = '';
       this.customRangeError = '';
+      this.quickAddQty = 1;
+      this.quickAddAvgPrice = '';
+      this.quickAddSaving = false;
+      this.quickAddError = '';
+      this.quickAddSuccess = '';
       this.candleCache.clear();
 
       this.loadQuote();
@@ -273,6 +285,9 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     this.strategyService.getSymbolData(this.symbol).subscribe({
       next: (res) => {
         this.quote = this.normalizeQuoteResponse(res);
+        if (!this.quickAddAvgPrice && this.lastPrice > 0) {
+          this.quickAddAvgPrice = this.lastPrice.toFixed(2);
+        }
         this.loading = false;
         this.scheduleChartRefresh();
       },
@@ -823,5 +838,36 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       previousClose: meta.previousClose ?? price.previousClose,
       timestamp: first.lastUpdateTime,
     };
+  }
+
+  addToPortfolio(): void {
+    const qty = Math.max(1, Number(this.quickAddQty || 0));
+    const avgPrice = Number(this.quickAddAvgPrice || 0);
+
+    if (!this.symbol || !Number.isFinite(avgPrice) || avgPrice <= 0) {
+      this.quickAddError = 'Enter a valid quantity and average price.';
+      this.quickAddSuccess = '';
+      return;
+    }
+
+    this.quickAddSaving = true;
+    this.quickAddError = '';
+    this.quickAddSuccess = '';
+
+    this.portfolioService.addHolding({
+      symbol: this.symbol,
+      instrument_type: 'EQUITY',
+      qty,
+      avg_price: avgPrice,
+    }).subscribe({
+      next: () => {
+        this.quickAddSaving = false;
+        this.quickAddSuccess = `${this.symbol} added to portfolio.`;
+      },
+      error: (err) => {
+        this.quickAddSaving = false;
+        this.quickAddError = err?.error?.detail || 'Unable to add holding right now.';
+      },
+    });
   }
 }

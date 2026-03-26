@@ -4,9 +4,18 @@
       <h1 class="text-3xl font-extrabold tracking-tight text-foreground" style="font-family: 'Plus Jakarta Sans', sans-serif;">My Portfolio</h1>
       <p class="text-sm text-muted-foreground mt-1">Manage your holdings and derivatives in one place.</p>
     </div>
-    <div class="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
-      <p class="text-xs uppercase text-muted-foreground font-semibold">Total Invested</p>
-      <p class="text-xl font-bold">₹{{ totalInvested | number:'1.2-2' }}</p>
+    <div class="flex items-center gap-3">
+      <a
+        routerLink="/stocks"
+        class="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold hover:bg-muted/40"
+      >
+        <lucide-icon name="search" [size]="14"></lucide-icon>
+        Go To Stocks
+      </a>
+      <div class="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+        <p class="text-xs uppercase text-muted-foreground font-semibold">Total Invested</p>
+        <p class="text-xl font-bold">₹{{ totalInvested | number:'1.2-2' }}</p>
+      </div>
     </div>
   </div>
 
@@ -156,6 +165,73 @@
     }
   </div>
 
+  <div class="rounded-xl border border-border bg-card p-4 shadow-sm">
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-sm font-semibold text-muted-foreground mr-1">Holdings View:</span>
+      @for (mode of holdingsViewModes; track mode) {
+      <button
+        type="button"
+        (click)="holdingsViewMode = mode"
+        class="rounded-full border px-3 py-1.5 text-sm font-semibold transition-colors"
+        [class.border-primary]="holdingsViewMode === mode"
+        [class.bg-primary]="holdingsViewMode === mode"
+        [class.text-primary-foreground]="holdingsViewMode === mode"
+        [class.border-border]="holdingsViewMode !== mode"
+        [class.bg-background]="holdingsViewMode !== mode"
+      >
+        {{ mode === 'both' ? 'Both' : (mode === 'merged' ? 'Merged' : 'Individual') }}
+      </button>
+      }
+    </div>
+  </div>
+
+  @if (showMergedSection) {
+  <div class="rounded-xl border border-border bg-card p-5 shadow-sm">
+    <h2 class="text-lg font-bold mb-4">Merged Holdings Summary</h2>
+
+    @if (loading) {
+    <p class="text-sm text-muted-foreground">Calculating merged summary...</p>
+    } @else if (mergedHoldings.length === 0) {
+    <p class="text-sm text-muted-foreground">No holdings to summarize yet.</p>
+    } @else {
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-muted-foreground border-b border-border">
+            <th class="py-2">Symbol</th>
+            <th class="py-2">Type</th>
+            <th class="py-2">Positions</th>
+            <th class="py-2">Total Qty</th>
+            <th class="py-2">Weighted Avg Price</th>
+            <th class="py-2">Total Invested</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (m of mergedHoldings; track m.key) {
+          <tr class="border-b border-border/70">
+            <td class="py-2 font-semibold">{{ m.symbol }}</td>
+            <td class="py-2">{{ m.instrumentType }}</td>
+            <td class="py-2">{{ m.positions }}</td>
+            <td class="py-2">
+              @if (m.instrumentType === 'EQUITY') {
+              {{ m.totalQty }}
+              } @else {
+              {{ m.totalLots > 0 ? m.totalLots : (m.totalQty) }}
+              <span class="text-xs text-muted-foreground">({{ m.totalQty }} units)</span>
+              }
+            </td>
+            <td class="py-2">₹{{ m.avgPrice | number:'1.2-2' }}</td>
+            <td class="py-2">₹{{ m.invested | number:'1.2-2' }}</td>
+          </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    }
+  </div>
+  }
+
+  @if (showIndividualSection) {
   <div class="rounded-xl border border-border bg-card p-5 shadow-sm">
     <h2 class="text-lg font-bold mb-4">Current Holdings</h2>
 
@@ -194,6 +270,14 @@
             <td class="py-2">
               <button
                 type="button"
+                (click)="openHoldingChart(holding.symbol)"
+                class="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-500 font-semibold mr-3"
+              >
+                <lucide-icon name="chart-column" [size]="14"></lucide-icon>
+                View Chart
+              </button>
+              <button
+                type="button"
                 (click)="removeHolding(holding.id)"
                 class="inline-flex items-center gap-1 text-red-500 hover:text-red-400 font-semibold"
               >
@@ -208,4 +292,5 @@
     </div>
     }
   </div>
+  }
 </div>

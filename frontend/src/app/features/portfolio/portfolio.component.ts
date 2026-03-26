@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router, RouterLink } from '@angular/router';
 import { PortfolioService, PortfolioHolding, SymbolSuggestion } from '../../core/services/portfolio.service';
 import { LucideAngularModule } from 'lucide-angular';
 import { Subject, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
@@ -8,17 +9,19 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
 @Component({
   selector: 'app-portfolio',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule],
   templateUrl: './portfolio.component.html',
   styleUrl: './portfolio.component.scss'
 })
 export class PortfolioComponent implements OnInit {
   readonly allInstrumentTypes: Array<'EQUITY' | 'FUTURE' | 'OPTION'> = ['EQUITY', 'FUTURE', 'OPTION'];
+  readonly holdingsViewModes: Array<'both' | 'merged' | 'individual'> = ['both', 'merged', 'individual'];
   loading = true;
   saving = false;
   error = '';
   holdings: PortfolioHolding[] = [];
   totalInvested = 0;
+  holdingsViewMode: 'both' | 'merged' | 'individual' = 'both';
   symbolSuggestions: SymbolSuggestion[] = [];
   showSymbolSuggestions = false;
   selectedSuggestion: SymbolSuggestion | null = null;
@@ -53,10 +56,18 @@ export class PortfolioComponent implements OnInit {
     return raw;
   }
 
-  constructor(private portfolioService: PortfolioService) {}
+  constructor(private portfolioService: PortfolioService, private router: Router) {}
 
   get isDerivative(): boolean {
     return this.form.instrument_type !== 'EQUITY';
+  }
+
+  get showMergedSection(): boolean {
+    return this.holdingsViewMode === 'both' || this.holdingsViewMode === 'merged';
+  }
+
+  get showIndividualSection(): boolean {
+    return this.holdingsViewMode === 'both' || this.holdingsViewMode === 'individual';
   }
 
   get effectiveQuantity(): number {
@@ -64,6 +75,62 @@ export class PortfolioComponent implements OnInit {
       return Math.max(1, this.form.lots) * Math.max(1, this.lotSize);
     }
     return Math.max(1, this.form.qty);
+  }
+
+  get mergedHoldings(): Array<{
+    key: string;
+    symbol: string;
+    instrumentType: 'EQUITY' | 'FUTURE' | 'OPTION';
+    totalQty: number;
+    totalLots: number;
+    avgPrice: number;
+    invested: number;
+    positions: number;
+  }> {
+    const grouped = new Map<string, {
+      key: string;
+      symbol: string;
+      instrumentType: 'EQUITY' | 'FUTURE' | 'OPTION';
+      totalQty: number;
+      totalLots: number;
+      invested: number;
+      positions: number;
+    }>();
+
+    for (const holding of this.holdings) {
+      const key = this.holdingMergeKey(holding);
+      const existing = grouped.get(key);
+      const qty = Math.max(0, Number(holding.qty || 0));
+      const lots = Math.max(0, Number(holding.lots || 0));
+      const invested = Number.isFinite(Number(holding.invested))
+        ? Number(holding.invested)
+        : Number(holding.avg_price || 0) * qty;
+
+      if (!existing) {
+        grouped.set(key, {
+          key,
+          symbol: holding.symbol,
+          instrumentType: holding.instrument_type,
+          totalQty: qty,
+          totalLots: lots,
+          invested,
+          positions: 1,
+        });
+        continue;
+      }
+
+      existing.totalQty += qty;
+      existing.totalLots += lots;
+      existing.invested += invested;
+      existing.positions += 1;
+    }
+
+    return Array.from(grouped.values())
+      .map((item) => ({
+        ...item,
+        avgPrice: item.totalQty > 0 ? item.invested / item.totalQty : 0,
+      }))
+      .sort((a, b) => a.symbol.localeCompare(b.symbol));
   }
 
   ngOnInit(): void {
@@ -300,6 +367,29 @@ export class PortfolioComponent implements OnInit {
         this.error = err?.error?.detail || 'Unable to delete holding right now.';
       }
     });
+  }
+
+  openHoldingChart(symbol: string): void {
+    const normalized = (symbol || '').trim().split(/\s+/)[0]?.toUpperCase();
+    if (!normalized) {
+      return;
+    }
+    this.router.navigate(['/stocks', normalized]);
+  }
+
+  private holdingMergeKey(holding: PortfolioHolding): string {
+    const symbol = (holding.symbol || '').trim().toUpperCase();
+    const instrument = holding.instrument_type;
+
+    if (instrument === 'EQUITY') {
+      return `${symbol}|${instrument}`;
+    }
+
+    const expiry = (holding.expiry || '').trim().toUpperCase();
+    const strike = holding.strike != null ? Number(holding.strike).toFixed(2) : 'NA';
+    const optionType = (holding.option_type || '').trim().toUpperCase();
+    const action = (holding.action || '').trim().toUpperCase();
+    return `${symbol}|${instrument}|${expiry}|${strike}|${optionType}|${action}`;
   }
 
   private resetForm(): void {

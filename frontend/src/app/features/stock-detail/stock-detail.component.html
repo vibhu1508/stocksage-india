@@ -31,6 +31,32 @@
     </div>
   </section>
 
+  <section class="quick-add-card">
+    <div class="quick-add-head">
+      <h2>Add To Portfolio</h2>
+      <p>Save this stock to your holdings directly from the chart page.</p>
+    </div>
+    <div class="quick-add-form">
+      <label>
+        Qty
+        <input type="number" min="1" [(ngModel)]="quickAddQty" />
+      </label>
+      <label>
+        Avg Price
+        <input type="number" min="0" step="0.01" [(ngModel)]="quickAddAvgPrice" />
+      </label>
+      <button type="button" (click)="addToPortfolio()" [disabled]="quickAddSaving">
+        {{ quickAddSaving ? 'Adding...' : 'Add Holding' }}
+      </button>
+    </div>
+    @if (quickAddError) {
+    <p class="chart-state error">{{ quickAddError }}</p>
+    }
+    @if (quickAddSuccess) {
+    <p class="chart-state success">{{ quickAddSuccess }}</p>
+    }
+  </section>
+
   <section class="chart-card">
     <div class="chart-header">
       <h2>Live Candles</h2>
