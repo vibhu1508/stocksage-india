@@ -157,4 +157,47 @@ class StrategyService {
     final res = await ApiService.delete('$_strategyUrl/$id');
     return res.statusCode == 200;
   }
+
+  Future<List<StrategyPosition>> getPortfolioOptionPositions(String symbol) async {
+    final res = await ApiService.get(ApiConfig.portfolioHoldings);
+    if (res.statusCode != 200) {
+      return [];
+    }
+
+    final data = json.decode(res.body) as Map<String, dynamic>;
+    final holdings = (data['holdings'] as List? ?? []);
+    final symbolUpper = symbol.toUpperCase().trim();
+
+    final positions = <StrategyPosition>[];
+    for (final item in holdings) {
+      if (item is! Map<String, dynamic>) continue;
+
+      final holdingSymbol = (item['symbol'] ?? '').toString().toUpperCase();
+      final instrumentType = (item['instrument_type'] ?? '').toString().toUpperCase();
+      if (instrumentType != 'OPTION' || holdingSymbol != symbolUpper) continue;
+
+      final strike = (item['strike'] as num?)?.toDouble();
+      final optionType = item['option_type']?.toString();
+      final expiry = item['expiry']?.toString();
+      final avgPrice = (item['avg_price'] as num?)?.toDouble() ?? 0;
+      final action = (item['action']?.toString().toUpperCase() == 'SELL') ? 'SELL' : 'BUY';
+      final qtyLots = (item['lots'] as num?)?.toInt() ?? 1;
+
+      if (strike == null || optionType == null || expiry == null || expiry.isEmpty) continue;
+
+      positions.add(
+        StrategyPosition(
+          segment: 'OPTIDX',
+          expiry: expiry,
+          strike: strike,
+          optionType: optionType,
+          action: action,
+          qty: qtyLots <= 0 ? 1 : qtyLots,
+          entryPrice: avgPrice,
+        ),
+      );
+    }
+
+    return positions;
+  }
 }
