@@ -44,6 +44,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   quickActions = [
     { label: 'Compare Stocks', description: 'Analyze price changes between dates', icon: 'bar-chart-2', route: '/stocks' },
     { label: 'F&O Analysis', description: 'View futures and options data', icon: 'line-chart', route: '/fo' },
+    { label: 'Strategy Builder', description: 'Build and analyze option strategies', icon: 'pencil-ruler', route: '/strategy-builder' },
     { label: 'NSE Announcements', description: 'Latest corporate filings', icon: 'megaphone', route: '/announcements' },
     { label: 'Learn', description: 'Videos by Girish Gupta', icon: 'graduation-cap', route: '/learn' }
   ];
