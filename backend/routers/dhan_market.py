@@ -455,6 +455,8 @@ def _build_intraday_payload(identity: Dict[str, str], timeframe: str) -> Dict[st
     to_dt = _floor_datetime_to_interval(session_end, interval_min)
     # Dhan intraday endpoint often behaves like exclusive upper bound; nudge by one interval.
     to_dt = min(market_close + timedelta(minutes=interval_min), to_dt + timedelta(minutes=interval_min))
+
+    # Intraday chart bootstrap should represent the current trading session only.
     from_dt = market_open
 
     if from_dt >= to_dt:
@@ -509,16 +511,32 @@ def _fill_intraday_session_gaps(candles: list[dict], timeframe: str) -> list[dic
     if not candles:
         return candles
 
+    # Gap-filling is useful for short frames where occasional missing buckets occur,
+    # but it can flatten higher intervals like 60m if provider data is sparse.
+    if str(timeframe) not in {"1", "5", "15"}:
+        return candles
+
     interval_min = CHART_TIMEFRAME_TO_INTERVAL.get(str(timeframe))
     if not interval_min:
         return candles
 
+    if len(candles) < 2:
+        return candles
+
     first_day = _ist_date_from_epoch(int(candles[0]["time"]))
+    last_day = _ist_date_from_epoch(int(candles[-1]["time"]))
+    if first_day != last_day:
+        return candles
+
     start_epoch = _session_bucket_epoch(first_day, 9, 30)
     end_epoch = _session_bucket_epoch(first_day, 15, 30)
     step = interval_min * 60
 
     by_time = {int(c["time"]): c for c in candles}
+    expected_buckets = ((end_epoch - start_epoch) // step) + 1
+    if len(by_time) < max(2, expected_buckets // 3):
+        return candles
+
     sorted_times = sorted(by_time.keys())
     first_known_time = sorted_times[0] if sorted_times else start_epoch
     first_known_candle = by_time.get(first_known_time)
