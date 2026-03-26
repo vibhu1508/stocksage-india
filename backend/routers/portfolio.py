@@ -11,99 +11,8 @@ from database import get_db
 from models import PortfolioHolding, User
 from routers.auth import get_current_user
 from routers import strategy_builder as strategy_builder_router
-from routers import dhan_market as dhan_market_router
 
 router = APIRouter()
-
-
-INDEX_UNDERLYING_SEG = "IDX_I"
-FALLBACK_INDEX_UNDERLYING_SCRIP = {
-    "NIFTY": 13,
-}
-
-
-def _extract_underlying_scrip_from_cache(symbol: str) -> Optional[int]:
-    symbol_upper = symbol.upper().strip()
-    if not symbol_upper:
-        return None
-
-    if symbol_upper in FALLBACK_INDEX_UNDERLYING_SCRIP:
-        return FALLBACK_INDEX_UNDERLYING_SCRIP[symbol_upper]
-
-    # Uses the strategy builder FO contract cache where available.
-    contract_df = getattr(strategy_builder_router, "_CONTRACT_DF_CACHE", None)
-    if contract_df is None:
-        return None
-
-    try:
-        symbol_col = "TckrSymb" if "TckrSymb" in contract_df.columns else "Symbol"
-        if "UndrlygFinInstrmId" not in contract_df.columns:
-            return None
-
-        rows = contract_df.loc[contract_df[symbol_col].astype(str).str.upper() == symbol_upper, "UndrlygFinInstrmId"]
-        if rows.empty:
-            return None
-
-        value = rows.iloc[0]
-        if value is None:
-            return None
-        return int(float(value))
-    except Exception:
-        return None
-
-
-def _extract_expiries(raw: Any) -> list[str]:
-    expiries: list[str] = []
-
-    def _add(val: Any) -> None:
-        if val is None:
-            return
-        s = str(val).strip()
-        if s and s not in expiries:
-            expiries.append(s)
-
-    if isinstance(raw, dict):
-        for key in ("data", "expiryDates", "expiryDate", "expiries", "result"):
-            if key in raw:
-                expiries.extend(_extract_expiries(raw[key]))
-        return list(dict.fromkeys(expiries))
-
-    if isinstance(raw, list):
-        for item in raw:
-            if isinstance(item, dict):
-                for key in ("expiry", "expiryDate", "date", "xpryDt"):
-                    if key in item:
-                        _add(item.get(key))
-            else:
-                _add(item)
-        return list(dict.fromkeys(expiries))
-
-    _add(raw)
-    return list(dict.fromkeys(expiries))
-
-
-def _extract_strikes(raw: Any) -> list[float]:
-    strikes: set[float] = set()
-
-    def _walk(node: Any) -> None:
-        if isinstance(node, dict):
-            for key, value in node.items():
-                key_l = str(key).lower()
-                if key_l in {"strike", "strikeprice", "strike_price", "strkprc", "strkpric"}:
-                    try:
-                        strikes.add(float(value))
-                    except Exception:
-                        pass
-                else:
-                    _walk(value)
-            return
-
-        if isinstance(node, list):
-            for item in node:
-                _walk(item)
-
-    _walk(raw)
-    return sorted(strikes)
 
 
 def _get_lot_size(symbol: str) -> int:
@@ -159,53 +68,6 @@ def _resolve_quantity_for_create(payload: HoldingCreateRequest) -> int:
         raise HTTPException(status_code=400, detail="Provide lots or quantity for derivative holdings")
 
     return payload.qty
-
-
-async def _get_option_contracts_from_dhan(symbol: str, expiry: Optional[str] = None) -> dict:
-    symbol_upper = symbol.upper().strip()
-    strategy_builder_router.fetch_fo_contracts()
-    underlying_scrip = _extract_underlying_scrip_from_cache(symbol_upper)
-
-    if not underlying_scrip:
-        raise HTTPException(status_code=404, detail="Unable to map symbol to Dhan underlying scrip")
-
-    expiry_resp = await dhan_market_router._cached_dhan_post(
-        "/optionchain/expirylist",
-        {"UnderlyingScrip": int(underlying_scrip), "UnderlyingSeg": INDEX_UNDERLYING_SEG},
-        "options",
-    )
-    expiries = _extract_expiries(expiry_resp.get("data"))
-    if not expiries:
-        return {
-            "symbol": symbol_upper,
-            "source": "dhan",
-            "underlying_scrip": int(underlying_scrip),
-            "underlying_seg": INDEX_UNDERLYING_SEG,
-            "expiries": [],
-            "strikes": [],
-        }
-
-    selected_expiry = expiry if expiry in expiries else expiries[0]
-    chain_resp = await dhan_market_router._cached_dhan_post(
-        "/optionchain",
-        {
-            "UnderlyingScrip": int(underlying_scrip),
-            "UnderlyingSeg": INDEX_UNDERLYING_SEG,
-            "Expiry": selected_expiry,
-        },
-        "options",
-    )
-    strikes = _extract_strikes(chain_resp.get("data"))
-
-    return {
-        "symbol": symbol_upper,
-        "source": "dhan",
-        "underlying_scrip": int(underlying_scrip),
-        "underlying_seg": INDEX_UNDERLYING_SEG,
-        "expiries": expiries,
-        "strikes": strikes,
-        "selected_expiry": selected_expiry,
-    }
 
 
 async def _get_option_contracts_from_nse(symbol: str, expiry: Optional[str] = None) -> dict:
@@ -264,10 +126,7 @@ async def get_derivative_contracts(
             "selected_expiry": expiries[0] if expiries else None,
         }
 
-    try:
-        data = await _get_option_contracts_from_dhan(symbol_upper, expiry=expiry)
-    except HTTPException:
-        data = await _get_option_contracts_from_nse(symbol_upper, expiry=expiry)
+    data = await _get_option_contracts_from_nse(symbol_upper, expiry=expiry)
 
     data["instrument_type"] = instrument_type
     return data
