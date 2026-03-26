@@ -26,8 +26,8 @@ def _ensure_user_onboarding_columns():
         "address": "TEXT",
         "occupation": "VARCHAR(100)",
         "trading_experience": "VARCHAR(50)",
-        "onboarding_completed": "BOOLEAN DEFAULT 0",
-        "onboarding_skipped": "BOOLEAN DEFAULT 0",
+        "onboarding_completed": "BOOLEAN DEFAULT FALSE",
+        "onboarding_skipped": "BOOLEAN DEFAULT FALSE",
     }
 
     inspector = inspect(engine)
