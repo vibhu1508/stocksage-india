@@ -230,6 +230,34 @@ async def get_symbol_live_data(symbol: str, current_user: User = Depends(get_cur
         url = f"https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getSymbolData&marketType=N&series=EQ&symbol={symbol_upper}"
         return await nse_session.get_data(url)
 
+
+@router.get("/yearwise-data/{symbol}")
+async def get_yearwise_data(symbol: str, current_user: User = Depends(get_current_user)):
+    """Fetch yearwise and period return comparison data for an equity symbol."""
+    symbol_upper = symbol.upper().strip()
+    symbol_identifier = symbol_upper if symbol_upper.endswith("EQN") else f"{symbol_upper}EQN"
+
+    url = (
+        "https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi"
+        f"?functionName=getYearwiseData&symbol={symbol_identifier}"
+    )
+
+    data = await nse_session.get_data(url)
+    if isinstance(data, list):
+        return {
+            "symbol": symbol_upper,
+            "identifier": symbol_identifier,
+            "count": len(data),
+            "data": data,
+        }
+
+    return {
+        "symbol": symbol_upper,
+        "identifier": symbol_identifier,
+        "count": 0,
+        "data": [],
+    }
+
 @router.get("/futures-data/{symbol}")
 async def get_futures_live_data(
     symbol: str, 

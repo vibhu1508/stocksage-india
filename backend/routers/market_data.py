@@ -5,18 +5,18 @@ Market Data Router - Live SENSEX & NIFTY data proxy
 from fastapi import APIRouter
 import httpx
 from datetime import datetime, timezone, timedelta
+from utils.market_utils import is_market_holiday
 
 router = APIRouter()
 
 # IST = UTC + 5:30
 IST_OFFSET = timedelta(hours=5, minutes=30)
+IST = timezone(IST_OFFSET)
 
 
 def get_ist_now():
     """Get current time in IST"""
-    utc_now = datetime.now(timezone.utc)
-    ist_now = utc_now + IST_OFFSET
-    return ist_now
+    return datetime.now(timezone.utc).astimezone(IST)
 
 
 def get_market_status_fallback():
@@ -72,6 +72,37 @@ BROWSER_HEADERS = {
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9",
 }
+
+
+@router.get("/session-status")
+async def get_market_session_status():
+    """Lightweight endpoint for polling decisions: market open/closed with trading-day context."""
+    ist_now = get_ist_now()
+    today = ist_now.date()
+    holiday_or_weekend = is_market_holiday(today)
+
+    if holiday_or_weekend:
+        return {
+            "market_status": "Closed",
+            "is_open": False,
+            "is_trading_day": False,
+            "reason": "holiday_or_weekend",
+            "timestamp": ist_now.isoformat(),
+        }
+
+    async with httpx.AsyncClient(timeout=6.0, verify=False) as client:
+        market_status = await fetch_market_status(client)
+
+    normalized = str(market_status or "").strip().lower()
+    is_open = normalized == "open"
+
+    return {
+        "market_status": market_status,
+        "is_open": is_open,
+        "is_trading_day": True,
+        "reason": "nse_market_status" if market_status else "fallback",
+        "timestamp": ist_now.isoformat(),
+    }
 
 
 @router.get("/live")
