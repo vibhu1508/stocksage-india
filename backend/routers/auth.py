@@ -11,9 +11,11 @@ from datetime import datetime, timedelta
 from typing import Optional
 import os
 import hashlib
+from math import floor
 
 from database import get_db
 from models import User, UserSession
+from services.redis_store import is_token_revoked, revoke_token
 
 router = APIRouter()
 
@@ -57,7 +59,7 @@ def verify_token(token: str):
         return None
 
 
-def get_current_user(request: Request, db: Session = Depends(get_db)):
+async def get_current_user(request: Request, db: Session = Depends(get_db)):
     """Dependency to get current authenticated user"""
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
@@ -68,6 +70,15 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
         )
     
     token = auth_header.split(" ")[1]
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+    if await is_token_revoked(token_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     payload = verify_token(token)
     
     if not payload:
@@ -84,6 +95,27 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
             detail="Invalid token payload",
         )
     
+    session = db.query(UserSession).filter(
+        UserSession.token_hash == token_hash,
+        UserSession.is_valid == True
+    ).first()
+
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session is invalid",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if session.expires_at and session.expires_at <= datetime.utcnow():
+        session.is_valid = False
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     user = db.query(User).filter(User.id == int(user_id)).first()
     if not user or not user.is_active:
         raise HTTPException(
@@ -169,6 +201,13 @@ from pydantic import BaseModel
 
 class MobileAuthRequest(BaseModel):
     id_token: str
+
+
+class OnboardingUpdateRequest(BaseModel):
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    occupation: Optional[str] = None
+    trading_experience: Optional[str] = None
 
 @router.post("/google/mobile")
 async def google_mobile_auth(request: MobileAuthRequest, db: Session = Depends(get_db)):
@@ -268,8 +307,65 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         "email": current_user.email,
         "name": current_user.name,
         "picture": current_user.picture,
-        "is_admin": current_user.is_admin
+        "is_admin": current_user.is_admin,
+        "phone": current_user.phone,
+        "address": current_user.address,
+        "occupation": current_user.occupation,
+        "trading_experience": current_user.trading_experience,
+        "onboarding_completed": current_user.onboarding_completed,
+        "onboarding_skipped": current_user.onboarding_skipped
     }
+
+
+@router.put("/onboarding")
+async def update_onboarding(
+    payload: OnboardingUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Save onboarding/profile information for the current user."""
+    if payload.phone is not None:
+        current_user.phone = payload.phone.strip() or None
+    if payload.address is not None:
+        current_user.address = payload.address.strip() or None
+    if payload.occupation is not None:
+        current_user.occupation = payload.occupation.strip() or None
+    if payload.trading_experience is not None:
+        current_user.trading_experience = payload.trading_experience.strip() or None
+
+    current_user.onboarding_completed = True
+    current_user.onboarding_skipped = False
+    db.commit()
+    db.refresh(current_user)
+
+    return {
+        "message": "Onboarding details saved successfully",
+        "user": {
+            "id": current_user.id,
+            "email": current_user.email,
+            "name": current_user.name,
+            "picture": current_user.picture,
+            "is_admin": current_user.is_admin,
+            "phone": current_user.phone,
+            "address": current_user.address,
+            "occupation": current_user.occupation,
+            "trading_experience": current_user.trading_experience,
+            "onboarding_completed": current_user.onboarding_completed,
+            "onboarding_skipped": current_user.onboarding_skipped
+        }
+    }
+
+
+@router.post("/onboarding/skip")
+async def skip_onboarding(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Mark onboarding as skipped for now (user can complete later)."""
+    current_user.onboarding_skipped = True
+    db.commit()
+    db.refresh(current_user)
+    return {"message": "Onboarding skipped", "onboarding_skipped": True}
 
 
 @router.post("/logout")
@@ -292,5 +388,13 @@ async def logout(
     if session:
         session.is_valid = False
         db.commit()
+
+    payload = verify_token(token)
+    exp = payload.get("exp") if payload else None
+    ttl_seconds = 60
+    if isinstance(exp, (int, float)):
+        ttl_seconds = max(60, floor(float(exp) - datetime.utcnow().timestamp()))
+
+    await revoke_token(token_hash, ttl_seconds)
     
     return {"message": "Logged out successfully"}

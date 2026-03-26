@@ -17,6 +17,14 @@ class User(Base):
     name = Column(String(255), nullable=True)
     picture = Column(Text, nullable=True)  # Google profile picture URL
     google_id = Column(String(255), unique=True, nullable=True)
+
+    # Onboarding/profile fields
+    phone = Column(String(20), nullable=True)
+    address = Column(Text, nullable=True)
+    occupation = Column(String(100), nullable=True)
+    trading_experience = Column(String(50), nullable=True)
+    onboarding_completed = Column(Boolean, default=False)
+    onboarding_skipped = Column(Boolean, default=False)
     
     # Account status
     is_active = Column(Boolean, default=True)
@@ -92,3 +100,31 @@ class Position(Base):
 
     def __repr__(self):
         return f"<Position {self.action} {self.qty}x {self.strike or ''}{self.option_type or ''} {self.expiry}>"
+
+
+class PortfolioHolding(Base):
+    """User-specific portfolio holdings (equity and derivatives)"""
+    __tablename__ = "portfolio_holdings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    symbol = Column(String(50), index=True, nullable=False)
+    instrument_type = Column(String(20), nullable=False, default="EQUITY")  # EQUITY, FUTURE, OPTION
+    qty = Column(Integer, nullable=False)
+    avg_price = Column(Float, nullable=False)
+
+    # Derivative-specific optional fields
+    expiry = Column(String(20), nullable=True)
+    strike = Column(Float, nullable=True)
+    option_type = Column(String(10), nullable=True)  # CE, PE for options
+    action = Column(String(10), nullable=True)  # BUY, SELL for derivatives
+
+    notes = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    user = relationship("User")
+
+    def __repr__(self):
+        return f"<PortfolioHolding {self.symbol} {self.instrument_type} qty={self.qty}>"

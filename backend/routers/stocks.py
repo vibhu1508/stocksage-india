@@ -5,9 +5,11 @@ Stock Comparison Router - BhavCopy download and stock price comparison
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Literal
+import asyncio
 import pandas as pd
 import requests
+import httpx
 import zipfile
 import io
 import time
@@ -150,6 +152,65 @@ _symbols_cache = {
 }
 CACHE_DURATION = timedelta(hours=1)
 
+_nse_search_cache: Dict[str, dict] = {}
+_nse_search_cache_ttl = timedelta(seconds=30)
+_nse_client: Optional[httpx.AsyncClient] = None
+_nse_client_lock = asyncio.Lock()
+_nse_bootstrap_at: Optional[datetime] = None
+_nse_bootstrap_ttl = timedelta(minutes=10)
+
+_known_index_symbols = {
+    "NIFTY",
+    "NIFTY 50",
+    "BANKNIFTY",
+    "BANK NIFTY",
+    "FINNIFTY",
+    "MIDCPNIFTY",
+}
+
+
+def _get_series_from_item(item: dict) -> str:
+    candidates = [
+        item.get("series"),
+        item.get("mSeries"),
+        item.get("instrument"),
+        item.get("instrumentType"),
+        item.get("assetType"),
+        item.get("type"),
+        item.get("segment"),
+        item.get("metadata", {}).get("series") if isinstance(item.get("metadata"), dict) else None,
+        item.get("metadata", {}).get("instrumentType") if isinstance(item.get("metadata"), dict) else None,
+    ]
+    for value in candidates:
+        if value is None:
+            continue
+        parsed = str(value).strip()
+        if parsed:
+            return parsed.upper()
+    return ""
+
+
+def _allowed_instruments(symbol: str, name: str, series: str) -> List[str]:
+    s = symbol.upper().strip()
+    n = name.upper().strip()
+    sr = series.upper().strip()
+
+    is_index_like = s in _known_index_symbols or "INDEX" in n
+    is_derivative_series = any(tag in sr for tag in ["FUT", "OPT", "FNO", "DERIV", "IDX"])
+    is_equity_series = sr in {"EQ", "BE", "SM", "ST"}
+
+    if is_index_like or is_derivative_series:
+        if "OPT" in sr:
+            return ["OPTION"]
+        if "FUT" in sr:
+            return ["FUTURE"]
+        return ["FUTURE", "OPTION"]
+
+    if is_equity_series:
+        return ["EQUITY"]
+
+    return ["EQUITY", "FUTURE", "OPTION"]
+
 
 def get_cached_symbols() -> Optional[pd.DataFrame]:
     """Get symbols data from cache or download if expired/missing."""
@@ -225,6 +286,160 @@ async def search_symbols(
         "results": results.to_dict(orient='records')
     }
 
+
+@router.get("/nse-global-search")
+async def nse_global_search(
+    q: str = Query(..., min_length=2, description="Search query"),
+    search_type: Literal["derivatives", "equity", "etf"] = Query(
+        "equity",
+        alias="type",
+        description="NSE global search type",
+    ),
+    limit: int = Query(10, ge=1, le=25, description="Max results to return"),
+    current_user: User = Depends(get_current_user),
+):
+    """Proxy NSE global search by type (derivatives/equity/etf) for frontend autocomplete."""
+    query = q.strip()
+    if len(query) < 2:
+        return {"query": query, "count": 0, "results": [], "type": search_type}
+
+    cache_key = f"{search_type}:{query.lower()}"
+    now = datetime.utcnow()
+    cached = _nse_search_cache.get(cache_key)
+    if cached and cached.get("expires_at") and cached["expires_at"] > now:
+        cached_results = cached.get("results", [])[:limit]
+        return {
+            "query": query,
+            "count": len(cached_results),
+            "results": cached_results,
+            "type": search_type,
+            "source": "cache",
+        }
+
+    client = await _get_nse_client()
+    await _ensure_nse_bootstrap(client)
+
+    endpoint_by_type = {
+        "derivatives": "derivatives",
+        "equity": "equity",
+        "etf": "etf",
+    }
+    nse_type = endpoint_by_type.get(search_type, "equity")
+    search_url = f"https://www.nseindia.com/api/NextApi/globalSearch/{nse_type}?symbol={query}"
+
+    try:
+        response = await client.get(search_url)
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError):
+        raise HTTPException(status_code=502, detail="Unable to fetch symbol suggestions from NSE")
+
+    raw_items = []
+    if isinstance(payload, list):
+        raw_items = payload
+    elif isinstance(payload, dict):
+        if isinstance(payload.get("data"), list):
+            raw_items = payload.get("data", [])
+        elif isinstance(payload.get("results"), list):
+            raw_items = payload.get("results", [])
+        elif isinstance(payload.get("symbols"), list):
+            raw_items = payload.get("symbols", [])
+
+    results = []
+    seen = set()
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+
+        symbol = (
+            item.get("symbol")
+            or item.get("metadata", {}).get("symbol")
+            or item.get("mSymbol")
+            or item.get("searchString")
+            or ""
+        )
+        name = (
+            item.get("companyName")
+            or item.get("name")
+            or item.get("metadata", {}).get("companyName")
+            or item.get("metadata", {}).get("symbol")
+            or symbol
+        )
+
+        symbol = str(symbol).strip().upper()
+        name = str(name).strip()
+        if not symbol:
+            continue
+
+        key = f"{symbol}|{name}"
+        if key in seen:
+            continue
+        seen.add(key)
+
+        series = _get_series_from_item(item)
+        allowed = _allowed_instruments(symbol, name, series)
+
+        results.append(
+            {
+                "symbol": symbol,
+                "name": name,
+                "series": series,
+                "allowed_instruments": allowed,
+            }
+        )
+        if len(results) >= max(25, limit):
+            break
+
+    _nse_search_cache[cache_key] = {
+        "results": results,
+        "expires_at": datetime.utcnow() + _nse_search_cache_ttl,
+    }
+
+    trimmed = results[:limit]
+
+    return {
+        "query": query,
+        "count": len(trimmed),
+        "results": trimmed,
+        "type": search_type,
+        "source": "live",
+    }
+
+
+async def _get_nse_client() -> httpx.AsyncClient:
+    global _nse_client
+    if _nse_client is not None:
+        return _nse_client
+
+    async with _nse_client_lock:
+        if _nse_client is None:
+            _nse_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=2.0, read=3.5, write=3.0, pool=3.0),
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Referer": "https://www.nseindia.com/",
+                    "Origin": "https://www.nseindia.com",
+                    "Connection": "keep-alive",
+                },
+                follow_redirects=True,
+            )
+    return _nse_client
+
+
+async def _ensure_nse_bootstrap(client: httpx.AsyncClient) -> None:
+    global _nse_bootstrap_at
+    now = datetime.utcnow()
+    if _nse_bootstrap_at and now - _nse_bootstrap_at < _nse_bootstrap_ttl:
+        return
+
+    try:
+        await client.get("https://www.nseindia.com")
+        _nse_bootstrap_at = now
+    except httpx.HTTPError:
+        # Keep endpoint functional even if cookie warmup fails.
+        return
 
 
 @router.get("/live-search")

@@ -6,23 +6,53 @@ FastAPI server with Google OAuth and SQLite database
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from sqlalchemy import inspect, text
 import os
 from dotenv import load_dotenv
+from services.redis_store import close_redis
 
 # Load environment variables
 load_dotenv()
 
 # Import routers
-from routers import auth, stocks, fo_analysis, announcements, market_data, learn, strategy_builder
+from routers import auth, stocks, fo_analysis, announcements, market_data, learn, strategy_builder, portfolio, dhan_market
 from database import engine, Base
+
+
+def _ensure_user_onboarding_columns():
+    """Backfill newly added users table columns for existing SQLite/PostgreSQL DBs."""
+    required = {
+        "phone": "VARCHAR(20)",
+        "address": "TEXT",
+        "occupation": "VARCHAR(100)",
+        "trading_experience": "VARCHAR(50)",
+        "onboarding_completed": "BOOLEAN DEFAULT 0",
+        "onboarding_skipped": "BOOLEAN DEFAULT 0",
+    }
+
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+
+    existing = {col["name"] for col in inspector.get_columns("users")}
+    missing = [(name, col_type) for name, col_type in required.items() if name not in existing]
+
+    if not missing:
+        return
+
+    with engine.begin() as conn:
+        for col_name, col_type in missing:
+            conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
 
 # Create database tables on startup
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Create database tables
     Base.metadata.create_all(bind=engine)
+    _ensure_user_onboarding_columns()
     yield
     # Shutdown: cleanup if needed
+    await close_redis()
 
 app = FastAPI(
     title="NSE Platform API",
@@ -67,6 +97,8 @@ app.include_router(announcements.router, prefix="/api/announcements", tags=["Ann
 app.include_router(learn.router, prefix="/api/learn", tags=["Learn"])
 app.include_router(strategy_builder.router, prefix="/api/strategy", tags=["Strategy Builder"])
 app.include_router(market_data.router, prefix="/api/market", tags=["Market Data"])
+app.include_router(portfolio.router, prefix="/api/portfolio", tags=["Portfolio"])
+app.include_router(dhan_market.router, prefix="/api/market/dhan", tags=["Dhan Market Data"])
 @app.get("/")
 async def root():
     return {
