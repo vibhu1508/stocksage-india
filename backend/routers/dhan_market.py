@@ -13,10 +13,13 @@ import json
 import os
 from pathlib import Path
 import re
+import struct
 import tempfile
 import time
+from urllib.parse import urlencode
 
 import httpx
+import websockets
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
@@ -77,6 +80,9 @@ CHART_DAILY_FROM_DATE = os.getenv("DHAN_CHART_DAILY_FROM_DATE", "2000-01-01")
 CHART_DEFAULT_EXCHANGE_SEGMENT = os.getenv("DHAN_CHART_DEFAULT_EXCHANGE_SEGMENT", "IDX_I")
 CHART_DEFAULT_INSTRUMENT = os.getenv("DHAN_CHART_DEFAULT_INSTRUMENT", "INDEX")
 CHART_LAST_TICK_TTL = int(os.getenv("DHAN_CHART_LAST_TICK_TTL", "180"))
+DHAN_FULL_DEPTH_20_WS_URL = os.getenv("DHAN_FULL_DEPTH_20_WS_URL", "wss://depth-api-feed.dhan.co/twentydepth")
+DHAN_FULL_DEPTH_200_WS_URL = os.getenv("DHAN_FULL_DEPTH_200_WS_URL", "wss://full-depth-api.dhan.co/twohundreddepth")
+DHAN_FULL_DEPTH_TIMEOUT_SEC = float(os.getenv("DHAN_FULL_DEPTH_TIMEOUT_SEC", "8"))
 ISIN_PATTERN = re.compile(r"^IN[A-Z0-9]{10}$", re.IGNORECASE)
 DHAN_SCRIP_MASTER_URL = os.getenv("DHAN_SCRIP_MASTER_URL", "https://images.dhan.co/api-data/api-scrip-master.csv")
 DHAN_SCRIP_MASTER_TIMEOUT = float(os.getenv("DHAN_SCRIP_MASTER_TIMEOUT", "25"))
@@ -617,6 +623,11 @@ def _to_int(value: object) -> Optional[int]:
         return None
 
 
+def _security_id_for_quote_payload(security_id: str) -> Union[int, str]:
+    parsed = _to_int(security_id)
+    return parsed if parsed is not None else security_id
+
+
 def _extract_ltp_and_ts(raw_payload: dict, exchange_segment: str, security_id: str) -> Dict[str, int | float]:
     candidates: list[dict] = []
 
@@ -689,6 +700,303 @@ def _extract_ltp_and_ts(raw_payload: dict, exchange_segment: str, security_id: s
     return {
         "price": round(price, 4),
         "timestamp": tick_epoch,
+    }
+
+
+def _extract_quote_security_payload(raw_payload: dict, exchange_segment: str, security_id: str) -> dict:
+    candidates: list[dict] = []
+
+    if isinstance(raw_payload, dict):
+        candidates.append(raw_payload)
+        data_value = raw_payload.get("data")
+        if isinstance(data_value, dict):
+            candidates.append(data_value)
+
+    sec_key_candidates = [security_id, str(security_id), str(security_id).lstrip("0")]
+
+    def _find_payload(node: object) -> Optional[dict]:
+        if isinstance(node, dict):
+            for sec in sec_key_candidates:
+                hit = node.get(sec)
+                if isinstance(hit, dict):
+                    return hit
+
+            nested = node.get(exchange_segment)
+            if isinstance(nested, dict):
+                resolved = _find_payload(nested)
+                if resolved:
+                    return resolved
+
+            for value in node.values():
+                resolved = _find_payload(value)
+                if resolved:
+                    return resolved
+
+        if isinstance(node, list):
+            for value in node:
+                resolved = _find_payload(value)
+                if resolved:
+                    return resolved
+        return None
+
+    for candidate in candidates:
+        payload = _find_payload(candidate)
+        if payload:
+            return payload
+
+    raise HTTPException(status_code=502, detail="Unable to parse Dhan quote response for market depth")
+
+
+def _normalize_depth_side(side_payload: object, limit: int) -> list[dict]:
+    rows: list[dict] = []
+    if not isinstance(side_payload, list):
+        return rows
+
+    for row in side_payload:
+        if not isinstance(row, dict):
+            continue
+
+        price = None
+        for key in ["price", "Price", "bid_price", "ask_price", "rate"]:
+            price = _to_float(row.get(key))
+            if price is not None:
+                break
+
+        quantity = None
+        for key in ["quantity", "qty", "Quantity", "volume", "bid_qty", "ask_qty"]:
+            quantity = _to_int(row.get(key))
+            if quantity is not None:
+                break
+
+        orders = None
+        for key in ["orders", "order_count", "Orders", "num_orders"]:
+            orders = _to_int(row.get(key))
+            if orders is not None:
+                break
+
+        if price is None:
+            continue
+
+        rows.append(
+            {
+                "price": round(price, 4),
+                "quantity": int(quantity or 0),
+                "orders": int(orders or 0),
+            }
+        )
+
+        if len(rows) >= limit:
+            break
+
+    return rows
+
+
+def _extract_depth_from_quote(raw_payload: dict, exchange_segment: str, security_id: str, limit: int) -> dict:
+    payload = _extract_quote_security_payload(raw_payload, exchange_segment, security_id)
+
+    depth = payload.get("depth") if isinstance(payload.get("depth"), dict) else None
+    market_depth = payload.get("marketDepth") if isinstance(payload.get("marketDepth"), dict) else None
+
+    buy_side_candidates = [
+        depth.get("buy") if depth else None,
+        depth.get("bids") if depth else None,
+        market_depth.get("buy") if market_depth else None,
+        market_depth.get("bids") if market_depth else None,
+        payload.get("buyDepth"),
+        payload.get("buy"),
+        payload.get("bids"),
+    ]
+    sell_side_candidates = [
+        depth.get("sell") if depth else None,
+        depth.get("offers") if depth else None,
+        depth.get("asks") if depth else None,
+        market_depth.get("sell") if market_depth else None,
+        market_depth.get("offers") if market_depth else None,
+        market_depth.get("asks") if market_depth else None,
+        payload.get("sellDepth"),
+        payload.get("sell"),
+        payload.get("offers"),
+        payload.get("asks"),
+    ]
+
+    buy_rows: list[dict] = []
+    for candidate in buy_side_candidates:
+        buy_rows = _normalize_depth_side(candidate, limit)
+        if buy_rows:
+            break
+
+    sell_rows: list[dict] = []
+    for candidate in sell_side_candidates:
+        sell_rows = _normalize_depth_side(candidate, limit)
+        if sell_rows:
+            break
+
+    if not buy_rows and not sell_rows:
+        raise HTTPException(status_code=502, detail="Dhan quote response did not include market depth rows")
+
+    return {
+        "buy": buy_rows,
+        "sell": sell_rows,
+    }
+
+
+def _build_dhan_full_depth_ws_url(limit: int) -> str:
+    access_token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
+    client_id = os.getenv("DHAN_CLIENT_ID", "").strip()
+
+    if not access_token or not client_id:
+        raise HTTPException(
+            status_code=500,
+            detail="Dhan credentials are not configured. Set DHAN_ACCESS_TOKEN and DHAN_CLIENT_ID.",
+        )
+
+    base = DHAN_FULL_DEPTH_200_WS_URL if limit >= 200 else DHAN_FULL_DEPTH_20_WS_URL
+    query = urlencode(
+        {
+            "token": access_token,
+            "clientId": client_id,
+            "authType": 2,
+        }
+    )
+    return f"{base}?{query}"
+
+
+def _build_dhan_full_depth_subscribe_payload(identity: Dict[str, str], limit: int) -> dict:
+    if limit >= 200:
+        return {
+            "RequestCode": 23,
+            "ExchangeSegment": identity["exchangeSegment"],
+            "SecurityId": str(identity["securityId"]),
+        }
+
+    return {
+        "RequestCode": 23,
+        "InstrumentCount": 1,
+        "InstrumentList": [
+            {
+                "ExchangeSegment": identity["exchangeSegment"],
+                "SecurityId": str(identity["securityId"]),
+            }
+        ],
+    }
+
+
+def _split_full_depth_packets(frame: bytes) -> list[bytes]:
+    packets: list[bytes] = []
+    offset = 0
+    n = len(frame)
+
+    while offset + 2 <= n:
+        msg_len = int.from_bytes(frame[offset:offset + 2], "little", signed=False)
+        if msg_len < 12 or (offset + msg_len) > n:
+            break
+        packets.append(frame[offset:offset + msg_len])
+        offset += msg_len
+
+    if packets:
+        return packets
+
+    if frame:
+        return [frame]
+
+    return []
+
+
+def _parse_full_depth_packet(packet: bytes) -> tuple[Optional[str], list[dict]]:
+    if len(packet) < 12:
+        return None, []
+
+    response_code = packet[2]
+    side: Optional[str]
+    if response_code == 41:
+        side = "buy"
+    elif response_code == 51:
+        side = "sell"
+    else:
+        return None, []
+
+    payload = packet[12:]
+    row_size = 16
+    available_rows = len(payload) // row_size
+    if available_rows <= 0:
+        return side, []
+
+    rows: list[dict] = []
+    for i in range(available_rows):
+        chunk = payload[i * row_size:(i + 1) * row_size]
+        if len(chunk) < row_size:
+            continue
+
+        try:
+            price = float(struct.unpack("<d", chunk[0:8])[0])
+            quantity = int.from_bytes(chunk[8:12], "little", signed=False)
+            orders = int.from_bytes(chunk[12:16], "little", signed=False)
+        except Exception:
+            continue
+
+        # Ignore empty depth rows emitted as zeroed packets.
+        if price <= 0 and quantity <= 0 and orders <= 0:
+            continue
+
+        rows.append(
+            {
+                "price": round(price, 4),
+                "quantity": quantity,
+                "orders": orders,
+            }
+        )
+
+    return side, rows
+
+
+async def _fetch_full_depth_from_ws(identity: Dict[str, str], limit: int) -> dict:
+    ws_url = _build_dhan_full_depth_ws_url(limit)
+    subscribe_payload = _build_dhan_full_depth_subscribe_payload(identity, limit)
+
+    buy_rows: list[dict] = []
+    sell_rows: list[dict] = []
+
+    try:
+        async with asyncio.timeout(max(2.0, DHAN_FULL_DEPTH_TIMEOUT_SEC)):
+            async with websockets.connect(
+                ws_url,
+                ping_interval=20,
+                ping_timeout=20,
+                close_timeout=2,
+                max_size=4_000_000,
+            ) as ws:
+                await ws.send(json.dumps(subscribe_payload))
+
+                while True:
+                    message = await ws.recv()
+
+                    if isinstance(message, str):
+                        continue
+                    if not isinstance(message, (bytes, bytearray)):
+                        continue
+
+                    for packet in _split_full_depth_packets(bytes(message)):
+                        side, rows = _parse_full_depth_packet(packet)
+                        if side == "buy" and rows:
+                            buy_rows = rows
+                        elif side == "sell" and rows:
+                            sell_rows = rows
+
+                    if buy_rows and sell_rows:
+                        break
+    except TimeoutError:
+        raise HTTPException(status_code=502, detail="Timed out while receiving full market depth from Dhan")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Unable to fetch full market depth from Dhan: {str(exc)}")
+
+    if not buy_rows and not sell_rows:
+        raise HTTPException(status_code=502, detail="Dhan full depth feed returned no market depth rows")
+
+    return {
+        "buy": buy_rows[:limit],
+        "sell": sell_rows[:limit],
     }
 
 
@@ -784,6 +1092,57 @@ async def dhan_full_quote(
     payload: SecuritiesRequest,
 ):
     return await _cached_dhan_post("/marketfeed/quote", payload.securities, "quote")
+
+
+@router.get("/quote/depth")
+async def dhan_market_depth(
+    symbol: str = Query(...),
+    limit: int = Query(20, ge=1, le=200),
+    securityId: Optional[str] = Query(None),
+    exchangeSegment: Optional[str] = Query(None),
+    instrument: Optional[str] = Query(None),
+):
+    identity = await _resolve_chart_identity(symbol, securityId, exchangeSegment, instrument)
+
+    # Dhan Full Market Depth (20/200) is a binary websocket feed.
+    full_depth_error: Optional[str] = None
+    if limit >= 20:
+        try:
+            full_depth = await _fetch_full_depth_from_ws(identity, 200 if limit >= 200 else 20)
+            return {
+                "symbol": identity["symbol"],
+                "identity": identity,
+                "source": "live",
+                "mode": "full_depth_ws",
+                "limit": limit,
+                "buy": full_depth["buy"][:limit],
+                "sell": full_depth["sell"][:limit],
+            }
+        except HTTPException as exc:
+            full_depth_error = exc.detail if isinstance(exc.detail, str) else "Full depth feed unavailable"
+
+    quote_payload = {
+        identity["exchangeSegment"]: [_security_id_for_quote_payload(identity["securityId"])],
+    }
+    response = await _cached_dhan_post("/marketfeed/quote", quote_payload, "quote")
+    depth = _extract_depth_from_quote(
+        raw_payload=response.get("data") or {},
+        exchange_segment=identity["exchangeSegment"],
+        security_id=identity["securityId"],
+        limit=limit,
+    )
+
+    return {
+        "symbol": identity["symbol"],
+        "identity": identity,
+        "source": response.get("source"),
+        "mode": "quote_snapshot",
+        "limit": limit,
+        "actualDepthLevels": max(len(depth["buy"]), len(depth["sell"])),
+        "fallbackReason": full_depth_error,
+        "buy": depth["buy"],
+        "sell": depth["sell"],
+    }
 
 
 @router.post("/historical/daily")
@@ -895,7 +1254,7 @@ async def dhan_chart_latest(
     _resolve_timeframe(timeframe)
 
     quote_payload = {
-        identity["exchangeSegment"]: [identity["securityId"]],
+        identity["exchangeSegment"]: [_security_id_for_quote_payload(identity["securityId"])],
     }
 
     try:

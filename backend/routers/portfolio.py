@@ -2,17 +2,369 @@
 Portfolio Router - user-specific holdings management
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional, Literal, Any, cast
+import asyncio
+import time
+import hashlib
+from datetime import timezone
 
 from database import get_db
-from models import PortfolioHolding, User
-from routers.auth import get_current_user
+from models import PortfolioHolding, User, UserSession
+from routers.auth import get_current_user, verify_token
 from routers import strategy_builder as strategy_builder_router
 
 router = APIRouter()
+
+_LIVE_PRICE_CACHE_TTL_SEC = 2.0
+_LIVE_PRICE_CACHE: dict[str, tuple[float, float]] = {}
+
+
+def _cache_get_live_price(cache_key: str) -> Optional[float]:
+    cached = _LIVE_PRICE_CACHE.get(cache_key)
+    if not cached:
+        return None
+
+    value, stored_at = cached
+    if (time.time() - stored_at) > _LIVE_PRICE_CACHE_TTL_SEC:
+        _LIVE_PRICE_CACHE.pop(cache_key, None)
+        return None
+
+    return value
+
+
+def _cache_set_live_price(cache_key: str, value: float) -> None:
+    if value <= 0:
+        return
+    _LIVE_PRICE_CACHE[cache_key] = (value, time.time())
+
+
+def _extract_ltp(payload: Any) -> Optional[float]:
+    """Extract LTP robustly from NSE response variants."""
+    if payload is None:
+        return None
+
+    if isinstance(payload, (int, float)):
+        value = float(payload)
+        return value if value > 0 else None
+
+    if isinstance(payload, str):
+        try:
+            value = float(payload)
+            return value if value > 0 else None
+        except Exception:
+            return None
+
+    if isinstance(payload, list):
+        for item in payload:
+            extracted = _extract_ltp(item)
+            if extracted is not None:
+                return extracted
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+
+    preferred_keys = [
+        "lastPrice",
+        "last",
+        "ltp",
+        "lastTradedPrice",
+        "close",
+    ]
+
+    for key in preferred_keys:
+        if key in payload:
+            extracted = _extract_ltp(payload.get(key))
+            if extracted is not None:
+                return extracted
+
+    nested_keys = ["priceInfo", "metadata", "nearestFuture", "CE", "PE"]
+    for key in nested_keys:
+        if key in payload:
+            extracted = _extract_ltp(payload.get(key))
+            if extracted is not None:
+                return extracted
+
+    # Fallback: scan all values once.
+    for value in payload.values():
+        extracted = _extract_ltp(value)
+        if extracted is not None:
+            return extracted
+
+    return None
+
+
+def _holding_side_multiplier(action: Optional[str], instrument_type: str) -> int:
+    if instrument_type == "EQUITY":
+        return 1
+    return -1 if (action or "").strip().upper() == "SELL" else 1
+
+
+def _find_option_ltp_from_chain(
+    chain_payload: dict,
+    strike: Optional[float],
+    option_type: Optional[str],
+) -> Optional[float]:
+    option_side = (option_type or "CE").strip().upper()
+    rows = chain_payload.get("filtered", {}).get("data") or chain_payload.get("data") or []
+
+    def strike_matches(row_strike: Any) -> bool:
+        if strike is None:
+            return True
+        try:
+            return abs(float(row_strike) - float(strike)) <= 0.01
+        except Exception:
+            return False
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if not strike_matches(row.get("strikePrice") or row.get("strike")):
+            continue
+
+        leg_obj = row.get(option_side)
+        ltp = _extract_ltp(leg_obj)
+        if ltp is not None:
+            return ltp
+
+        # Flat key fallback when CE/PE object is not present.
+        flat_candidates = [
+            f"{option_side}_LTP",
+            f"{option_side}Ltp",
+            f"{option_side.lower()}Ltp",
+            f"{option_side}LastPrice",
+        ]
+        for key in flat_candidates:
+            if key in row:
+                ltp = _extract_ltp(row.get(key))
+                if ltp is not None:
+                    return ltp
+
+    return None
+
+
+async def _resolve_equity_ltp(symbol: str) -> Optional[float]:
+    payload = await strategy_builder_router.get_symbol_live_data(symbol)
+    return _extract_ltp(payload)
+
+
+async def _resolve_future_ltp(symbol: str, expiry: Optional[str]) -> Optional[float]:
+    payload = await strategy_builder_router.get_futures_live_data(symbol=symbol, expiry=expiry)
+
+    if isinstance(payload, dict):
+        # Best effort expiry match if futuresData is available.
+        futures_rows = payload.get("futuresData") or []
+        if expiry and isinstance(futures_rows, list):
+            expiry_upper = expiry.strip().upper()
+            for row in futures_rows:
+                if not isinstance(row, dict):
+                    continue
+                row_expiry = str(row.get("expiryDate") or row.get("expiry") or "").strip().upper()
+                if row_expiry == expiry_upper:
+                    ltp = _extract_ltp(row)
+                    if ltp is not None:
+                        return ltp
+
+        ltp = _extract_ltp(payload.get("nearestFuture"))
+        if ltp is not None:
+            return ltp
+
+    return _extract_ltp(payload)
+
+
+async def _resolve_option_ltp(
+    symbol: str,
+    expiry: Optional[str],
+    strike: Optional[float],
+    option_type: Optional[str],
+) -> Optional[float]:
+    chain = await strategy_builder_router.get_option_chain_live_data(symbol=symbol, expiry=expiry)
+    if isinstance(chain, dict):
+        matched = _find_option_ltp_from_chain(chain, strike=strike, option_type=option_type)
+        if matched is not None:
+            return matched
+    return _extract_ltp(chain)
+
+
+async def _resolve_holding_ltp(model: Any) -> Optional[float]:
+    symbol = (model.symbol or "").strip().upper()
+    instrument_type = (model.instrument_type or "EQUITY").strip().upper()
+
+    cache_key_parts = [
+        symbol,
+        instrument_type,
+        str(model.expiry or ""),
+        str(model.strike or ""),
+        str(model.option_type or ""),
+    ]
+    cache_key = "|".join(cache_key_parts)
+    cached = _cache_get_live_price(cache_key)
+    if cached is not None:
+        return cached
+
+    if instrument_type == "EQUITY":
+        ltp = await _resolve_equity_ltp(symbol)
+    elif instrument_type == "FUTURE":
+        ltp = await _resolve_future_ltp(symbol=symbol, expiry=model.expiry)
+    elif instrument_type == "OPTION":
+        ltp = await _resolve_option_ltp(
+            symbol=symbol,
+            expiry=model.expiry,
+            strike=model.strike,
+            option_type=model.option_type,
+        )
+    else:
+        ltp = await _resolve_equity_ltp(symbol)
+
+    if ltp is not None:
+        _cache_set_live_price(cache_key, ltp)
+    return ltp
+
+
+async def _holding_live_snapshot(model: Any) -> dict:
+    lot_size = _get_lot_size(model.symbol) if model.instrument_type in {"FUTURE", "OPTION"} else 1
+    lots = (model.qty // lot_size) if lot_size > 0 else model.qty
+    invested = float(model.qty) * float(model.avg_price)
+
+    base = {
+        "id": model.id,
+        "symbol": model.symbol,
+        "instrument_type": model.instrument_type,
+        "qty": model.qty,
+        "lots": lots,
+        "lot_size": lot_size,
+        "avg_price": model.avg_price,
+        "invested": round(invested, 2),
+        "expiry": model.expiry,
+        "strike": model.strike,
+        "option_type": model.option_type,
+        "action": model.action,
+        "notes": model.notes,
+        "created_at": model.created_at,
+        "updated_at": model.updated_at,
+    }
+
+    try:
+        live_price = await _resolve_holding_ltp(model)
+    except Exception:
+        live_price = None
+
+    if live_price is None or live_price <= 0:
+        base.update({
+            "live_price": None,
+            "current_value": None,
+            "pnl": None,
+            "pnl_pct": None,
+            "live_available": False,
+        })
+        return base
+
+    side = _holding_side_multiplier(model.action, model.instrument_type)
+    pnl = (float(live_price) - float(model.avg_price)) * float(model.qty) * float(side)
+    current_value = invested + pnl
+    pnl_pct = (pnl / invested * 100.0) if invested > 0 else 0.0
+
+    base.update({
+        "live_price": round(float(live_price), 4),
+        "current_value": round(current_value, 2),
+        "pnl": round(pnl, 2),
+        "pnl_pct": round(pnl_pct, 2),
+        "live_available": True,
+    })
+    return base
+
+
+async def _build_holdings_live_payload(db: Session, current_user: User) -> dict:
+    holdings = (
+        db.query(PortfolioHolding)
+        .filter(PortfolioHolding.user_id == current_user.id)
+        .order_by(PortfolioHolding.created_at.desc())
+        .all()
+    )
+
+    live_rows = await asyncio.gather(*[_holding_live_snapshot(cast(Any, h)) for h in holdings])
+
+    total_invested = 0.0
+    total_current = 0.0
+    total_pnl = 0.0
+    live_count = 0
+
+    for row in live_rows:
+        invested = float(row.get("invested") or 0.0)
+        total_invested += invested
+
+        if row.get("live_available"):
+            live_count += 1
+            total_current += float(row.get("current_value") or 0.0)
+            total_pnl += float(row.get("pnl") or 0.0)
+        else:
+            total_current += invested
+
+    total_pnl_pct = (total_pnl / total_invested * 100.0) if total_invested > 0 else 0.0
+
+    return {
+        "count": len(live_rows),
+        "live_count": live_count,
+        "total_invested": round(total_invested, 2),
+        "total_current_value": round(total_current, 2),
+        "total_pnl": round(total_pnl, 2),
+        "total_pnl_pct": round(total_pnl_pct, 2),
+        "as_of": int(time.time()),
+        "holdings": live_rows,
+    }
+
+
+def _extract_ws_token(websocket: WebSocket) -> Optional[str]:
+    token = str(websocket.query_params.get("token", "")).strip()
+    if token:
+        return token
+
+    auth_header = str(websocket.headers.get("authorization", "")).strip()
+    if auth_header.lower().startswith("bearer "):
+        return auth_header[7:].strip()
+
+    return None
+
+
+def _authenticate_ws_user(token: str, db: Session) -> Optional[User]:
+    payload = verify_token(token)
+    if not payload:
+        return None
+
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    session = (
+        db.query(UserSession)
+        .filter(UserSession.token_hash == token_hash, UserSession.is_valid == True)
+        .first()
+    )
+    if not session:
+        return None
+
+    expires_at = session.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at <= time_now_utc():
+        session.is_valid = False
+        db.commit()
+        return None
+
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user or not user.is_active:
+        return None
+
+    return user
+
+
+def time_now_utc():
+    from datetime import datetime
+    return datetime.now(timezone.utc)
 
 
 def _get_lot_size(symbol: str) -> int:
@@ -176,6 +528,58 @@ async def get_holdings(
         "total_invested": round(total_invested, 2),
         "holdings": result,
     }
+
+
+@router.get("/holdings/live")
+async def get_holdings_live(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return await _build_holdings_live_payload(db, current_user)
+
+
+@router.websocket("/holdings/live/ws")
+async def holdings_live_ws(websocket: WebSocket, db: Session = Depends(get_db)):
+    await websocket.accept()
+
+    token = _extract_ws_token(websocket)
+    if not token:
+        await websocket.send_json({"event": "error", "detail": "Authentication token is required"})
+        await websocket.close(code=1008)
+        return
+
+    current_user = _authenticate_ws_user(token, db)
+    if not current_user:
+        await websocket.send_json({"event": "error", "detail": "Unauthorized"})
+        await websocket.close(code=1008)
+        return
+
+    await websocket.send_json({
+        "event": "subscribed",
+        "stream": "portfolio_live",
+        "interval_sec": 2,
+    })
+
+    failures = 0
+    try:
+        while True:
+            try:
+                payload = await _build_holdings_live_payload(db, current_user)
+                await websocket.send_json({
+                    "event": "portfolio_live_snapshot",
+                    "data": payload,
+                })
+                failures = 0
+            except Exception:
+                failures += 1
+                await websocket.send_json({
+                    "event": "stream_warning",
+                    "detail": "Unable to build live portfolio snapshot",
+                    "failures": failures,
+                })
+            await asyncio.sleep(2)
+    except WebSocketDisconnect:
+        return
 
 
 @router.post("/holdings")
