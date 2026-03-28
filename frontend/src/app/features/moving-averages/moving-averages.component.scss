@@ -1,0 +1,142 @@
+.ma-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.ma-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.ma-header p {
+  margin: 0.3rem 0 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.86rem;
+}
+
+.ma-controls {
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.8rem;
+  background: hsl(var(--card));
+  padding: 0.8rem;
+}
+
+.ma-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: hsl(var(--muted-foreground));
+}
+
+.ma-controls textarea,
+.ma-controls input,
+.ma-controls select {
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.55rem;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  padding: 0.45rem 0.6rem;
+}
+
+.control-row {
+  margin-top: 0.6rem;
+  display: grid;
+  grid-template-columns: auto minmax(180px, 1fr) auto;
+  gap: 0.5rem;
+}
+
+.control-row button {
+  border: 0;
+  border-radius: 0.55rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-weight: 700;
+  padding: 0 0.85rem;
+}
+
+.error {
+  color: #b91c1c;
+  margin: 0;
+}
+
+.ma-table-wrap {
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.8rem;
+  overflow: auto;
+  background: hsl(var(--card));
+}
+
+.ma-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 780px;
+}
+
+.ma-table th,
+.ma-table td {
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid hsl(var(--border));
+  text-align: right;
+  font-size: 0.82rem;
+}
+
+.ma-table th:first-child,
+.ma-table td:first-child,
+.ma-table th:last-child,
+.ma-table td:last-child {
+  text-align: left;
+}
+
+.ma-table th {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.up {
+  color: #15803d;
+}
+
+.down {
+  color: #b91c1c;
+}
+
+.signal {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-weight: 700;
+  font-size: 0.7rem;
+  border: 1px solid hsl(var(--border));
+}
+
+.signal.bullish {
+  color: #15803d;
+  border-color: rgba(21, 128, 61, 0.35);
+}
+
+.signal.bearish {
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.35);
+}
+
+.signal.mixed {
+  color: #b45309;
+  border-color: rgba(180, 83, 9, 0.35);
+}
+
+.row-error td {
+  color: #b91c1c;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 760px) {
+  .control-row {
+    grid-template-columns: 1fr;
+  }
+}

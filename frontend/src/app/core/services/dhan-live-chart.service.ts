@@ -46,11 +46,27 @@ export interface DhanChartRequest {
   instrument?: string;
 }
 
+export interface DhanDepthLevel {
+  price: number;
+  quantity: number;
+  orders: number;
+}
+
+export interface DhanMarketDepthResponse {
+  symbol: string;
+  identity: DhanChartIdentity;
+  source: 'live' | 'cache';
+  limit: number;
+  buy: DhanDepthLevel[];
+  sell: DhanDepthLevel[];
+}
+
 @Injectable({
   providedIn: 'root'
 })
 export class DhanLiveChartService {
   private readonly apiUrl = `${import.meta.env.NG_APP_BACKEND}/api/market/dhan/chart`;
+  private readonly backendUrl = `${import.meta.env.NG_APP_BACKEND}`;
 
   constructor(private http: HttpClient) {}
 
@@ -64,6 +80,95 @@ export class DhanLiveChartService {
     return this.http.get<DhanChartTickResponse>(`${this.apiUrl}/latest`, {
       params: this.buildParams(req),
     });
+  }
+
+  getMarketDepth(req: DhanChartRequest, limit = 20): Observable<DhanMarketDepthResponse> {
+    const params = this.buildParams(req).set('limit', String(Math.max(1, Math.min(200, limit))));
+    return this.http.get<DhanMarketDepthResponse>(`${import.meta.env.NG_APP_BACKEND}/api/market/dhan/quote/depth`, {
+      params,
+    });
+  }
+
+  streamTicks(req: DhanChartRequest): Observable<DhanChartTickResponse> {
+    return new Observable<DhanChartTickResponse>((observer) => {
+      let socket: WebSocket | null = null;
+
+      try {
+        const wsUrl = this.buildWebSocketUrl(req);
+        socket = new WebSocket(wsUrl);
+      } catch (err) {
+        observer.error(err);
+        return;
+      }
+
+      socket.onmessage = (event: MessageEvent<string>) => {
+        try {
+          const raw = JSON.parse(event.data) as Record<string, unknown>;
+          if (raw['event'] !== 'chart_tick') {
+            return;
+          }
+
+          const tick: DhanChartTickResponse = {
+            identity: {
+              symbol: String((raw['identity'] as Record<string, unknown> | undefined)?.['symbol'] ?? req.symbol),
+              securityId: String((raw['identity'] as Record<string, unknown> | undefined)?.['securityId'] ?? req.securityId ?? ''),
+              exchangeSegment: String((raw['identity'] as Record<string, unknown> | undefined)?.['exchangeSegment'] ?? req.exchangeSegment ?? ''),
+              instrument: String((raw['identity'] as Record<string, unknown> | undefined)?.['instrument'] ?? req.instrument ?? ''),
+            },
+            event: 'chart_tick',
+            symbol: String(raw['symbol'] ?? req.symbol),
+            timeframe: String(raw['timeframe'] ?? req.timeframe),
+            timestamp: Number(raw['timestamp'] ?? 0),
+            price: Number(raw['price'] ?? 0),
+            source: (String(raw['source'] ?? 'live') as 'live' | 'cache' | 'stale_cache'),
+          };
+
+          if (!Number.isFinite(tick.timestamp) || !Number.isFinite(tick.price) || tick.price <= 0) {
+            return;
+          }
+
+          observer.next(tick);
+        } catch {
+          // Ignore malformed frames and keep the stream alive.
+        }
+      };
+
+      socket.onerror = () => {
+        observer.error(new Error('WebSocket stream error'));
+      };
+
+      socket.onclose = () => {
+        observer.complete();
+      };
+
+      return () => {
+        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+          socket.close();
+        }
+      };
+    });
+  }
+
+  private buildWebSocketUrl(req: DhanChartRequest): string {
+    const backend = new URL(this.backendUrl);
+    const wsProtocol = backend.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = new URL(`${wsProtocol}//${backend.host}/api/market/dhan/chart/ws`);
+
+    url.searchParams.set('symbol', req.symbol.trim().toUpperCase());
+    url.searchParams.set('timeframe', req.timeframe);
+
+    const normalizedSecurityId = (req.securityId || '').trim();
+    if (/^\d+$/.test(normalizedSecurityId)) {
+      url.searchParams.set('securityId', normalizedSecurityId);
+    }
+    if (req.exchangeSegment) {
+      url.searchParams.set('exchangeSegment', req.exchangeSegment);
+    }
+    if (req.instrument) {
+      url.searchParams.set('instrument', req.instrument);
+    }
+
+    return url.toString();
   }
 
   private buildParams(req: DhanChartRequest): HttpParams {

@@ -16,6 +16,29 @@
         <p class="text-xs uppercase text-muted-foreground font-semibold">Total Invested</p>
         <p class="text-xl font-bold">₹{{ totalInvested | number:'1.2-2' }}</p>
       </div>
+      <div class="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+        <p class="text-xs uppercase text-muted-foreground font-semibold">Current Value</p>
+        <p class="text-xl font-bold">₹{{ totalCurrentValue | number:'1.2-2' }}</p>
+      </div>
+      <div class="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+        <p class="text-xs uppercase text-muted-foreground font-semibold">Live P/L</p>
+        <p class="text-xl font-bold" [class.text-emerald-500]="totalPnl >= 0" [class.text-red-500]="totalPnl < 0">
+          {{ totalPnl >= 0 ? '+' : '' }}₹{{ totalPnl | number:'1.2-2' }}
+          <span class="text-sm">({{ totalPnl >= 0 ? '+' : '' }}{{ totalPnlPct | number:'1.2-2' }}%)</span>
+        </p>
+        <div class="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+          <span class="status-dot" [class.is-live]="liveStatus === 'live'" [class.is-partial]="liveStatus === 'partial'" [class.is-stale]="liveStatus === 'stale'"></span>
+          <span>
+            @if (liveStatus === 'live') {
+            Live
+            } @else if (liveStatus === 'partial') {
+            Partial Live ({{ liveCount }}/{{ holdings.length }})
+            } @else {
+            Waiting for live feed
+            }
+          </span>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -28,9 +51,9 @@
         (ngModelChange)="onSearchTypeChange()"
         class="rounded-lg border border-border bg-background px-3 py-2 text-sm"
       >
-        <option value="derivatives">Search in Derivatives</option>
-        <option value="equity">Search in Equity</option>
-        <option value="etf">Search in ETF</option>
+        <option value="derivatives">Derivatives</option>
+        <option value="equity">Equity</option>
+        <option value="etf">ETF</option>
       </select>
 
       <div class="relative">
@@ -204,6 +227,8 @@
             <th class="py-2">Total Qty</th>
             <th class="py-2">Weighted Avg Price</th>
             <th class="py-2">Total Invested</th>
+            <th class="py-2">Current Value</th>
+            <th class="py-2">Live P/L</th>
           </tr>
         </thead>
         <tbody>
@@ -222,6 +247,11 @@
             </td>
             <td class="py-2">₹{{ m.avgPrice | number:'1.2-2' }}</td>
             <td class="py-2">₹{{ m.invested | number:'1.2-2' }}</td>
+            <td class="py-2">₹{{ m.currentValue | number:'1.2-2' }}</td>
+            <td class="py-2" [class.text-emerald-500]="m.pnl >= 0" [class.text-red-500]="m.pnl < 0">
+              {{ m.pnl >= 0 ? '+' : '' }}₹{{ m.pnl | number:'1.2-2' }}
+              <span class="text-xs">({{ m.pnl >= 0 ? '+' : '' }}{{ m.pnlPct | number:'1.2-2' }}%)</span>
+            </td>
           </tr>
           }
         </tbody>
@@ -249,6 +279,8 @@
             <th class="py-2">Qty</th>
             <th class="py-2">Avg Price</th>
             <th class="py-2">Invested</th>
+            <th class="py-2">Live Price</th>
+            <th class="py-2">Live P/L</th>
             <th class="py-2">Action</th>
           </tr>
         </thead>
@@ -267,6 +299,21 @@
             </td>
             <td class="py-2">₹{{ holding.avg_price | number:'1.2-2' }}</td>
             <td class="py-2">₹{{ holding.invested | number:'1.2-2' }}</td>
+            <td class="py-2">
+              @if (holding.live_available && holding.live_price !== null) {
+              ₹{{ holding.live_price | number:'1.2-2' }}
+              } @else {
+              <span class="text-muted-foreground">--</span>
+              }
+            </td>
+            <td class="py-2" [class.text-emerald-500]="(holding.pnl || 0) >= 0" [class.text-red-500]="(holding.pnl || 0) < 0">
+              @if (holding.live_available && holding.pnl !== null) {
+              {{ (holding.pnl || 0) >= 0 ? '+' : '' }}₹{{ holding.pnl | number:'1.2-2' }}
+              <span class="text-xs">({{ (holding.pnl || 0) >= 0 ? '+' : '' }}{{ holding.pnl_pct | number:'1.2-2' }}%)</span>
+              } @else {
+              <span class="text-muted-foreground">--</span>
+              }
+            </td>
             <td class="py-2">
               <button
                 type="button"

@@ -1,10 +1,11 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { PortfolioService, PortfolioHolding, SymbolSuggestion } from '../../core/services/portfolio.service';
+import { MarketService } from '../../core/services/market.service';
 import { LucideAngularModule } from 'lucide-angular';
-import { Subject, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
+import { Subject, Subscription, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
 
 @Component({
   selector: 'app-portfolio',
@@ -13,7 +14,7 @@ import { Subject, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
   templateUrl: './portfolio.component.html',
   styleUrl: './portfolio.component.scss'
 })
-export class PortfolioComponent implements OnInit {
+export class PortfolioComponent implements OnInit, OnDestroy {
   readonly allInstrumentTypes: Array<'EQUITY' | 'FUTURE' | 'OPTION'> = ['EQUITY', 'FUTURE', 'OPTION'];
   readonly holdingsViewModes: Array<'both' | 'merged' | 'individual'> = ['both', 'merged', 'individual'];
   loading = true;
@@ -21,6 +22,12 @@ export class PortfolioComponent implements OnInit {
   error = '';
   holdings: PortfolioHolding[] = [];
   totalInvested = 0;
+  totalCurrentValue = 0;
+  totalPnl = 0;
+  totalPnlPct = 0;
+  liveCount = 0;
+  lastLiveAsOf: number | null = null;
+  liveStatus: 'live' | 'partial' | 'stale' = 'stale';
   holdingsViewMode: 'both' | 'merged' | 'individual' = 'both';
   symbolSuggestions: SymbolSuggestion[] = [];
   showSymbolSuggestions = false;
@@ -34,6 +41,10 @@ export class PortfolioComponent implements OnInit {
   symbolSearchType: 'derivatives' | 'equity' | 'etf' = 'equity';
 
   private symbolSearch$ = new Subject<string>();
+  private liveRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  private liveWsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private liveMarketCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private liveStreamSub: Subscription | null = null;
 
   form = {
     symbol: '',
@@ -56,7 +67,11 @@ export class PortfolioComponent implements OnInit {
     return raw;
   }
 
-  constructor(private portfolioService: PortfolioService, private router: Router) {}
+  constructor(
+    private portfolioService: PortfolioService,
+    private router: Router,
+    private marketService: MarketService,
+  ) {}
 
   get isDerivative(): boolean {
     return this.form.instrument_type !== 'EQUITY';
@@ -85,6 +100,9 @@ export class PortfolioComponent implements OnInit {
     totalLots: number;
     avgPrice: number;
     invested: number;
+    currentValue: number;
+    pnl: number;
+    pnlPct: number;
     positions: number;
   }> {
     const grouped = new Map<string, {
@@ -94,6 +112,8 @@ export class PortfolioComponent implements OnInit {
       totalQty: number;
       totalLots: number;
       invested: number;
+      currentValue: number;
+      pnl: number;
       positions: number;
     }>();
 
@@ -105,6 +125,12 @@ export class PortfolioComponent implements OnInit {
       const invested = Number.isFinite(Number(holding.invested))
         ? Number(holding.invested)
         : Number(holding.avg_price || 0) * qty;
+      const currentValue = Number.isFinite(Number(holding.current_value))
+        ? Number(holding.current_value)
+        : invested;
+      const pnl = Number.isFinite(Number(holding.pnl))
+        ? Number(holding.pnl)
+        : (currentValue - invested);
 
       if (!existing) {
         grouped.set(key, {
@@ -114,6 +140,8 @@ export class PortfolioComponent implements OnInit {
           totalQty: qty,
           totalLots: lots,
           invested,
+          currentValue,
+          pnl,
           positions: 1,
         });
         continue;
@@ -122,6 +150,8 @@ export class PortfolioComponent implements OnInit {
       existing.totalQty += qty;
       existing.totalLots += lots;
       existing.invested += invested;
+      existing.currentValue += currentValue;
+      existing.pnl += pnl;
       existing.positions += 1;
     }
 
@@ -129,12 +159,16 @@ export class PortfolioComponent implements OnInit {
       .map((item) => ({
         ...item,
         avgPrice: item.totalQty > 0 ? item.invested / item.totalQty : 0,
+        pnlPct: item.invested > 0 ? (item.pnl / item.invested) * 100 : 0,
       }))
       .sort((a, b) => a.symbol.localeCompare(b.symbol));
   }
 
   ngOnInit(): void {
     this.loadHoldings();
+    this.syncLiveConnectivity();
+    this.liveMarketCheckTimer = setInterval(() => this.syncLiveConnectivity(), 60_000);
+
     this.symbolSearch$
       .pipe(
         debounceTime(120),
@@ -151,6 +185,135 @@ export class PortfolioComponent implements OnInit {
           this.showSymbolSuggestions = false;
         }
       });
+  }
+
+  ngOnDestroy(): void {
+    this.stopLiveStream();
+    if (this.liveRefreshTimer) {
+      clearInterval(this.liveRefreshTimer);
+      this.liveRefreshTimer = null;
+    }
+    if (this.liveWsReconnectTimer) {
+      clearTimeout(this.liveWsReconnectTimer);
+      this.liveWsReconnectTimer = null;
+    }
+    if (this.liveMarketCheckTimer) {
+      clearInterval(this.liveMarketCheckTimer);
+      this.liveMarketCheckTimer = null;
+    }
+  }
+
+  private syncLiveConnectivity(): void {
+    this.marketService.getSessionStatus().subscribe({
+      next: (session) => {
+        if (!session?.is_open) {
+          this.stopLiveStream();
+          this.stopPollingFallback();
+          this.liveStatus = 'stale';
+          return;
+        }
+        this.connectLiveStream();
+      },
+      error: () => {
+        // If session check fails, keep existing behavior and avoid interrupting live stream.
+        if (!this.liveStreamSub && !this.liveRefreshTimer) {
+          this.connectLiveStream();
+        }
+      },
+    });
+  }
+
+  private connectLiveStream(): void {
+    const token = localStorage.getItem('access_token') || '';
+    if (!token) {
+      this.startPollingFallback();
+      return;
+    }
+
+    this.stopLiveStream();
+    this.liveStreamSub = this.portfolioService.streamHoldingsLive(token).subscribe({
+      next: (snapshot) => {
+        this.applyLiveSnapshot(snapshot);
+        this.stopPollingFallback();
+      },
+      error: () => {
+        this.startPollingFallback();
+        this.scheduleLiveReconnect();
+      },
+      complete: () => {
+        this.startPollingFallback();
+        this.scheduleLiveReconnect();
+      }
+    });
+  }
+
+  private scheduleLiveReconnect(): void {
+    if (this.liveWsReconnectTimer) {
+      clearTimeout(this.liveWsReconnectTimer);
+    }
+    this.liveWsReconnectTimer = setTimeout(() => {
+      this.syncLiveConnectivity();
+    }, 2500);
+  }
+
+  private stopLiveStream(): void {
+    if (this.liveStreamSub) {
+      this.liveStreamSub.unsubscribe();
+      this.liveStreamSub = null;
+    }
+  }
+
+  private startPollingFallback(): void {
+    if (this.liveRefreshTimer) {
+      return;
+    }
+    this.liveRefreshTimer = setInterval(() => {
+      if (!this.isMarketOpenNow()) {
+        this.stopPollingFallback();
+        this.liveStatus = 'stale';
+        return;
+      }
+      this.loadHoldings(false);
+    }, 4000);
+  }
+
+  private stopPollingFallback(): void {
+    if (this.liveRefreshTimer) {
+      clearInterval(this.liveRefreshTimer);
+      this.liveRefreshTimer = null;
+    }
+  }
+
+  private isMarketOpenNow(): boolean {
+    const now = new Date();
+    const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const istMinutesRaw = utcMinutes + 330;
+    const day = now.getUTCDay();
+
+    const adjustedDay = istMinutesRaw >= 1440 ? (day + 1) % 7 : day;
+    const adjustedMinutes = istMinutesRaw >= 1440 ? istMinutesRaw - 1440 : istMinutesRaw;
+
+    const isWeekday = adjustedDay >= 1 && adjustedDay <= 5;
+    if (!isWeekday) return false;
+
+    const marketOpenMin = 9 * 60 + 15;
+    const marketCloseMin = 15 * 60 + 30;
+    return adjustedMinutes >= marketOpenMin && adjustedMinutes <= marketCloseMin;
+  }
+
+  private applyLiveSnapshot(data: any): void {
+    this.holdings = data.holdings || [];
+    this.totalInvested = Number(data.total_invested || 0);
+    this.totalCurrentValue = Number(data.total_current_value || 0);
+    this.totalPnl = Number(data.total_pnl || 0);
+    this.totalPnlPct = Number(data.total_pnl_pct || 0);
+    this.liveCount = Number(data.live_count || 0);
+    this.lastLiveAsOf = Number(data.as_of || 0);
+    this.liveStatus = this.liveCount === 0
+      ? 'stale'
+      : (this.liveCount === this.holdings.length ? 'live' : 'partial');
+    this.error = '';
+    this.loading = false;
   }
 
   onSymbolInput(value: string): void {
@@ -285,18 +448,33 @@ export class PortfolioComponent implements OnInit {
     }, 150);
   }
 
-  loadHoldings(): void {
-    this.loading = true;
+  loadHoldings(showLoading = true): void {
+    if (showLoading) {
+      this.loading = true;
+    }
     this.error = '';
-    this.portfolioService.getHoldings().subscribe({
+    this.portfolioService.getHoldingsLive().subscribe({
       next: (data) => {
-        this.holdings = data.holdings;
-        this.totalInvested = data.total_invested;
-        this.loading = false;
+        this.applyLiveSnapshot(data);
       },
       error: (err) => {
-        this.loading = false;
-        this.error = err?.error?.detail || 'Unable to fetch holdings right now.';
+        this.portfolioService.getHoldings().subscribe({
+          next: (fallback) => {
+            this.holdings = fallback.holdings;
+            this.totalInvested = fallback.total_invested;
+            this.totalCurrentValue = fallback.total_invested;
+            this.totalPnl = 0;
+            this.totalPnlPct = 0;
+            this.liveCount = 0;
+            this.lastLiveAsOf = null;
+            this.liveStatus = 'stale';
+            this.loading = false;
+          },
+          error: () => {
+            this.loading = false;
+            this.error = err?.error?.detail || 'Unable to fetch holdings right now.';
+          }
+        });
       }
     });
   }

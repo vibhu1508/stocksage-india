@@ -1,0 +1,39 @@
+<section class="ama-page">
+  <header class="ama-header">
+    <h1>After Market Analysis</h1>
+    <p>Explore post-close insights with F&O, stock comparison, and moving averages screeners.</p>
+  </header>
+
+  <nav class="ama-tabs" aria-label="After market tabs">
+    <a
+      routerLink="fo-analysis"
+      routerLinkActive="active"
+      class="ama-tab"
+    >
+      <lucide-icon name="line-chart" [size]="16"></lucide-icon>
+      F&O Analysis
+    </a>
+
+    <a
+      routerLink="stock-comparison"
+      routerLinkActive="active"
+      class="ama-tab"
+    >
+      <lucide-icon name="bar-chart-2" [size]="16"></lucide-icon>
+      Stock Comparison
+    </a>
+
+    <a
+      routerLink="moving-averages"
+      routerLinkActive="active"
+      class="ama-tab"
+    >
+      <lucide-icon name="activity" [size]="16"></lucide-icon>
+      Moving Averages
+    </a>
+  </nav>
+
+  <div class="ama-content">
+    <router-outlet></router-outlet>
+  </div>
+</section>

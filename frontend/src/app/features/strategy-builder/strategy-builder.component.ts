@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { trigger, state, style, transition, animate } from '@angular/animations';
 import { FormsModule } from '@angular/forms';
 import { StrategyService, Position, Strategy, UserStrategies, PortfolioSyncedHolding } from '../../core/services/strategy.service';
+import { MarketService } from '../../core/services/market.service';
 import {
   DhanChartRequest,
   DhanChartTickResponse,
@@ -10,7 +11,7 @@ import {
 } from '../../core/services/dhan-live-chart.service';
 import { Chart, registerables } from 'chart.js';
 import { LucideAngularModule } from 'lucide-angular';
-import { Subject, forkJoin } from 'rxjs';
+import { Subject, Subscription, forkJoin } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import {
   CandlestickData,
@@ -250,8 +251,12 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
   private destroy$ = new Subject<void>();
   private portfolioSyncTimer: ReturnType<typeof setInterval> | null = null;
   private liveTickTimer: ReturnType<typeof setInterval> | null = null;
+  private liveTickStreamSub: Subscription | null = null;
   private liveChartApi: IChartApi | null = null;
   private liveCandleSeries: ISeriesApi<'Candlestick'> | null = null;
+  private lastSessionStatusAt = 0;
+  private lastSessionIsOpen: boolean | null = null;
+  private readonly sessionStatusTtlMs = 60_000;
   private readonly chartSymbolMap: Record<string, { securityId: string; exchangeSegment: string; instrument: string }> = {
     NIFTY: { securityId: '13', exchangeSegment: 'IDX_I', instrument: 'INDEX' },
     BANKNIFTY: { securityId: '25', exchangeSegment: 'IDX_I', instrument: 'INDEX' },
@@ -364,6 +369,7 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
   constructor(
     private strategyService: StrategyService,
     private dhanLiveChartService: DhanLiveChartService,
+    private marketService: MarketService,
   ) {}
 
   ngOnInit() {
@@ -387,6 +393,8 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
       clearInterval(this.liveTickTimer);
       this.liveTickTimer = null;
     }
+    this.liveTickStreamSub?.unsubscribe();
+    this.liveTickStreamSub = null;
     if (this.liveChartApi) {
       this.liveChartApi.remove();
       this.liveChartApi = null;
@@ -611,6 +619,9 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
       return;
     }
 
+    this.liveTickStreamSub?.unsubscribe();
+    this.liveTickStreamSub = null;
+
     if (this.liveTickTimer) {
       clearInterval(this.liveTickTimer);
       this.liveTickTimer = null;
@@ -636,7 +647,7 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
         this.liveChartApi?.timeScale().fitContent();
         this.liveChartUpdatedAt = new Date();
         this.liveChartLoading = false;
-        this.startLiveTickPolling();
+        this.startLiveUpdates();
       },
       error: () => {
         this.liveChartLoading = false;
@@ -645,13 +656,73 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
     });
   }
 
+  private startLiveUpdates() {
+    const now = Date.now();
+    if (this.lastSessionIsOpen !== null && (now - this.lastSessionStatusAt) < this.sessionStatusTtlMs) {
+      if (!this.lastSessionIsOpen) {
+        this.liveChartError = 'Market is closed. Live updates resume during market hours.';
+        return;
+      }
+      this.startLiveTickStream();
+      return;
+    }
+
+    this.marketService.getSessionStatus().subscribe({
+      next: (session) => {
+        this.lastSessionIsOpen = !!session?.is_open;
+        this.lastSessionStatusAt = Date.now();
+
+        if (!this.lastSessionIsOpen) {
+          this.liveChartError = 'Market is closed. Live updates resume during market hours.';
+          return;
+        }
+
+        this.startLiveTickStream();
+      },
+      error: () => {
+        this.startLiveTickStream();
+      },
+    });
+  }
+
+  private startLiveTickStream() {
+    this.liveTickStreamSub?.unsubscribe();
+    this.liveTickStreamSub = this.dhanLiveChartService.streamTicks(this.getLiveChartRequest()).subscribe({
+      next: (tick) => {
+        this.applyLiveTick(tick);
+        this.liveChartError = '';
+      },
+      error: () => {
+        this.liveChartError = 'Live stream disconnected, retrying with polling.';
+        this.startLiveTickPolling();
+      },
+      complete: () => {
+        if (!this.liveTickTimer) {
+          this.startLiveTickPolling();
+        }
+      },
+    });
+  }
+
   private startLiveTickPolling() {
+    this.liveTickStreamSub?.unsubscribe();
+    this.liveTickStreamSub = null;
+
     if (this.liveTickTimer) {
       clearInterval(this.liveTickTimer);
       this.liveTickTimer = null;
     }
 
     this.liveTickTimer = setInterval(() => {
+      if (!this.isMarketOpenNow()) {
+        if (this.liveTickTimer) {
+          clearInterval(this.liveTickTimer);
+          this.liveTickTimer = null;
+        }
+        this.liveChartError = 'Market is closed. Live updates resume during market hours.';
+        return;
+      }
+
       this.dhanLiveChartService.getLatestTick(this.getLiveChartRequest()).subscribe({
         next: (tick) => {
           this.applyLiveTick(tick);
@@ -662,6 +733,23 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
         },
       });
     }, 2000);
+  }
+
+  private isMarketOpenNow(): boolean {
+    const now = new Date();
+    const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const istMinutesRaw = utcMinutes + 330;
+    const day = now.getUTCDay();
+
+    const adjustedDay = istMinutesRaw >= 1440 ? (day + 1) % 7 : day;
+    const adjustedMinutes = istMinutesRaw >= 1440 ? istMinutesRaw - 1440 : istMinutesRaw;
+
+    const isWeekday = adjustedDay >= 1 && adjustedDay <= 5;
+    if (!isWeekday) return false;
+
+    const marketOpenMin = 9 * 60 + 15;
+    const marketCloseMin = 15 * 60 + 30;
+    return adjustedMinutes >= marketOpenMin && adjustedMinutes <= marketCloseMin;
   }
 
   private applyLiveTick(tick: DhanChartTickResponse) {

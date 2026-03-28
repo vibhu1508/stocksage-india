@@ -942,6 +942,76 @@ async def dhan_chart_latest(
     }
 
 
+@router.websocket("/chart/ws")
+async def dhan_chart_ws(websocket: WebSocket):
+    await websocket.accept()
+
+    symbol = str(websocket.query_params.get("symbol", "")).strip().upper()
+    timeframe = str(websocket.query_params.get("timeframe", "5")).strip().upper()
+    security_id = websocket.query_params.get("securityId")
+    exchange_segment = websocket.query_params.get("exchangeSegment")
+    instrument = websocket.query_params.get("instrument")
+
+    if not symbol:
+        await websocket.send_json({"event": "error", "detail": "Symbol is required"})
+        await websocket.close(code=1008)
+        return
+
+    if timeframe == CHART_DAILY_TIMEFRAME:
+        await websocket.send_json(
+            {
+                "event": "error",
+                "detail": "Daily timeframe is not streamable. Use chart/bootstrap for daily candles.",
+            }
+        )
+        await websocket.close(code=1008)
+        return
+
+    try:
+        _resolve_timeframe(timeframe)
+    except HTTPException as exc:
+        await websocket.send_json({"event": "error", "detail": exc.detail})
+        await websocket.close(code=1008)
+        return
+
+    await websocket.send_json(
+        {
+            "event": "subscribed",
+            "symbol": symbol,
+            "timeframe": timeframe,
+        }
+    )
+
+    failures = 0
+    try:
+        while True:
+            try:
+                tick = await dhan_chart_latest(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    securityId=security_id,
+                    exchangeSegment=exchange_segment,
+                    instrument=instrument,
+                )
+                await websocket.send_json(tick)
+                failures = 0
+            except HTTPException as exc:
+                failures += 1
+                await websocket.send_json(
+                    {
+                        "event": "stream_warning",
+                        "symbol": symbol,
+                        "timeframe": timeframe,
+                        "detail": exc.detail,
+                        "failures": failures,
+                    }
+                )
+
+            await asyncio.sleep(1.5)
+    except WebSocketDisconnect:
+        return
+
+
 @router.post("/cache/warm")
 async def warm_market_cache(
     payload: CacheWarmRequest,

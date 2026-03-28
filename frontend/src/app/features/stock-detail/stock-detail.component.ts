@@ -5,12 +5,18 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 import {
+  AreaSeries,
+  BaselineSeries,
+  BarSeries,
+  BarData,
   CandlestickData,
   CandlestickSeries,
   ColorType,
   CrosshairMode,
   IChartApi,
   ISeriesApi,
+  LineData,
+  LineSeries,
   MouseEventParams,
   Time,
   UTCTimestamp,
@@ -27,8 +33,11 @@ import {
   ChartTimeframe,
   DhanChartRequest,
   DhanChartTickResponse,
+  DhanDepthLevel,
   DhanLiveChartService,
 } from '../../core/services/dhan-live-chart.service';
+
+type ChartDisplayType = 'candlestick' | 'line' | 'bar' | 'area' | 'baseline';
 
 @Component({
   selector: 'app-stock-detail',
@@ -52,9 +61,11 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   liveChartLoading = false;
   liveChartError = '';
   liveChartUpdatedAt: Date | null = null;
+  liveTransportStatus: 'idle' | 'connecting' | 'ws' | 'polling' | 'closed' = 'idle';
   liveLastPrice = 0;
   liveCandleCount = 0;
   liveResolvedTimeframe: ChartTimeframe = '5';
+  chartType: ChartDisplayType = 'candlestick';
   dailyRange: '1D' | '5D' | '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | '10Y' | 'MAX' = 'MAX';
   readonly dailyRangeOptions: Array<'1D' | '5D' | '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | '10Y' | 'MAX'> =
     ['1D', '5D', '1M', '3M', '6M', '1Y', '2Y', '5Y', '10Y', 'MAX'];
@@ -66,14 +77,21 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   quickAddSaving = false;
   quickAddError = '';
   quickAddSuccess = '';
+  marketDepthLoading = false;
+  marketDepthError = '';
+  marketDepthLimit = 20;
+  marketDepthBuy: DhanDepthLevel[] = [];
+  marketDepthSell: DhanDepthLevel[] = [];
   hoveredCandle: CandlestickData | null = null;
   lastVisibleCandle: CandlestickData | null = null;
 
   private routeSub?: Subscription;
   private chartApi: IChartApi | null = null;
-  private candleSeries: ISeriesApi<'Candlestick'> | null = null;
+  private mainSeries: ISeriesApi<any> | null = null;
+  private liveCandles: CandlestickData[] = [];
   private resizeObserver: ResizeObserver | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
+  private tickStreamSub: Subscription | null = null;
   private tickFailureCount = 0;
   private themeSub?: Subscription;
   private isDarkTheme = false;
@@ -88,14 +106,38 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     MIDCPNIFTY: { securityId: '442', exchangeSegment: 'IDX_I', instrument: 'INDEX' },
   };
   private readonly onCrosshairMove = (param: MouseEventParams<Time>) => {
-    if (!this.candleSeries) return;
+    const unix = this.toUnixFromChartTime(param.time as Time);
+    if (!unix || this.liveCandles.length === 0) {
+      this.hoveredCandle = null;
+      return;
+    }
 
-    const candle = param.seriesData.get(this.candleSeries) as CandlestickData | undefined;
-    this.hoveredCandle = candle ?? null;
+    const found = this.liveCandles.find((c) => Number(c.time) === unix) || null;
+    this.hoveredCandle = found;
   };
 
   get activeCandle(): CandlestickData | null {
     return this.hoveredCandle ?? this.lastVisibleCandle;
+  }
+
+  get liveTransportLabel(): string {
+    switch (this.liveTransportStatus) {
+      case 'ws':
+        return 'Live';
+      case 'polling':
+        return 'Polling';
+      case 'closed':
+        return 'Closed';
+      case 'connecting':
+        return 'Connecting';
+      case 'idle':
+      default:
+        return 'Idle';
+    }
+  }
+
+  get liveTransportClass(): string {
+    return `transport-${this.liveTransportStatus}`;
   }
 
   constructor(
@@ -130,6 +172,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.performanceData = null;
       this.liveChartError = '';
       this.liveChartUpdatedAt = null;
+      this.liveTransportStatus = 'idle';
       this.liveLastPrice = 0;
       this.liveCandleCount = 0;
       this.liveResolvedTimeframe = this.liveTimeframe;
@@ -141,12 +184,17 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.quickAddSaving = false;
       this.quickAddError = '';
       this.quickAddSuccess = '';
+      this.marketDepthError = '';
+      this.marketDepthBuy = [];
+      this.marketDepthSell = [];
+      this.marketDepthLimit = 20;
       this.candleCache.clear();
 
       this.loadQuote();
       this.loadAnnouncements();
       this.loadYearwiseData();
       this.reloadLiveChart();
+      this.loadMarketDepth(20);
     });
   }
 
@@ -165,7 +213,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.chartApi.remove();
       this.chartApi = null;
     }
-    this.candleSeries = null;
+    this.mainSeries = null;
   }
 
   setLiveTimeframe(tf: ChartTimeframe): void {
@@ -175,6 +223,20 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.dailyRange = 'MAX';
     }
     this.reloadLiveChart();
+  }
+
+  setChartType(type: ChartDisplayType): void {
+    if (this.chartType === type) return;
+    this.chartType = type;
+    this.recreateMainSeries();
+    this.applyCandlesToChart(this.liveCandles, this.liveResolvedTimeframe, false);
+  }
+
+  setDepthLimit(limit: 20 | 200): void {
+    if (this.marketDepthLimit === limit && (this.marketDepthBuy.length || this.marketDepthSell.length)) {
+      return;
+    }
+    this.loadMarketDepth(limit);
   }
 
   setDailyRange(range: '1D' | '5D' | '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | '10Y' | 'MAX'): void {
@@ -265,6 +327,11 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     const trade = this.quote?.tradeInfo || {};
     const price = this.quote?.priceInfo || {};
     const security = this.quote?.securityInfo || {};
+    const candles = this.getIndicatorSourceCandles();
+    const ma50 = this.calculateLastMAValue(candles, 50);
+    const ma100 = this.calculateLastMAValue(candles, 100);
+    const ma200 = this.calculateLastMAValue(candles, 200);
+    const momentum10 = this.calculateLastMomentumValue(candles, 10);
 
     return [
       { label: 'Open', value: this.formatNumber(trade.open || this.quote?.open) },
@@ -276,6 +343,10 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       { label: 'Traded Value', value: this.formatIndianNumber(trade.totalTradedValue) },
       { label: '52W High', value: this.formatNumber(price.weekHighLow?.max) },
       { label: '52W Low', value: this.formatNumber(price.weekHighLow?.min) },
+      { label: 'MA 50', value: this.formatNumber(ma50) },
+      { label: 'MA 100', value: this.formatNumber(ma100) },
+      { label: 'MA 200', value: this.formatNumber(ma200) },
+      { label: 'Momentum (10)', value: this.formatSignedNumber(momentum10) },
       { label: 'Face Value', value: this.formatNumber(security.faceValue || trade.faceValue) },
       { label: 'P/E', value: this.formatNumber(security.pdSymbolPe || security.pdSectorPe) },
       { label: 'Industry', value: security.basicIndustry || security.industryInfo || '--' },
@@ -350,7 +421,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.chartApi.unsubscribeCrosshairMove(this.onCrosshairMove);
       this.chartApi.remove();
       this.chartApi = null;
-      this.candleSeries = null;
+      this.mainSeries = null;
     }
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
@@ -398,13 +469,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       },
     });
 
-    this.candleSeries = this.chartApi.addSeries(CandlestickSeries, {
-      upColor: '#16a34a',
-      downColor: '#dc2626',
-      borderVisible: false,
-      wickUpColor: '#16a34a',
-      wickDownColor: '#dc2626',
-    });
+    this.recreateMainSeries();
 
     this.resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -487,8 +552,109 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     return `${symbol}:${timeframe}`;
   }
 
-  private applyCandlesToChart(candles: CandlestickData[], resolved: ChartTimeframe): void {
-    this.candleSeries?.setData(candles);
+  private toLineData(candles: CandlestickData[]): Array<LineData<UTCTimestamp>> {
+    return candles.map((c) => ({ time: c.time as UTCTimestamp, value: Number(c.close) }));
+  }
+
+  private toBarData(candles: CandlestickData[]): Array<BarData<UTCTimestamp>> {
+    return candles.map((c) => ({
+      time: c.time as UTCTimestamp,
+      open: Number(c.open),
+      high: Number(c.high),
+      low: Number(c.low),
+      close: Number(c.close),
+    }));
+  }
+
+  private recreateMainSeries(): void {
+    if (!this.chartApi) return;
+    if (this.mainSeries) {
+      this.chartApi.removeSeries(this.mainSeries);
+      this.mainSeries = null;
+    }
+
+    switch (this.chartType) {
+      case 'line':
+        this.mainSeries = this.chartApi.addSeries(LineSeries, {
+          color: '#0ea5e9',
+          lineWidth: 2,
+        });
+        break;
+      case 'bar':
+        this.mainSeries = this.chartApi.addSeries(BarSeries, {
+          upColor: '#16a34a',
+          downColor: '#dc2626',
+        });
+        break;
+      case 'area':
+        this.mainSeries = this.chartApi.addSeries(AreaSeries, {
+          lineColor: '#0284c7',
+          topColor: 'rgba(2, 132, 199, 0.25)',
+          bottomColor: 'rgba(2, 132, 199, 0.02)',
+        });
+        break;
+      case 'baseline':
+        this.mainSeries = this.chartApi.addSeries(BaselineSeries, {
+          topLineColor: '#16a34a',
+          topFillColor1: 'rgba(22, 163, 74, 0.18)',
+          topFillColor2: 'rgba(22, 163, 74, 0.04)',
+          bottomLineColor: '#dc2626',
+          bottomFillColor1: 'rgba(220, 38, 38, 0.18)',
+          bottomFillColor2: 'rgba(220, 38, 38, 0.04)',
+          baseValue: { type: 'price', price: this.liveLastPrice || this.lastPrice || 0 },
+        });
+        break;
+      case 'candlestick':
+      default:
+        this.mainSeries = this.chartApi.addSeries(CandlestickSeries, {
+          upColor: '#16a34a',
+          downColor: '#dc2626',
+          borderVisible: false,
+          wickUpColor: '#16a34a',
+          wickDownColor: '#dc2626',
+        });
+        break;
+    }
+  }
+
+  private getIndicatorSourceCandles(): CandlestickData[] {
+    const dailyCache = this.candleCache.get(this.getChartCacheKey(this.symbol, 'D'));
+    if (dailyCache && Array.isArray(dailyCache.candles) && dailyCache.candles.length > 0) {
+      return dailyCache.candles;
+    }
+    return this.liveCandles;
+  }
+
+  private calculateLastMAValue(candles: CandlestickData[], length: number): number | null {
+    if (!Array.isArray(candles) || candles.length < length) return null;
+    let sum = 0;
+    for (let i = candles.length - length; i < candles.length; i++) {
+      const close = Number(candles[i].close);
+      if (!Number.isFinite(close)) return null;
+      sum += close;
+    }
+    return sum / length;
+  }
+
+  private calculateLastMomentumValue(candles: CandlestickData[], length: number): number | null {
+    if (!Array.isArray(candles) || candles.length <= length) return null;
+    const latest = Number(candles[candles.length - 1].close);
+    const previous = Number(candles[candles.length - 1 - length].close);
+    if (!Number.isFinite(latest) || !Number.isFinite(previous)) return null;
+    return latest - previous;
+  }
+
+  private applyCandlesToChart(candles: CandlestickData[], resolved: ChartTimeframe, fit = true): void {
+    this.liveCandles = candles;
+    if (this.mainSeries) {
+      if (this.chartType === 'candlestick') {
+        this.mainSeries.setData(candles as any);
+      } else if (this.chartType === 'bar') {
+        this.mainSeries.setData(this.toBarData(candles) as any);
+      } else {
+        this.mainSeries.setData(this.toLineData(candles) as any);
+      }
+    }
     this.lastVisibleCandle = candles.length > 0 ? candles[candles.length - 1] : null;
     if (!this.hoveredCandle) {
       this.hoveredCandle = this.lastVisibleCandle;
@@ -498,8 +664,65 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     if (candles.length > 0) {
       this.liveLastPrice = candles[candles.length - 1].close;
     }
-    this.chartApi?.timeScale().fitContent();
+    if (fit) {
+      this.chartApi?.timeScale().fitContent();
+    }
     this.liveChartUpdatedAt = new Date();
+  }
+
+  private mergeTickIntoCandles(candles: CandlestickData[], tick: DhanChartTickResponse): CandlestickData[] {
+    const intervalMinutes = Number(this.liveResolvedTimeframe || this.liveTimeframe);
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
+      return candles;
+    }
+
+    const bucketSize = intervalMinutes * 60;
+    const bucketStart = Math.floor(Number(tick.timestamp) / bucketSize) * bucketSize;
+    const price = Number(tick.price);
+    if (!Number.isFinite(price) || price <= 0) {
+      return candles;
+    }
+
+    const next = [...candles];
+    const last = next[next.length - 1];
+    if (last && Number(last.time) === bucketStart) {
+      next[next.length - 1] = {
+        time: bucketStart as UTCTimestamp,
+        open: Number(last.open),
+        high: Math.max(Number(last.high), price),
+        low: Math.min(Number(last.low), price),
+        close: price,
+      };
+      return next;
+    }
+
+    next.push({
+      time: bucketStart as UTCTimestamp,
+      open: price,
+      high: price,
+      low: price,
+      close: price,
+    });
+    return next;
+  }
+
+  private loadMarketDepth(limit: 20 | 200): void {
+    this.marketDepthLoading = true;
+    this.marketDepthError = '';
+    this.marketDepthLimit = limit;
+
+    const req = this.getLiveChartRequest();
+    this.dhanLiveChartService.getMarketDepth(req, limit).subscribe({
+      next: (res) => {
+        this.marketDepthBuy = Array.isArray(res.buy) ? res.buy : [];
+        this.marketDepthSell = Array.isArray(res.sell) ? res.sell : [];
+        this.marketDepthLoading = false;
+      },
+      error: (err: HttpErrorResponse) => {
+        this.marketDepthLoading = false;
+        this.marketDepthError = err?.error?.detail || 'Market depth is unavailable right now.';
+      },
+    });
   }
 
   private getRangeDays(range: '1D' | '5D' | '1M' | '3M' | '6M' | '1Y' | '2Y' | '5Y' | '10Y' | 'MAX'): number | null {
@@ -561,19 +784,21 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private reloadLiveChart(): void {
-    if (!this.symbol || !this.candleSeries) return;
+    if (!this.symbol || !this.mainSeries) return;
 
     this.stopTickTimer();
     this.tickFailureCount = 0;
     this.liveChartLoading = true;
     this.liveChartError = '';
+    this.liveTransportStatus = this.liveTimeframe === 'D' ? 'idle' : 'connecting';
 
     const cacheKey = this.getChartCacheKey(this.symbol, this.liveTimeframe);
     const cached = this.candleCache.get(cacheKey);
     if (cached && cached.candles.length > 0) {
       const visibleCandles = cached.resolvedTimeframe === 'D' ? this.filterDailyCandles(cached.candles) : cached.candles;
-      this.applyCandlesToChart(visibleCandles, cached.resolvedTimeframe);
+      this.applyCandlesToChart(visibleCandles, cached.resolvedTimeframe, true);
       this.liveChartLoading = false;
+      this.liveTransportStatus = cached.resolvedTimeframe === 'D' ? 'idle' : 'connecting';
       this.startTickTimer(2000);
       return;
     }
@@ -620,10 +845,11 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
         });
 
         const visibleCandles = safeResolved === 'D' ? this.filterDailyCandles(candles) : candles;
-        this.applyCandlesToChart(visibleCandles, safeResolved);
+        this.applyCandlesToChart(visibleCandles, safeResolved, true);
         this.liveChartLoading = false;
         if (safeResolved === 'D') {
           this.liveChartError = '';
+          this.liveTransportStatus = 'idle';
           return;
         }
         this.startTickTimer(2000);
@@ -631,6 +857,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       error: (err: HttpErrorResponse) => {
         this.liveChartLoading = false;
         this.liveChartError = this.resolveChartErrorMessage(err);
+        this.liveTransportStatus = 'idle';
       },
     });
   }
@@ -639,6 +866,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     this.stopTickTimer();
 
     if (this.liveResolvedTimeframe === 'D') {
+      this.liveTransportStatus = 'idle';
       return;
     }
 
@@ -646,9 +874,10 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.lastSessionIsOpen !== null && (now - this.lastSessionStatusAt) < this.sessionStatusTtlMs) {
       if (!this.lastSessionIsOpen) {
         this.liveChartError = 'Market is closed. Live updates will resume on the next trading session.';
+        this.liveTransportStatus = 'closed';
         return;
       }
-      this.startTickInterval(intervalMs);
+      this.startTickStream(intervalMs);
       return;
     }
 
@@ -659,22 +888,54 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
 
         if (!this.lastSessionIsOpen) {
           this.liveChartError = 'Market is closed. Live updates will resume on the next trading session.';
+          this.liveTransportStatus = 'closed';
           return;
         }
 
-        this.startTickInterval(intervalMs);
+        this.startTickStream(intervalMs);
       },
       error: () => {
         this.liveChartError = 'Live updates are unavailable right now.';
+        this.liveTransportStatus = 'polling';
+      },
+    });
+  }
+
+  private startTickStream(fallbackIntervalMs: number): void {
+    const tickReq: DhanChartRequest = {
+      ...this.getLiveChartRequest(),
+      timeframe: this.liveResolvedTimeframe,
+    };
+
+    this.tickStreamSub?.unsubscribe();
+    this.liveTransportStatus = 'connecting';
+    this.tickStreamSub = this.dhanLiveChartService.streamTicks(tickReq).subscribe({
+      next: (tick) => {
+        this.tickFailureCount = 0;
+        this.liveChartError = '';
+        this.liveTransportStatus = 'ws';
+        this.applyTick(tick);
+      },
+      error: () => {
+        this.liveChartError = 'Live stream disconnected, falling back to polling.';
+        this.liveTransportStatus = 'polling';
+        this.startTickInterval(Math.max(2000, fallbackIntervalMs));
+      },
+      complete: () => {
+        if (!this.tickTimer) {
+          this.startTickInterval(Math.max(2000, fallbackIntervalMs));
+        }
       },
     });
   }
 
   private startTickInterval(intervalMs: number): void {
+    this.liveTransportStatus = 'polling';
     this.tickTimer = setInterval(() => {
           if (!this.isMarketOpenNow()) {
             this.stopTickTimer();
             this.liveChartError = 'Market is closed. Live updates will resume on the next trading session.';
+            this.liveTransportStatus = 'closed';
             return;
           }
 
@@ -687,6 +948,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
             next: (tick) => {
               this.tickFailureCount = 0;
               this.liveChartError = '';
+              this.liveTransportStatus = 'polling';
               this.applyTick(tick);
             },
             error: (_err: HttpErrorResponse) => {
@@ -711,6 +973,9 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private stopTickTimer(): void {
+    this.tickStreamSub?.unsubscribe();
+    this.tickStreamSub = null;
+
     if (!this.tickTimer) return;
     clearInterval(this.tickTimer);
     this.tickTimer = null;
@@ -735,27 +1000,21 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private applyTick(tick: DhanChartTickResponse): void {
-    if (!this.candleSeries) return;
+    if (!this.mainSeries) return;
 
-    const intervalMinutes = Number(this.liveResolvedTimeframe || this.liveTimeframe);
-    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
-
-    const bucketSize = intervalMinutes * 60;
-    const bucketStart = Math.floor(Number(tick.timestamp) / bucketSize) * bucketSize;
-    const price = Number(tick.price);
-    if (!Number.isFinite(price) || price <= 0) return;
-
-    const candle: CandlestickData = {
-      time: bucketStart as UTCTimestamp,
-      open: price,
-      high: price,
-      low: price,
-      close: price,
-    };
-
-    this.candleSeries.update(candle);
-    this.liveLastPrice = price;
+    const merged = this.mergeTickIntoCandles(this.liveCandles, tick);
+    this.applyCandlesToChart(merged, this.liveResolvedTimeframe, false);
+    this.liveLastPrice = Number(tick.price);
     this.liveChartUpdatedAt = new Date(Number(tick.timestamp) * 1000);
+
+    const cacheKey = this.getChartCacheKey(this.symbol, this.liveTimeframe);
+    const cached = this.candleCache.get(cacheKey);
+    if (cached) {
+      cached.candles = merged;
+      cached.lastPrice = this.liveLastPrice;
+      cached.updatedAt = new Date();
+      this.candleCache.set(cacheKey, cached);
+    }
   }
 
   private toUnixFromChartTime(time: Time): number {
@@ -809,6 +1068,13 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     const n = Number(value);
     if (!Number.isFinite(n)) return '--';
     return n.toLocaleString('en-IN');
+  }
+
+  private formatSignedNumber(value: unknown): string {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '--';
+    const abs = Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+    return `${n >= 0 ? '+' : '-'}${abs}`;
   }
 
   private resolveChartErrorMessage(err: HttpErrorResponse): string {

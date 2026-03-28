@@ -39,7 +39,7 @@
 
 .symbol-pill {
   display: inline-block;
-  background: #1e3a8a;
+  background: hsl(var(--primary));
   color: #fff;
   border-radius: 999px;
   padding: 0.2rem 0.7rem;
@@ -140,8 +140,8 @@
 .quick-add-form button {
   border: 0;
   border-radius: 0.45rem;
-  background: #1e40af;
-  color: #fff;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
   padding: 0.42rem 0.8rem;
   font-weight: 700;
   cursor: pointer;
@@ -159,6 +159,12 @@
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.control-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
 }
 
 .chart-header h2,
@@ -187,7 +193,7 @@
 }
 
 .tf-group button.active {
-  background: #1e40af;
+  background: hsl(var(--primary));
   color: #fff;
 }
 
@@ -210,8 +216,8 @@
 }
 
 .range-group button.active {
-  border-color: #1e40af;
-  background: #1e40af;
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary));
   color: #fff;
 }
 
@@ -266,9 +272,96 @@
   gap: 0.6rem;
 }
 
+.transport-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.14rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.transport-badge .dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 999px;
+  background: #64748b;
+}
+
+.transport-ws .dot {
+  background: #16a34a;
+  animation: live-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.transport-polling .dot,
+.transport-connecting .dot {
+  background: #f59e0b;
+}
+
+.transport-closed .dot,
+.transport-idle .dot {
+  background: #6b7280;
+}
+
+@keyframes live-dot-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.7;
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.45);
+  }
+  70% {
+    transform: scale(1.2);
+    opacity: 1;
+    box-shadow: 0 0 0 6px rgba(22, 163, 74, 0);
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0.7;
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0);
+  }
+}
+
 .chart-state {
   margin: 0.6rem 0 0;
   color: #64748b;
+}
+
+.depth-grid {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.depth-grid h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.92rem;
+  color: #0f172a;
+}
+
+.depth-grid table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.depth-grid th,
+.depth-grid td {
+  padding: 0.36rem 0.45rem;
+  text-align: right;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.8rem;
+}
+
+.depth-grid th {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.depth-grid td {
+  color: #0f172a;
 }
 
 .chart-state.success {
@@ -432,7 +525,7 @@
 
 .ann-item a,
 .ann-head a {
-  color: #1d4ed8;
+  color: hsl(var(--primary));
   text-decoration: none;
   font-weight: 600;
 }
@@ -466,7 +559,9 @@
 :host-context(.dark) .quick-add-head h2,
 :host-context(.dark) .perf-head h2,
 :host-context(.dark) .stat-card .v,
-:host-context(.dark) .ann-item .subject {
+:host-context(.dark) .ann-item .subject,
+:host-context(.dark) .depth-grid h3,
+:host-context(.dark) .depth-grid td {
   color: hsl(var(--foreground));
 }
 
@@ -479,8 +574,14 @@
 :host-context(.dark) .stat-card .k,
 :host-context(.dark) .value-label,
 :host-context(.dark) .perf-item .k,
-:host-context(.dark) .custom-range-row label {
+:host-context(.dark) .custom-range-row label,
+:host-context(.dark) .depth-grid th {
   color: hsl(var(--muted-foreground));
+}
+
+:host-context(.dark) .depth-grid th,
+:host-context(.dark) .depth-grid td {
+  border-color: hsl(var(--border));
 }
 
 :host-context(.dark) .quick-add-form label {
@@ -500,14 +601,14 @@
 
 :host-context(.dark) .range-group button.active,
 :host-context(.dark) .tf-group button.active {
-  background: #2563eb;
-  border-color: #2563eb;
+  background: hsl(var(--primary));
+  border-color: hsl(var(--primary));
   color: #fff;
 }
 
 :host-context(.dark) .ann-item a,
 :host-context(.dark) .ann-head a {
-  color: #93c5fd;
+  color: hsl(var(--primary));
 }
 
 @media (max-width: 1024px) {
@@ -531,5 +632,9 @@
 
   .price-wrap {
     text-align: left;
+  }
+
+  .depth-grid {
+    grid-template-columns: 1fr;
   }
 }

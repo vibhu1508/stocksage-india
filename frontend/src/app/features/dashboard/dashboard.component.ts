@@ -42,8 +42,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private loserTimer?: any;
 
   quickActions = [
-    { label: 'Compare Stocks', description: 'Analyze price changes between dates', icon: 'bar-chart-2', route: '/stocks' },
-    { label: 'F&O Analysis', description: 'View futures and options data', icon: 'line-chart', route: '/fo' },
+    { label: 'Watchlist', description: 'Track symbols with chart and market depth', icon: 'bar-chart-2', route: '/stocks' },
+    { label: 'After Market Analysis', description: 'F&O, stock comparison, and moving averages', icon: 'line-chart', route: '/after-market-analysis' },
     { label: 'Strategy Builder', description: 'Build and analyze option strategies', icon: 'pencil-ruler', route: '/strategy-builder' },
     { label: 'NSE Announcements', description: 'Latest corporate filings', icon: 'megaphone', route: '/announcements' },
     { label: 'Learn', description: 'Videos by Girish Gupta', icon: 'graduation-cap', route: '/learn' }

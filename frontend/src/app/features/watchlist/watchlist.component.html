@@ -1,0 +1,212 @@
+<section class="watch-page">
+  <header class="watch-header">
+    <div>
+      <h1>Watchlist</h1>
+      <p>Track symbols with instant chart and market depth actions.</p>
+    </div>
+
+    <div class="watch-meta">
+      <span class="transport" [class]="'transport ' + transportClass">{{ transportLabel }}</span>
+      <span>Source: {{ chartSourceLabel }}</span>
+      <span>Last: {{ formatPrice(liveLastPrice) }}</span>
+      <span>Candles: {{ liveCandleCount }}</span>
+    </div>
+  </header>
+
+  <div class="watch-layout">
+    <aside class="watch-sidebar">
+      <div class="sidebar-card">
+        <h3>Watchlist Symbols</h3>
+        <div class="add-symbol-row">
+          <div class="add-input-wrap">
+            <input
+              type="text"
+              [(ngModel)]="watchInput"
+              (input)="onWatchInputChange()"
+              (keyup.enter)="addWatchSymbol()"
+              (blur)="hideWatchSuggestions()"
+              placeholder="Search/add stock or option symbol"
+            />
+            <button class="add-btn" (click)="addWatchSymbol()">Add</button>
+          </div>
+
+          @if (showWatchSuggestions && watchSuggestions.length > 0) {
+          <div class="add-suggestions">
+            @for (s of watchSuggestions; track s.symbol) {
+            <button (mousedown)="selectWatchSuggestion(s.symbol)">
+              <span>{{ s.symbol }}</span>
+              <small>{{ s.name }}</small>
+            </button>
+            }
+          </div>
+          }
+
+          @if (watchInputError) {
+          <p class="error add-error">{{ watchInputError }}</p>
+          }
+        </div>
+
+        <p class="selected-hint">Selected: <strong>{{ selectedSymbol }}</strong></p>
+        <div class="symbol-list">
+          @for (symbol of pagedWatchSymbols; track trackBySymbol($index, symbol)) {
+          <div class="symbol-row" [class.selected]="isSelected(symbol)" (click)="selectSymbol(symbol, focusPanel)">
+            <button class="symbol-btn" type="button">
+              <span class="symbol-logo">{{ symbolBadge(symbol) }}</span>
+              <span>{{ symbol }}</span>
+            </button>
+            <button class="remove-btn" type="button" (click)="removeWatchSymbol(symbol, $event)">Remove</button>
+          </div>
+          }
+        </div>
+
+        <div class="pager" *ngIf="watchSymbols.length > watchPageSize">
+          <button (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">Prev</button>
+          <span>Page {{ currentPage }} / {{ totalPages }}</span>
+          <button (click)="goToPage(currentPage + 1)" [disabled]="currentPage === totalPages">Next</button>
+        </div>
+      </div>
+
+      <div class="sidebar-card">
+        <h3>Portfolio Symbols</h3>
+        <div class="symbol-list compact">
+          @for (symbol of portfolioSymbols; track trackBySymbol($index, symbol)) {
+          <div class="symbol-row" [class.selected]="isSelected(symbol)" (click)="selectSymbol(symbol, focusPanel)">
+            <button class="symbol-btn" type="button">
+              <span class="symbol-logo">{{ symbolBadge(symbol) }}</span>
+              <span>{{ symbol }}</span>
+            </button>
+          </div>
+          } @empty {
+          <p class="muted">No holdings yet</p>
+          }
+        </div>
+      </div>
+    </aside>
+
+    <main class="watch-main">
+      <div class="panel-switcher">
+        <button [class.active]="focusPanel === 'chart'" (click)="focusPanel = 'chart'">Chart</button>
+        <button [class.active]="focusPanel === 'depth'" (click)="focusPanel = 'depth'">Market Depth</button>
+        <a [routerLink]="['/stocks', selectedSymbol]">Open Full Stock Page</a>
+      </div>
+
+      @if (focusPanel === 'chart') {
+      <section class="card chart-card">
+        <div class="controls-row">
+          <div class="pill-group">
+            <button [class.active]="chartType === 'candlestick'" (click)="setChartType('candlestick')">Candles</button>
+            <button [class.active]="chartType === 'line'" (click)="setChartType('line')">Line</button>
+            <button [class.active]="chartType === 'bar'" (click)="setChartType('bar')">Bar</button>
+            <button [class.active]="chartType === 'area'" (click)="setChartType('area')">Area</button>
+            <button [class.active]="chartType === 'baseline'" (click)="setChartType('baseline')">Baseline</button>
+          </div>
+
+          <div class="pill-group">
+            <button [class.active]="liveTimeframe === '1'" (click)="setTimeframe('1')">1m</button>
+            <button [class.active]="liveTimeframe === '5'" (click)="setTimeframe('5')">5m</button>
+            <button [class.active]="liveTimeframe === '15'" (click)="setTimeframe('15')">15m</button>
+            <button [class.active]="liveTimeframe === '60'" (click)="setTimeframe('60')">1h</button>
+            <button [class.active]="liveTimeframe === 'D'" (click)="setTimeframe('D')">1D</button>
+          </div>
+        </div>
+
+        @if (liveTimeframe === 'D') {
+        <div class="range-group">
+          @for (r of dailyRangeOptions; track r) {
+          <button [class.active]="dailyRange === r" (click)="setDailyRange(r)">{{ r }}</button>
+          }
+        </div>
+        }
+
+        @if (activeCandle) {
+        <div class="ohlc-row">
+          <span>Open {{ formatPrice(activeCandle.open) }}</span>
+          <span class="h">High {{ formatPrice(activeCandle.high) }}</span>
+          <span class="l">Low {{ formatPrice(activeCandle.low) }}</span>
+          <span>Close {{ formatPrice(activeCandle.close) }}</span>
+        </div>
+        }
+
+        <div class="chart-host" #watchlistChartHost></div>
+
+        @if (liveChartLoading) {
+        <p class="muted">Loading chart...</p>
+        }
+        @if (liveChartError) {
+        <p class="error">{{ liveChartError }}</p>
+        }
+      </section>
+      }
+
+      @if (focusPanel === 'depth') {
+      <section class="card depth-card">
+        <div class="controls-row">
+          <h2>{{ selectedSymbol }} Market Depth</h2>
+          <div class="pill-group">
+            <button [class.active]="marketDepthLimit === 20" (click)="setDepthLimit(20)">Top 20</button>
+            <button [class.active]="marketDepthLimit === 200" (click)="setDepthLimit(200)">View 200 Depth</button>
+          </div>
+        </div>
+
+        @if (marketDepthMode) {
+        <p class="muted">Mode: {{ marketDepthMode === 'full_depth_ws' ? 'Full Depth WebSocket' : 'Snapshot Depth' }}</p>
+        }
+
+        @if (marketDepthLoading) {
+        <p class="muted">Loading market depth...</p>
+        }
+        @if (marketDepthError) {
+        <p class="error">{{ marketDepthError }}</p>
+        }
+
+        @if (!marketDepthLoading && !marketDepthError) {
+        <div class="depth-grid">
+          <div>
+            <h3>Buy Orders</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Orders</th>
+                  <th>Qty</th>
+                  <th>Bid</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of marketDepthBuy; track row.price + ':' + row.quantity + ':' + row.orders) {
+                <tr>
+                  <td>{{ formatQty(row.orders) }}</td>
+                  <td>{{ formatQty(row.quantity) }}</td>
+                  <td>{{ formatPrice(row.price) }}</td>
+                </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h3>Sell Orders</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Ask</th>
+                  <th>Qty</th>
+                  <th>Orders</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of marketDepthSell; track row.price + ':' + row.quantity + ':' + row.orders) {
+                <tr>
+                  <td>{{ formatPrice(row.price) }}</td>
+                  <td>{{ formatQty(row.quantity) }}</td>
+                  <td>{{ formatQty(row.orders) }}</td>
+                </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+        }
+      </section>
+      }
+    </main>
+  </div>
+</section>

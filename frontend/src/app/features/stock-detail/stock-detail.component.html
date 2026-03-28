@@ -60,12 +60,21 @@
   <section class="chart-card">
     <div class="chart-header">
       <h2>Live Candles</h2>
-      <div class="tf-group">
+      <div class="control-groups">
+        <div class="tf-group">
+          <button [class.active]="chartType === 'candlestick'" (click)="setChartType('candlestick')">Candles</button>
+          <button [class.active]="chartType === 'line'" (click)="setChartType('line')">Line</button>
+          <button [class.active]="chartType === 'bar'" (click)="setChartType('bar')">Bar</button>
+          <button [class.active]="chartType === 'area'" (click)="setChartType('area')">Area</button>
+          <button [class.active]="chartType === 'baseline'" (click)="setChartType('baseline')">Baseline</button>
+        </div>
+        <div class="tf-group">
         <button [class.active]="liveTimeframe === '1'" (click)="setLiveTimeframe('1')">1m</button>
         <button [class.active]="liveTimeframe === '5'" (click)="setLiveTimeframe('5')">5m</button>
         <button [class.active]="liveTimeframe === '15'" (click)="setLiveTimeframe('15')">15m</button>
         <button [class.active]="liveTimeframe === '60'" (click)="setLiveTimeframe('60')">1h</button>
         <button [class.active]="liveTimeframe === 'D'" (click)="setLiveTimeframe('D')">1D</button>
+        </div>
       </div>
     </div>
 
@@ -105,6 +114,10 @@
     <div id="stockDetailChart" class="chart-host"></div>
 
     <div class="chart-meta">
+      <span class="transport-badge" [class]="'transport-badge ' + liveTransportClass">
+        <span class="dot"></span>
+        {{ liveTransportLabel }}
+      </span>
       <span>Last Tick: {{ liveLastPrice | number:'1.2-2' }}</span>
       <span>Candles: {{ liveCandleCount }}</span>
       <span>@if (liveChartUpdatedAt) { Updated {{ liveChartUpdatedAt | date:'shortTime' }} } @else { Waiting... }</span>
@@ -115,6 +128,71 @@
     }
     @if (liveChartError) {
     <p class="chart-state error">{{ liveChartError }}</p>
+    }
+  </section>
+
+  <section class="chart-card">
+    <div class="chart-header">
+      <h2>Market Depth</h2>
+      <div class="tf-group">
+        <button [class.active]="marketDepthLimit === 20" (click)="setDepthLimit(20)">Top 20</button>
+        <button [class.active]="marketDepthLimit === 200" (click)="setDepthLimit(200)">View 200 Depth</button>
+      </div>
+    </div>
+
+    @if (marketDepthLoading) {
+    <p class="chart-state">Loading market depth from Dhan...</p>
+    }
+
+    @if (marketDepthError) {
+    <p class="chart-state error">{{ marketDepthError }}</p>
+    }
+
+    @if (!marketDepthLoading && !marketDepthError) {
+    <div class="depth-grid">
+      <div>
+        <h3>Buy Orders</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Orders</th>
+              <th>Qty</th>
+              <th>Bid</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of marketDepthBuy; track row.price + ':' + row.quantity + ':' + row.orders) {
+            <tr>
+              <td>{{ row.orders }}</td>
+              <td>{{ row.quantity }}</td>
+              <td>{{ row.price | number:'1.2-2' }}</td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3>Sell Orders</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Ask</th>
+              <th>Qty</th>
+              <th>Orders</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of marketDepthSell; track row.price + ':' + row.quantity + ':' + row.orders) {
+            <tr>
+              <td>{{ row.price | number:'1.2-2' }}</td>
+              <td>{{ row.quantity }}</td>
+              <td>{{ row.orders }}</td>
+            </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
     }
   </section>
 

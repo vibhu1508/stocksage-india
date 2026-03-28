@@ -25,8 +25,8 @@ export class SidebarComponent {
   menuItems = [
     { path: '/dashboard', icon: 'layout-dashboard', label: 'Dashboard' },
     { path: '/portfolio', icon: 'briefcase', label: 'Portfolio' },
-    { path: '/stocks', icon: 'arrow-up-right', label: 'Stock Comparison' },
-    { path: '/fo', icon: 'line-chart', label: 'F&O Analysis' },
+    { path: '/stocks', icon: 'bar-chart-2', label: 'Watchlist' },
+    { path: '/after-market-analysis', icon: 'line-chart', label: 'After Market Analysis' },
     { path: '/strategy-builder', icon: 'pencil-ruler', label: 'Strategy Builder' },
     { path: '/announcements', icon: 'megaphone', label: 'Announcements' },
     { path: '/learn', icon: 'graduation-cap', label: 'Learn' }

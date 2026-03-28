@@ -16,6 +16,11 @@ export interface PortfolioHolding {
   option_type?: 'CE' | 'PE' | null;
   action?: 'BUY' | 'SELL' | null;
   notes?: string | null;
+  live_price?: number | null;
+  current_value?: number | null;
+  pnl?: number | null;
+  pnl_pct?: number | null;
+  live_available?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -24,6 +29,14 @@ export interface PortfolioResponse {
   count: number;
   total_invested: number;
   holdings: PortfolioHolding[];
+}
+
+export interface PortfolioLiveResponse extends PortfolioResponse {
+  live_count: number;
+  total_current_value: number;
+  total_pnl: number;
+  total_pnl_pct: number;
+  as_of: number;
 }
 
 export interface AddHoldingPayload {
@@ -78,6 +91,65 @@ export class PortfolioService {
 
   getHoldings(): Observable<PortfolioResponse> {
     return this.http.get<PortfolioResponse>(`${this.apiUrl}/holdings`);
+  }
+
+  getHoldingsLive(): Observable<PortfolioLiveResponse> {
+    return this.http.get<PortfolioLiveResponse>(`${this.apiUrl}/holdings/live`);
+  }
+
+  streamHoldingsLive(token: string): Observable<PortfolioLiveResponse> {
+    return new Observable<PortfolioLiveResponse>((observer) => {
+      let socket: WebSocket | null = null;
+
+      try {
+        const wsUrl = this.buildPortfolioWebSocketUrl(token);
+        socket = new WebSocket(wsUrl);
+      } catch (err) {
+        observer.error(err);
+        return;
+      }
+
+      socket.onmessage = (event: MessageEvent<string>) => {
+        try {
+          const raw = JSON.parse(event.data) as Record<string, unknown>;
+          const eventType = String(raw['event'] ?? '');
+          if (eventType !== 'portfolio_live_snapshot') {
+            return;
+          }
+
+          const data = raw['data'] as Record<string, unknown> | undefined;
+          if (!data) {
+            return;
+          }
+
+          observer.next(data as unknown as PortfolioLiveResponse);
+        } catch {
+          // Ignore malformed frames.
+        }
+      };
+
+      socket.onerror = () => {
+        observer.error(new Error('Portfolio websocket error'));
+      };
+
+      socket.onclose = () => {
+        observer.complete();
+      };
+
+      return () => {
+        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+          socket.close();
+        }
+      };
+    });
+  }
+
+  private buildPortfolioWebSocketUrl(token: string): string {
+    const backend = new URL(this.apiUrl);
+    const wsProtocol = backend.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = new URL(`${wsProtocol}//${backend.host}/api/portfolio/holdings/live/ws`);
+    url.searchParams.set('token', token);
+    return url.toString();
   }
 
   addHolding(payload: AddHoldingPayload): Observable<{ message: string; holding_id: number }> {

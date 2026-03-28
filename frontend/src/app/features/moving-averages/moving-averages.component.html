@@ -1,0 +1,79 @@
+<section class="ma-page">
+  <header class="ma-header">
+    <h2>Moving Averages Screener</h2>
+    <p>Scan symbols for MA50, MA100, MA200 alignment and 10-day momentum.</p>
+  </header>
+
+  <div class="ma-controls">
+    <label>
+      Symbols (comma separated)
+      <textarea [(ngModel)]="symbolsText" rows="2" placeholder="RELIANCE, TCS, INFY"></textarea>
+    </label>
+
+    <div class="control-row">
+      <button type="button" (click)="runScan()" [disabled]="loading">
+        {{ loading ? 'Scanning...' : 'Run Screener' }}
+      </button>
+
+      <input
+        type="text"
+        [(ngModel)]="query"
+        placeholder="Filter symbol"
+      />
+
+      <select [(ngModel)]="signalFilter">
+        <option value="all">All Signals</option>
+        <option value="bullish">Bullish</option>
+        <option value="bearish">Bearish</option>
+        <option value="mixed">Mixed</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+  </div>
+
+  @if (error) {
+  <p class="error">{{ error }}</p>
+  }
+
+  <div class="ma-table-wrap">
+    <table class="ma-table">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Close</th>
+          <th>MA 50</th>
+          <th>MA 100</th>
+          <th>MA 200</th>
+          <th>Momentum 10</th>
+          <th>Signal</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of filteredRows; track row.symbol) {
+        <tr>
+          <td>{{ row.symbol }}</td>
+          <td>{{ formatNumber(row.close) }}</td>
+          <td>{{ formatNumber(row.ma50) }}</td>
+          <td>{{ formatNumber(row.ma100) }}</td>
+          <td>{{ formatNumber(row.ma200) }}</td>
+          <td [class.up]="(row.momentum10 || 0) >= 0" [class.down]="(row.momentum10 || 0) < 0">{{ formatSigned(row.momentum10) }}</td>
+          <td>
+            <span class="signal" [class.bullish]="row.signal === 'Bullish'" [class.bearish]="row.signal === 'Bearish'" [class.mixed]="row.signal === 'Mixed'">
+              {{ row.signal }}
+            </span>
+          </td>
+          <td>
+            <a [routerLink]="['/stocks', row.symbol]">Open</a>
+          </td>
+        </tr>
+        @if (row.error) {
+        <tr class="row-error">
+          <td colspan="8">{{ row.error }}</td>
+        </tr>
+        }
+        }
+      </tbody>
+    </table>
+  </div>
+</section>

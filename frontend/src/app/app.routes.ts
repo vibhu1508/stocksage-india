@@ -33,13 +33,47 @@ export const routes: Routes = [
   },
   {
     path: 'stocks',
-    loadComponent: () => import('./features/stock-comparison/stock-comparison.component').then(m => m.StockComparisonComponent),
+    loadComponent: () => import('./features/watchlist/watchlist.component').then(m => m.WatchlistComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'after-market-analysis',
+    loadComponent: () => import('./features/after-market-analysis/after-market-analysis.component').then(m => m.AfterMarketAnalysisComponent),
+    children: [
+      {
+        path: '',
+        redirectTo: 'stock-comparison',
+        pathMatch: 'full'
+      },
+      {
+        path: 'fo-analysis',
+        loadComponent: () => import('./features/fo-analysis/fo-analysis.component').then(m => m.FOAnalysisComponent),
+      },
+      {
+        path: 'stock-comparison',
+        loadComponent: () => import('./features/stock-comparison/stock-comparison.component').then(m => m.StockComparisonComponent),
+      },
+      {
+        path: 'moving-averages',
+        loadComponent: () => import('./features/moving-averages/moving-averages.component').then(m => m.MovingAveragesComponent),
+      }
+    ],
     canActivate: [authGuard]
   },
   {
     path: 'fo',
-    loadComponent: () => import('./features/fo-analysis/fo-analysis.component').then(m => m.FOAnalysisComponent),
-    canActivate: [authGuard]
+    redirectTo: 'after-market-analysis/fo-analysis',
+    pathMatch: 'full'
+  },
+  {
+    path: 'stock-comparison',
+    redirectTo: 'after-market-analysis/stock-comparison',
+    pathMatch: 'full'
+  },
+  {
+    path: 'moving-averages',
+    redirectTo: 'after-market-analysis/moving-averages',
+    pathMatch: 'full'
   },
   {
     path: 'announcements',
