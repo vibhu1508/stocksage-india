@@ -274,6 +274,10 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   get lastPrice(): number {
+    if (Number.isFinite(this.liveLastPrice) && this.liveLastPrice > 0) {
+      return Number(this.liveLastPrice);
+    }
+
     return Number(
       this.quote?.tradeInfo?.lastPrice
       ?? this.quote?.priceInfo?.lastPrice
@@ -293,25 +297,27 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   get priceChange(): number {
-    const direct = Number(this.quote?.priceInfo?.change ?? this.quote?.change ?? Number.NaN);
-    if (Number.isFinite(direct)) return direct;
-
     const lp = this.lastPrice;
     const pc = this.prevClose;
     if (Number.isFinite(lp) && Number.isFinite(pc) && pc > 0) {
       return lp - pc;
     }
+
+    const direct = Number(this.quote?.priceInfo?.change ?? this.quote?.change ?? Number.NaN);
+    if (Number.isFinite(direct)) return direct;
+
     return 0;
   }
 
   get pctChange(): number {
-    const direct = Number(this.quote?.priceInfo?.pChange ?? this.quote?.percChange ?? Number.NaN);
-    if (Number.isFinite(direct)) return direct;
-
     const pc = this.prevClose;
     if (pc > 0) {
       return (this.priceChange / pc) * 100;
     }
+
+    const direct = Number(this.quote?.priceInfo?.pChange ?? this.quote?.percChange ?? Number.NaN);
+    if (Number.isFinite(direct)) return direct;
+
     return 0;
   }
 

@@ -104,6 +104,13 @@ export class DhanLiveChartService {
       socket.onmessage = (event: MessageEvent<string>) => {
         try {
           const raw = JSON.parse(event.data) as Record<string, unknown>;
+          const eventType = String(raw['event'] ?? '');
+
+          if (eventType === 'stream_warning' || eventType === 'error') {
+            observer.error(new Error(String(raw['detail'] ?? 'WebSocket stream warning')));
+            return;
+          }
+
           if (raw['event'] !== 'chart_tick') {
             return;
           }
