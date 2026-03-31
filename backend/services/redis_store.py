@@ -86,6 +86,23 @@ async def cache_set_json(raw_key: str, value: Any, ttl_seconds: int) -> None:
         return
 
 
+def _coerce_counter(value: Any) -> int:
+    """Normalize Redis counter responses to an integer.
+
+    Some Redis client/proxy setups can return wrapped values (for example,
+    single-item lists). This keeps rate-limit comparisons stable.
+    """
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (bytes, str)):
+        return int(value)
+    if isinstance(value, list):
+        if not value:
+            return 0
+        return _coerce_counter(value[-1])
+    return int(value)
+
+
 async def is_rate_limited(raw_key: str, limit: int, window_seconds: int) -> bool:
     client = get_redis_client()
     if client is None:
@@ -93,11 +110,12 @@ async def is_rate_limited(raw_key: str, limit: int, window_seconds: int) -> bool
 
     key = _key(raw_key)
     try:
-        current = await client.incr(key)
+        current_raw = await client.incr(key)
+        current = _coerce_counter(current_raw)
         if current == 1:
             await client.expire(key, max(1, window_seconds))
         return current > max(1, limit)
-    except RedisError:
+    except (RedisError, ValueError, TypeError):
         return False
 
 

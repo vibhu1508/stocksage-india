@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from routers.auth import get_current_user
 from models import User
-from utils.market_utils import IST, get_latest_market_date
+from utils.market_utils import IST, get_latest_market_date, is_market_holiday
 from services.redis_store import (
     cache_get_json,
     cache_set_json,
@@ -431,29 +431,44 @@ def _floor_datetime_to_interval(value: datetime, interval_min: int) -> datetime:
     return value.replace(hour=floored_hour, minute=floored_minute, second=0, microsecond=0)
 
 
+def _get_intraday_session_day(now_ist: datetime) -> date:
+    """Resolve the trading day for intraday charts (today on trading days, else previous market day)."""
+    current_day = now_ist.date()
+    if not is_market_holiday(current_day):
+        return current_day
+
+    temp_day = current_day - timedelta(days=1)
+    for _ in range(15):
+        if not is_market_holiday(temp_day):
+            return temp_day
+        temp_day -= timedelta(days=1)
+
+    return temp_day
+
+
 def _build_intraday_payload(identity: Dict[str, str], timeframe: str) -> Dict[str, Union[str, int, bool]]:
     interval_min = _resolve_timeframe(timeframe)
 
     now_ist = datetime.now(IST)
-    latest_market_day = get_latest_market_date(now_ist)
+    session_day = _get_intraday_session_day(now_ist)
     market_open = datetime(
-        latest_market_day.year,
-        latest_market_day.month,
-        latest_market_day.day,
+        session_day.year,
+        session_day.month,
+        session_day.day,
         9,
-        30,
+        15,
         tzinfo=IST,
     )
     market_close = datetime(
-        latest_market_day.year,
-        latest_market_day.month,
-        latest_market_day.day,
+        session_day.year,
+        session_day.month,
+        session_day.day,
         15,
         30,
         tzinfo=IST,
     )
 
-    if now_ist.date() > latest_market_day:
+    if now_ist.date() > session_day:
         session_end = market_close
     else:
         session_end = min(now_ist, market_close)
@@ -534,7 +549,7 @@ def _fill_intraday_session_gaps(candles: list[dict], timeframe: str) -> list[dic
     if first_day != last_day:
         return candles
 
-    start_epoch = _session_bucket_epoch(first_day, 9, 30)
+    start_epoch = _session_bucket_epoch(first_day, 9, 15)
     end_epoch = _session_bucket_epoch(first_day, 15, 30)
     step = interval_min * 60
 
@@ -580,8 +595,8 @@ async def _append_current_session_daily_candle(identity: Dict[str, str], candles
     if not intraday_candles:
         return candles
 
-    latest_market_day = get_latest_market_date(datetime.now(IST))
-    today_intraday = [c for c in intraday_candles if _ist_date_from_epoch(int(c["time"])) == latest_market_day]
+    session_day = _get_intraday_session_day(datetime.now(IST))
+    today_intraday = [c for c in intraday_candles if _ist_date_from_epoch(int(c["time"])) == session_day]
     if not today_intraday:
         return candles
 
@@ -589,9 +604,9 @@ async def _append_current_session_daily_candle(identity: Dict[str, str], candles
     close_price = float(today_intraday[-1]["close"])
     high_price = max(float(c["high"]) for c in today_intraday)
     low_price = min(float(c["low"]) for c in today_intraday)
-    day_epoch = _epoch_for_ist_start_of_day(latest_market_day)
+    day_epoch = _epoch_for_ist_start_of_day(session_day)
 
-    merged = [c for c in candles if _ist_date_from_epoch(int(c["time"])) != latest_market_day]
+    merged = [c for c in candles if _ist_date_from_epoch(int(c["time"])) != session_day]
     merged.append(
         {
             "time": day_epoch,
