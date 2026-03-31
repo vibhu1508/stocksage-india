@@ -434,7 +434,16 @@ def _floor_datetime_to_interval(value: datetime, interval_min: int) -> datetime:
 def _get_intraday_session_day(now_ist: datetime) -> date:
     """Resolve the trading day for intraday charts (today on trading days, else previous market day)."""
     current_day = now_ist.date()
-    if not is_market_holiday(current_day):
+    # Before market open (09:15 IST), intraday candles for current day are not available yet.
+    # Use previous trading day to avoid generating invalid from/to intraday windows.
+    if not is_market_holiday(current_day) and now_ist.time() >= datetime(
+        now_ist.year,
+        now_ist.month,
+        now_ist.day,
+        9,
+        15,
+        tzinfo=IST,
+    ).time():
         return current_day
 
     temp_day = current_day - timedelta(days=1)
