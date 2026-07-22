@@ -40,7 +40,15 @@ def get_market_status_fallback():
 
 
 async def fetch_market_status(client: httpx.AsyncClient) -> str:
-    """Fetch real market status from NSE API"""
+    """Fetch real market status from NSE API.
+
+    NOTE: NSE's `marketStatus` field is unreliable — it frequently reports
+    "Open" for every segment even when the market is closed (the `tradeDate`
+    stays pinned to the previous session's close). The trustworthy signal is
+    `marketStatusMessage` (e.g. "Normal Market has Closed" / "... is Open" /
+    "Pre Open Market ..."). We read that, and fall back to the IST clock when
+    the message is missing or ambiguous.
+    """
     try:
         resp = await client.get(
             "https://www.nseindia.com/api/marketStatus",
@@ -55,13 +63,16 @@ async def fetch_market_status(client: httpx.AsyncClient) -> str:
             states = data.get("marketState", [])
             for state in states:
                 if state.get("market") == "Capital Market":
-                    status = state.get("marketStatus", "")
-                    # Normalize: NSE returns "Close"/"Open"
-                    if status.lower() == "close":
+                    message = str(state.get("marketStatusMessage", "")).strip().lower()
+                    if "closed" in message or "close" in message:
                         return "Closed"
-                    elif status.lower() == "open":
+                    if "pre" in message and "open" in message:
+                        return "Pre-Open"
+                    if "open" in message:
                         return "Open"
-                    return status
+                    # Message missing/unrecognized — trust the IST clock instead
+                    # of the unreliable marketStatus flag.
+                    return get_market_status_fallback()
     except Exception:
         pass
     return get_market_status_fallback()
@@ -198,6 +209,99 @@ async def get_live_market_data():
         "nifty": nifty_data,
         "timestamp": ist_now.isoformat(),
         "debug": debug,
+    }
+
+
+# Ticker indices: display label -> candidate NSE `indexName` values (matched case-insensitively).
+INDEX_TICKER_CONFIG = [
+    {"display": "NIFTY 50", "match": ["nifty 50"]},
+    {"display": "BANKNIFTY", "match": ["nifty bank"]},
+    {"display": "FINNIFTY", "match": ["nifty financial services", "nifty fin service", "nifty fin services"]},
+    {"display": "MIDCPNIFTY", "match": ["nifty midcap select"]},
+    {"display": "NIFTY IT", "match": ["nifty it"]},
+    {"display": "NIFTY NEXT 50", "match": ["nifty next 50"]},
+]
+
+
+def _to_float(value) -> float:
+    try:
+        return float(str(value).replace(",", "").strip())
+    except (ValueError, TypeError, AttributeError):
+        return 0.0
+
+
+@router.get("/indices")
+async def get_indices():
+    """Live index snapshot for the ticker strip: BSE SENSEX + NSE indices.
+
+    Public (no auth) so the landing page can render it pre-login. Falls back
+    gracefully to whatever sources respond; the client keeps its own defaults
+    if this returns nothing.
+    """
+    ist_now = get_ist_now()
+    results = []
+
+    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+        market_status = await fetch_market_status(client)
+
+        # ── BSE SENSEX ──
+        try:
+            resp = await client.get(
+                "https://api.bseindia.com/RealTimeBseIndiaAPI/api/GetSensexData/w",
+                headers={**BROWSER_HEADERS, "Referer": "https://www.bseindia.com/", "Origin": "https://www.bseindia.com"},
+            )
+            if resp.status_code == 200:
+                raw = resp.json()
+                item = raw[0] if isinstance(raw, list) and raw else raw if isinstance(raw, dict) else None
+                if item:
+                    pct = _to_float(item.get("perchg"))
+                    results.append({
+                        "symbol": "SENSEX",
+                        "value": _to_float(item.get("ltp")),
+                        "change": _to_float(item.get("chg")),
+                        "pct_change": round(pct, 2),
+                        "up": pct >= 0,
+                    })
+        except Exception:
+            pass
+
+        # ── NSE indices (getIndexData returns ALL indices) ──
+        nse_by_name = {}
+        try:
+            resp = await client.get(
+                "https://www.nseindia.com/api/NextApi/apiClient?functionName=getIndexData&&type=All",
+                headers={**BROWSER_HEADERS, "Referer": "https://www.nseindia.com/", "Origin": "https://www.nseindia.com"},
+            )
+            if resp.status_code == 200:
+                raw = resp.json()
+                indices = raw.get("data", raw) if isinstance(raw, dict) else raw
+                if isinstance(indices, list):
+                    for idx in indices:
+                        name = str(idx.get("indexName", "")).strip().lower()
+                        if name:
+                            nse_by_name[name] = idx
+        except Exception:
+            pass
+
+    for cfg in INDEX_TICKER_CONFIG:
+        idx = next((nse_by_name[c] for c in cfg["match"] if c in nse_by_name), None)
+        if not idx:
+            continue
+        last = _to_float(idx.get("last"))
+        prev = _to_float(idx.get("previousClose"))
+        pct = _to_float(idx.get("percChange"))
+        results.append({
+            "symbol": cfg["display"],
+            "value": last,
+            "change": round(last - prev, 2) if prev else 0.0,
+            "pct_change": round(pct, 2),
+            "up": pct >= 0,
+        })
+
+    return {
+        "market_status": market_status,
+        "indices": results,
+        "timestamp": ist_now.isoformat(),
     }
 
 

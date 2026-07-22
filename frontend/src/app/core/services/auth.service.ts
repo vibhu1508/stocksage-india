@@ -111,7 +111,7 @@ export class AuthService {
       },
       error: () => {
         this.logout();
-        this.router.navigate(['/login']);
+        this.router.navigate(['/']);
       }
     });
   }
@@ -169,12 +169,14 @@ export class AuthService {
     localStorage.removeItem('access_token');
     this.currentUserSubject.next(null);
 
+    // Signed-out users land on the hero page. Preserve returnUrl so an
+    // expired-session redirect can send them back after signing in again.
     if (returnUrl) {
-      this.router.navigate(['/login'], { queryParams: { returnUrl } });
+      this.router.navigate(['/'], { queryParams: { returnUrl } });
       return;
     }
 
-    this.router.navigate(['/login']);
+    this.router.navigate(['/']);
   }
 
   private isTokenExpired(token: string): boolean {

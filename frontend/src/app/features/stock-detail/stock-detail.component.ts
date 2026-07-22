@@ -72,6 +72,23 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   customFromDate = '';
   customToDate = '';
   customRangeError = '';
+  /** Neutral status (market closed / showing last session / historical range) — never styled as an error. */
+  sessionNotice = '';
+  /** Collapsible custom-range panel. */
+  showCustomPanel = false;
+  /** True while showing a static historical window instead of the live session. */
+  historyMode = false;
+  historyLoading = false;
+  /** Interval used by the custom range panel; independent of the live timeframe. */
+  customInterval: ChartTimeframe = '5';
+  readonly customIntervalOptions: Array<{ value: ChartTimeframe; label: string }> = [
+    { value: '1', label: '1m' },
+    { value: '5', label: '5m' },
+    { value: '15', label: '15m' },
+    { value: '25', label: '25m' },
+    { value: '60', label: '1h' },
+    { value: 'D', label: '1D' },
+  ];
   quickAddQty = 1;
   quickAddAvgPrice = '';
   quickAddSaving = false;
@@ -179,6 +196,10 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.customFromDate = '';
       this.customToDate = '';
       this.customRangeError = '';
+      this.sessionNotice = '';
+      this.historyMode = false;
+      this.historyLoading = false;
+      this.showCustomPanel = false;
       this.quickAddQty = 1;
       this.quickAddAvgPrice = '';
       this.quickAddSaving = false;
@@ -222,6 +243,10 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     if (tf === 'D') {
       this.dailyRange = 'MAX';
     }
+    // Choosing a live timeframe leaves the static historical view.
+    this.historyMode = false;
+    this.sessionNotice = '';
+    this.customRangeError = '';
     this.reloadLiveChart();
   }
 
@@ -246,27 +271,157 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     this.applyDailyRangeFromCache();
   }
 
+  toggleCustomPanel(): void {
+    this.showCustomPanel = !this.showCustomPanel;
+    if (this.showCustomPanel && !this.customToDate) {
+      // Seed a sensible default window: last 5 days ending today (IST).
+      const today = new Date();
+      const from = new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000);
+      this.customToDate = this.toDateInputValue(today);
+      this.customFromDate = this.toDateInputValue(from);
+      this.customInterval = this.liveTimeframe;
+    }
+  }
+
+  /**
+   * Fetch a static historical window at the chosen interval. Works identically
+   * whether the market is open or closed, and stops any live streaming.
+   */
   applyCustomDateRange(): void {
     this.customRangeError = '';
 
     if (!this.customFromDate || !this.customToDate) {
-      this.applyDailyRangeFromCache();
+      this.customRangeError = 'Pick both a From and a To date.';
       return;
     }
 
     if (this.customFromDate > this.customToDate) {
-      this.customRangeError = 'From date must be earlier than To date.';
+      this.customRangeError = 'From date must be on or before To date.';
       return;
     }
 
-    this.applyDailyRangeFromCache();
+    // The backend chunks long intraday windows across Dhan's 90-day per-request
+    // cap, so the only limit here is keeping the payload small enough to render.
+    const spanDays = this.daysBetween(this.customFromDate, this.customToDate);
+    const maxDays = this.maxRangeDays(this.customInterval);
+    if (maxDays !== null && spanDays > maxDays) {
+      this.customRangeError =
+        `${this.intervalLabel(this.customInterval)} candles are limited to ${maxDays} days per range. `
+        + 'Pick a shorter window or a larger interval.';
+      return;
+    }
+
+    // Historical view is static — shut down live ticks before loading.
+    this.stopTickTimer();
+    this.historyLoading = true;
+    this.liveChartLoading = true;
+    this.liveChartError = '';
+    this.liveTransportStatus = 'idle';
+
+    const req: DhanChartRequest = {
+      ...this.getLiveChartRequest(),
+      timeframe: this.customInterval,
+    };
+
+    this.dhanLiveChartService.getHistory(req, this.customFromDate, this.customToDate).subscribe({
+      next: (res) => {
+        const candles = this.normalizeCandles(res.candles || []);
+        this.historyMode = true;
+        this.historyLoading = false;
+        this.liveChartLoading = false;
+        this.liveResolvedTimeframe = this.customInterval;
+
+        if (candles.length === 0) {
+          this.sessionNotice = '';
+          this.customRangeError = 'No candles available for that range. Try a wider window or a different interval.';
+          return;
+        }
+
+        this.applyCandlesToChart(candles, this.customInterval, true);
+        this.sessionNotice = `Historical · ${this.intervalLabel(this.customInterval)} · ${res.fromDate} → ${res.toDate}`;
+      },
+      error: (err: HttpErrorResponse) => {
+        this.historyLoading = false;
+        this.liveChartLoading = false;
+        this.customRangeError = err?.error?.detail || 'Unable to load that historical range right now.';
+      },
+    });
   }
 
+  /** Leave historical mode and return to the smart-default live/last-session view. */
   clearCustomDateRange(): void {
     this.customFromDate = '';
     this.customToDate = '';
     this.customRangeError = '';
-    this.applyDailyRangeFromCache();
+    this.sessionNotice = '';
+    this.historyMode = false;
+    this.candleCache.delete(this.getChartCacheKey(this.symbol, this.liveTimeframe));
+    this.reloadLiveChart();
+  }
+
+  intervalLabel(tf: ChartTimeframe): string {
+    return this.customIntervalOptions.find((o) => o.value === tf)?.label ?? tf;
+  }
+
+  /**
+   * Practical span cap per interval, sized to keep the rendered series
+   * manageable. Null means no limit. Dhan's own 90-day per-request cap is
+   * handled server-side by chunking, so these are deliberately generous.
+   */
+  maxRangeDays(tf: ChartTimeframe): number | null {
+    switch (tf) {
+      case '1': return 30;
+      case '5': return 120;
+      case '15': return 365;
+      case '25': return 365;
+      case '60': return 730;
+      case 'D': return null;
+      default: return 90;
+    }
+  }
+
+  get customRangeHint(): string {
+    const maxDays = this.maxRangeDays(this.customInterval);
+    const label = this.intervalLabel(this.customInterval);
+    return maxDays === null
+      ? `${label} candles: full history available.`
+      : `${label} candles: up to ${maxDays} days per range. Longer windows are fetched in batches.`;
+  }
+
+  private toDateInputValue(value: Date): string {
+    return value.toISOString().slice(0, 10);
+  }
+
+  private daysBetween(fromIso: string, toIso: string): number {
+    const from = new Date(`${fromIso}T00:00:00Z`).getTime();
+    const to = new Date(`${toIso}T00:00:00Z`).getTime();
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return 0;
+    return Math.round((to - from) / (24 * 60 * 60 * 1000));
+  }
+
+  private normalizeCandles(raw: Array<{ time: number; open: number; high: number; low: number; close: number }>): CandlestickData[] {
+    const dedup = new Map<number, CandlestickData>();
+    for (const c of raw) {
+      const time = Number(c.time);
+      const open = Number(c.open);
+      const high = Number(c.high);
+      const low = Number(c.low);
+      const close = Number(c.close);
+
+      if (
+        !Number.isFinite(time)
+        || !Number.isFinite(open)
+        || !Number.isFinite(high)
+        || !Number.isFinite(low)
+        || !Number.isFinite(close)
+      ) {
+        continue;
+      }
+
+      dedup.set(time, { time: time as UTCTimestamp, open, high, low, close });
+    }
+
+    return Array.from(dedup.values()).sort((a, b) => Number(a.time) - Number(b.time));
   }
 
   get displayName(): string {
@@ -662,6 +817,10 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     }
     this.lastVisibleCandle = candles.length > 0 ? candles[candles.length - 1] : null;
+    if (this.hoveredCandle) {
+      const hoveredUnix = Number(this.hoveredCandle.time);
+      this.hoveredCandle = candles.find((c) => Number(c.time) === hoveredUnix) || null;
+    }
     if (!this.hoveredCandle) {
       this.hoveredCandle = this.lastVisibleCandle;
     }
@@ -699,6 +858,21 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
         low: Math.min(Number(last.low), price),
         close: price,
       };
+      return next;
+    }
+
+    if (last && bucketStart < Number(last.time)) {
+      const existingIndex = next.findIndex((c) => Number(c.time) === bucketStart);
+      if (existingIndex >= 0) {
+        const existing = next[existingIndex];
+        next[existingIndex] = {
+          time: bucketStart as UTCTimestamp,
+          open: Number(existing.open),
+          high: Math.max(Number(existing.high), price),
+          low: Math.min(Number(existing.low), price),
+          close: price,
+        };
+      }
       return next;
     }
 
@@ -811,37 +985,15 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.dhanLiveChartService.getBootstrap(this.getLiveChartRequest()).subscribe({
       next: (res) => {
-        const dedup = new Map<number, CandlestickData>();
-        for (const c of res.candles || []) {
-          const time = Number(c.time);
-          const open = Number(c.open);
-          const high = Number(c.high);
-          const low = Number(c.low);
-          const close = Number(c.close);
+        const candles = this.normalizeCandles(res.candles || []);
 
-          if (
-            !Number.isFinite(time)
-            || !Number.isFinite(open)
-            || !Number.isFinite(high)
-            || !Number.isFinite(low)
-            || !Number.isFinite(close)
-          ) {
-            continue;
-          }
-
-          dedup.set(time, {
-            time: time as UTCTimestamp,
-            open,
-            high,
-            low,
-            close,
-          });
+        // Backend served an earlier session because the latest one was empty.
+        if (res.isFallbackSession && res.sessionDate) {
+          this.sessionNotice = `Market closed · showing last session (${res.sessionDate})`;
         }
 
-        const candles = Array.from(dedup.values()).sort((a, b) => Number(a.time) - Number(b.time));
-
         const resolved = String(res?.resolvedTimeframe || this.liveTimeframe) as ChartTimeframe;
-        const safeResolved = ['1', '5', '15', '60', 'D'].includes(resolved) ? resolved : this.liveTimeframe;
+        const safeResolved = ['1', '5', '15', '25', '60', 'D'].includes(resolved) ? resolved : this.liveTimeframe;
 
         this.candleCache.set(cacheKey, {
           candles,
@@ -879,8 +1031,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     const now = Date.now();
     if (this.lastSessionIsOpen !== null && (now - this.lastSessionStatusAt) < this.sessionStatusTtlMs) {
       if (!this.lastSessionIsOpen) {
-        this.liveChartError = 'Market is closed. Live updates will resume on the next trading session.';
-        this.liveTransportStatus = 'closed';
+        this.markMarketClosed();
         return;
       }
       this.startTickStream(intervalMs);
@@ -893,8 +1044,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
         this.lastSessionStatusAt = Date.now();
 
         if (!this.lastSessionIsOpen) {
-          this.liveChartError = 'Market is closed. Live updates will resume on the next trading session.';
-          this.liveTransportStatus = 'closed';
+          this.markMarketClosed();
           return;
         }
 
@@ -905,6 +1055,17 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
         this.liveTransportStatus = 'polling';
       },
     });
+  }
+
+  /**
+   * A closed market is a normal state, not a failure. The chart still shows the
+   * last session's candles, so this reports a neutral notice rather than an error.
+   */
+  private markMarketClosed(): void {
+    this.liveChartError = '';
+    this.liveTransportStatus = 'closed';
+    this.sessionNotice = this.sessionNotice
+      || 'Market closed · showing the last completed session';
   }
 
   private startTickStream(fallbackIntervalMs: number): void {
@@ -940,8 +1101,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     this.tickTimer = setInterval(() => {
           if (!this.isMarketOpenNow()) {
             this.stopTickTimer();
-            this.liveChartError = 'Market is closed. Live updates will resume on the next trading session.';
-            this.liveTransportStatus = 'closed';
+            this.markMarketClosed();
             return;
           }
 
@@ -1008,10 +1168,24 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   private applyTick(tick: DhanChartTickResponse): void {
     if (!this.mainSeries) return;
 
-    const merged = this.mergeTickIntoCandles(this.liveCandles, tick);
+    const normalizedTs = this.normalizeTickTimestamp(Number(tick.timestamp));
+    if (!Number.isFinite(normalizedTs) || normalizedTs <= 0) {
+      return;
+    }
+
+    if (!this.isTickTimestampUsable(normalizedTs)) {
+      return;
+    }
+
+    const normalizedTick: DhanChartTickResponse = {
+      ...tick,
+      timestamp: normalizedTs,
+    };
+
+    const merged = this.mergeTickIntoCandles(this.liveCandles, normalizedTick);
     this.applyCandlesToChart(merged, this.liveResolvedTimeframe, false);
-    this.liveLastPrice = Number(tick.price);
-    this.liveChartUpdatedAt = new Date(Number(tick.timestamp) * 1000);
+    this.liveLastPrice = merged.length > 0 ? Number(merged[merged.length - 1].close) : 0;
+    this.liveChartUpdatedAt = new Date(normalizedTs * 1000);
 
     const cacheKey = this.getChartCacheKey(this.symbol, this.liveTimeframe);
     const cached = this.candleCache.get(cacheKey);
@@ -1021,6 +1195,38 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       cached.updatedAt = new Date();
       this.candleCache.set(cacheKey, cached);
     }
+  }
+
+  private normalizeTickTimestamp(rawTs: number): number {
+    if (!Number.isFinite(rawTs) || rawTs <= 0) {
+      return 0;
+    }
+    return rawTs > 1_000_000_000_000 ? Math.floor(rawTs / 1000) : Math.floor(rawTs);
+  }
+
+  private isTickTimestampUsable(tsSec: number): boolean {
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (tsSec > nowSec + 120) {
+      return false;
+    }
+
+    const intervalMinutes = Number(this.liveResolvedTimeframe || this.liveTimeframe);
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
+      return true;
+    }
+
+    if (this.liveCandles.length === 0) {
+      return true;
+    }
+
+    const intervalSec = intervalMinutes * 60;
+    const lastCandleTime = Number(this.liveCandles[this.liveCandles.length - 1].time);
+
+    if (tsSec < (lastCandleTime - intervalSec * 20)) {
+      return false;
+    }
+
+    return true;
   }
 
   private toUnixFromChartTime(time: Time): number {
@@ -1087,7 +1293,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     const detail = err?.error?.detail;
     if (typeof detail === 'string' && detail.length > 0) {
       if (detail.includes('Security ID is required')) {
-        return 'Live chart unavailable: Dhan security mapping is missing for this stock symbol.';
+        return 'Live chart unavailable: market data mapping is missing for this stock symbol.';
       }
       return `Live chart unavailable: ${detail}`;
     }

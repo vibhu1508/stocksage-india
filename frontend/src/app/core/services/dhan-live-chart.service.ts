@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
-export type ChartTimeframe = '1' | '5' | '15' | '60' | 'D';
+export type ChartTimeframe = '1' | '5' | '15' | '25' | '60' | 'D';
 
 export interface DhanChartIdentity {
   symbol: string;
@@ -25,6 +25,22 @@ export interface DhanChartBootstrapResponse {
   resolvedTimeframe?: string;
   identity: DhanChartIdentity;
   source: 'live' | 'cache';
+  /** Session the candles belong to (YYYY-MM-DD) when a fallback session was used. */
+  sessionDate?: string | null;
+  /** True when the latest session was empty and an earlier session was served. */
+  isFallbackSession?: boolean;
+  candles: DhanChartCandle[];
+}
+
+export interface DhanChartHistoryResponse {
+  symbol: string;
+  timeframe: string;
+  resolvedTimeframe?: string;
+  identity: DhanChartIdentity;
+  source: 'live' | 'cache' | null;
+  mode: 'history';
+  fromDate: string;
+  toDate: string;
   candles: DhanChartCandle[];
 }
 
@@ -76,6 +92,18 @@ export class DhanLiveChartService {
     });
   }
 
+  /**
+   * Static candles for an explicit date window and interval. Works the same
+   * whether the market is open or closed, and never starts a live stream.
+   */
+  getHistory(req: DhanChartRequest, fromDate: string, toDate: string): Observable<DhanChartHistoryResponse> {
+    const params = this.buildParams(req)
+      .set('fromDate', fromDate)
+      .set('toDate', toDate);
+
+    return this.http.get<DhanChartHistoryResponse>(`${this.apiUrl}/history`, { params });
+  }
+
   getLatestTick(req: DhanChartRequest): Observable<DhanChartTickResponse> {
     return this.http.get<DhanChartTickResponse>(`${this.apiUrl}/latest`, {
       params: this.buildParams(req),
@@ -106,7 +134,12 @@ export class DhanLiveChartService {
           const raw = JSON.parse(event.data) as Record<string, unknown>;
           const eventType = String(raw['event'] ?? '');
 
-          if (eventType === 'stream_warning' || eventType === 'error') {
+          if (eventType === 'stream_warning') {
+            // Non-fatal provider hiccups are sent as warnings; keep socket open.
+            return;
+          }
+
+          if (eventType === 'error') {
             observer.error(new Error(String(raw['detail'] ?? 'WebSocket stream warning')));
             return;
           }

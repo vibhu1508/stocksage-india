@@ -72,30 +72,57 @@
         <button [class.active]="liveTimeframe === '1'" (click)="setLiveTimeframe('1')">1m</button>
         <button [class.active]="liveTimeframe === '5'" (click)="setLiveTimeframe('5')">5m</button>
         <button [class.active]="liveTimeframe === '15'" (click)="setLiveTimeframe('15')">15m</button>
+        <button [class.active]="liveTimeframe === '25'" (click)="setLiveTimeframe('25')">25m</button>
         <button [class.active]="liveTimeframe === '60'" (click)="setLiveTimeframe('60')">1h</button>
         <button [class.active]="liveTimeframe === 'D'" (click)="setLiveTimeframe('D')">1D</button>
         </div>
       </div>
     </div>
 
-    @if (liveTimeframe === 'D') {
+    @if (liveTimeframe === 'D' && !historyMode) {
     <div class="range-group">
       @for (r of dailyRangeOptions; track r) {
       <button [class.active]="dailyRange === r" (click)="setDailyRange(r)">{{ r }}</button>
       }
     </div>
+    }
 
+    <div class="custom-toggle-row">
+      <button type="button" class="custom-toggle" (click)="toggleCustomPanel()">
+        <lucide-icon [name]="showCustomPanel ? 'chevron-down' : 'chevron-right'" [size]="14"></lucide-icon>
+        Custom range
+      </button>
+
+      @if (sessionNotice) {
+      <span class="session-notice">{{ sessionNotice }}</span>
+      }
+    </div>
+
+    @if (showCustomPanel) {
     <div class="custom-range-row">
       <label>
+        Interval
+        <select [(ngModel)]="customInterval">
+          @for (opt of customIntervalOptions; track opt.value) {
+          <option [value]="opt.value">{{ opt.label }}</option>
+          }
+        </select>
+      </label>
+      <label>
         From
-        <input type="date" [(ngModel)]="customFromDate" (change)="applyCustomDateRange()" />
+        <input type="date" [(ngModel)]="customFromDate" />
       </label>
       <label>
         To
-        <input type="date" [(ngModel)]="customToDate" (change)="applyCustomDateRange()" />
+        <input type="date" [(ngModel)]="customToDate" />
       </label>
-      <button class="clear-range" (click)="clearCustomDateRange()">Reset</button>
+      <button type="button" class="apply-range" (click)="applyCustomDateRange()" [disabled]="historyLoading">
+        {{ historyLoading ? 'Loading...' : 'Apply' }}
+      </button>
+      <button type="button" class="clear-range" (click)="clearCustomDateRange()">Reset</button>
     </div>
+
+    <p class="range-hint">{{ customRangeHint }}</p>
 
     @if (customRangeError) {
     <p class="chart-state error">{{ customRangeError }}</p>
@@ -141,7 +168,7 @@
     </div>
 
     @if (marketDepthLoading) {
-    <p class="chart-state">Loading market depth from Dhan...</p>
+    <p class="chart-state">Loading market depth...</p>
     }
 
     @if (marketDepthError) {

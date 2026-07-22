@@ -63,6 +63,7 @@ CHART_TIMEFRAME_TO_INTERVAL = {
     "1": 1,
     "5": 5,
     "15": 15,
+    "25": 25,
     "60": 60,
 }
 
@@ -72,10 +73,19 @@ CHART_LOOKBACK_CANDLES = {
     "1": 300,
     "5": 240,
     "15": 200,
+    "25": 180,
     "60": 160,
 }
 
 CHART_DAILY_FROM_DATE = os.getenv("DHAN_CHART_DAILY_FROM_DATE", "2000-01-01")
+
+# Dhan serves at most 90 days of intraday candles per request, and retains
+# roughly 5 years of intraday history. Daily candles have no such span limit.
+CHART_INTRADAY_MAX_SPAN_DAYS = int(os.getenv("DHAN_CHART_INTRADAY_MAX_SPAN_DAYS", "90"))
+CHART_INTRADAY_MAX_HISTORY_DAYS = int(os.getenv("DHAN_CHART_INTRADAY_MAX_HISTORY_DAYS", str(365 * 5)))
+# How many trading days back the bootstrap will search for a session that
+# actually has candles, so a closed market still renders a chart.
+CHART_SESSION_LOOKBACK_DAYS = int(os.getenv("DHAN_CHART_SESSION_LOOKBACK_DAYS", "7"))
 
 CHART_DEFAULT_EXCHANGE_SEGMENT = os.getenv("DHAN_CHART_DEFAULT_EXCHANGE_SEGMENT", "IDX_I")
 CHART_DEFAULT_INSTRUMENT = os.getenv("DHAN_CHART_DEFAULT_INSTRUMENT", "INDEX")
@@ -83,6 +93,32 @@ CHART_LAST_TICK_TTL = int(os.getenv("DHAN_CHART_LAST_TICK_TTL", "180"))
 DHAN_FULL_DEPTH_20_WS_URL = os.getenv("DHAN_FULL_DEPTH_20_WS_URL", "wss://depth-api-feed.dhan.co/twentydepth")
 DHAN_FULL_DEPTH_200_WS_URL = os.getenv("DHAN_FULL_DEPTH_200_WS_URL", "wss://full-depth-api.dhan.co/twohundreddepth")
 DHAN_FULL_DEPTH_TIMEOUT_SEC = float(os.getenv("DHAN_FULL_DEPTH_TIMEOUT_SEC", "8"))
+
+# --- Dhan Live Market Feed (real-time binary tick stream) ---
+# Streaming ticks replaces REST-polling /marketfeed/ltp, which added ~1-2s of
+# latency per sample on top of the provider's own delay.
+DHAN_LIVE_FEED_WS_URL = os.getenv("DHAN_LIVE_FEED_WS_URL", "wss://api-feed.dhan.co")
+# Subscribe request codes.
+DHAN_FEED_REQUEST_TICKER = 15
+DHAN_FEED_REQUEST_DISCONNECT = 12
+# Feed response codes (first byte of every packet).
+DHAN_FEED_CODE_TICKER = 2
+DHAN_FEED_CODE_QUOTE = 4
+DHAN_FEED_CODE_PREV_CLOSE = 6
+DHAN_FEED_CODE_DISCONNECT = 50
+# Fixed packet sizes per response code, used to split frames that carry
+# multiple packets. Deterministic, so we don't depend on the header length
+# field being payload-inclusive or not.
+DHAN_FEED_PACKET_SIZES = {
+    DHAN_FEED_CODE_TICKER: 16,
+    DHAN_FEED_CODE_QUOTE: 50,
+    5: 12,                       # OI packet
+    DHAN_FEED_CODE_PREV_CLOSE: 16,
+    8: 162,                      # Full packet (quote + 5 depth levels)
+    DHAN_FEED_CODE_DISCONNECT: 10,
+}
+DHAN_FEED_CONNECT_TIMEOUT_SEC = float(os.getenv("DHAN_FEED_CONNECT_TIMEOUT_SEC", "10"))
+DHAN_FEED_IDLE_TIMEOUT_SEC = float(os.getenv("DHAN_FEED_IDLE_TIMEOUT_SEC", "45"))
 ISIN_PATTERN = re.compile(r"^IN[A-Z0-9]{10}$", re.IGNORECASE)
 DHAN_SCRIP_MASTER_URL = os.getenv("DHAN_SCRIP_MASTER_URL", "https://images.dhan.co/api-data/api-scrip-master.csv")
 DHAN_SCRIP_MASTER_TIMEOUT = float(os.getenv("DHAN_SCRIP_MASTER_TIMEOUT", "25"))
@@ -107,7 +143,7 @@ def _get_dhan_headers() -> Dict[str, str]:
     if not access_token or not client_id:
         raise HTTPException(
             status_code=500,
-            detail="Dhan credentials are not configured. Set DHAN_ACCESS_TOKEN and DHAN_CLIENT_ID.",
+            detail="Market data credentials are not configured. Set DHAN_ACCESS_TOKEN and DHAN_CLIENT_ID.",
         )
 
     return {
@@ -137,7 +173,7 @@ async def _dhan_post(endpoint: str, payload: dict) -> dict:
             pass
         raise HTTPException(status_code=502, detail=detail)
     except httpx.RequestError:
-        raise HTTPException(status_code=502, detail="Unable to reach Dhan API")
+        raise HTTPException(status_code=502, detail="Unable to reach the market data service")
 
 
 def _cache_key(prefix: str, endpoint: str, payload: dict) -> str:
@@ -455,8 +491,65 @@ def _get_intraday_session_day(now_ist: datetime) -> date:
     return temp_day
 
 
-def _build_intraday_payload(identity: Dict[str, str], timeframe: str) -> Dict[str, Union[str, int, bool]]:
+def _previous_trading_day(day: date) -> date:
+    """Walk back to the closest earlier day the NSE was open."""
+    temp_day = day - timedelta(days=1)
+    for _ in range(15):
+        if not is_market_holiday(temp_day):
+            return temp_day
+        temp_day -= timedelta(days=1)
+    return temp_day
+
+
+def _parse_chart_date(value: str, field: str) -> date:
+    """Parse a YYYY-MM-DD query param into a date, or raise a 400."""
+    try:
+        return datetime.strptime(str(value).strip(), "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field} must be a valid date in YYYY-MM-DD format",
+        )
+
+
+def _intraday_chunks(
+    from_dt: datetime,
+    to_dt: datetime,
+    max_span_days: int = CHART_INTRADAY_MAX_SPAN_DAYS,
+) -> list[tuple[datetime, datetime]]:
+    """Split a window into <= max_span_days slices to respect Dhan's intraday cap."""
+    if from_dt >= to_dt:
+        return []
+
+    chunks: list[tuple[datetime, datetime]] = []
+    span = timedelta(days=max_span_days)
+    cursor = from_dt
+    while cursor < to_dt:
+        chunk_end = min(cursor + span, to_dt)
+        chunks.append((cursor, chunk_end))
+        cursor = chunk_end
+    return chunks
+
+
+def _build_intraday_payload(
+    identity: Dict[str, str],
+    timeframe: str,
+    from_dt: Optional[datetime] = None,
+    to_dt: Optional[datetime] = None,
+) -> Dict[str, Union[str, int, bool]]:
     interval_min = _resolve_timeframe(timeframe)
+
+    # Explicit window (custom range) bypasses the current-session defaulting.
+    if from_dt is not None and to_dt is not None:
+        return {
+            "securityId": identity["securityId"],
+            "exchangeSegment": identity["exchangeSegment"],
+            "instrument": identity["instrument"],
+            "interval": interval_min,
+            "oi": False,
+            "fromDate": _intraday_datetime(from_dt),
+            "toDate": _intraday_datetime(to_dt),
+        }
 
     now_ist = datetime.now(IST)
     session_day = _get_intraday_session_day(now_ist)
@@ -482,7 +575,10 @@ def _build_intraday_payload(identity: Dict[str, str], timeframe: str) -> Dict[st
     else:
         session_end = min(now_ist, market_close)
 
-    to_dt = _floor_datetime_to_interval(session_end, interval_min)
+    # Floor to a single minute (not the full interval) so the requested window --
+    # and therefore the cache key -- advances every minute. Flooring to
+    # interval_min made a 5m chart lag by up to 5 minutes during live trading.
+    to_dt = _floor_datetime_to_interval(session_end, 1)
     # Dhan intraday endpoint often behaves like exclusive upper bound; nudge by one interval.
     to_dt = min(market_close + timedelta(minutes=interval_min), to_dt + timedelta(minutes=interval_min))
 
@@ -503,9 +599,25 @@ def _build_intraday_payload(identity: Dict[str, str], timeframe: str) -> Dict[st
     }
 
 
-def _build_daily_historical_payload(identity: Dict[str, str]) -> Dict[str, Union[str, int, bool]]:
-    now_ist = datetime.now(IST)
-    latest_market_day = get_latest_market_date(now_ist)
+def _session_window(session_day: date, interval_min: int) -> tuple[datetime, datetime]:
+    """Full 09:15-15:30 IST trading window for a given day, as an intraday from/to pair."""
+    market_open = datetime(session_day.year, session_day.month, session_day.day, 9, 15, tzinfo=IST)
+    market_close = datetime(session_day.year, session_day.month, session_day.day, 15, 30, tzinfo=IST)
+    # Dhan treats the upper bound as exclusive; nudge by one interval.
+    return market_open, market_close + timedelta(minutes=interval_min)
+
+
+def _build_daily_historical_payload(
+    identity: Dict[str, str],
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+) -> Dict[str, Union[str, int, bool]]:
+    if to_date is None:
+        to_date = get_latest_market_date(datetime.now(IST))
+
+    from_value = CHART_DAILY_FROM_DATE if from_date is None else _date_only(
+        datetime(from_date.year, from_date.month, from_date.day, tzinfo=IST)
+    )
 
     return {
         "securityId": identity["securityId"],
@@ -513,12 +625,12 @@ def _build_daily_historical_payload(identity: Dict[str, str]) -> Dict[str, Union
         "instrument": identity["instrument"],
         "expiryCode": 0,
         "oi": False,
-        "fromDate": CHART_DAILY_FROM_DATE,
+        "fromDate": from_value,
         "toDate": _date_only(
             datetime(
-                latest_market_day.year,
-                latest_market_day.month,
-                latest_market_day.day,
+                to_date.year,
+                to_date.month,
+                to_date.day,
                 tzinfo=IST,
             )
         ),
@@ -559,15 +671,22 @@ def _fill_intraday_session_gaps(candles: list[dict], timeframe: str) -> list[dic
         return candles
 
     start_epoch = _session_bucket_epoch(first_day, 9, 15)
-    end_epoch = _session_bucket_epoch(first_day, 15, 30)
+    session_close_epoch = _session_bucket_epoch(first_day, 15, 30)
     step = interval_min * 60
 
     by_time = {int(c["time"]): c for c in candles}
+    sorted_times = sorted(by_time.keys())
+
+    # Only fill *interior* gaps, up to the latest real candle — never extrapolate
+    # a flat line out to the 15:30 close. During a live session that padding would
+    # push the chart's right edge hours into the future, so incoming live ticks
+    # land on a buried mid-series candle and the visible candle appears frozen.
+    end_epoch = min(session_close_epoch, sorted_times[-1]) if sorted_times else session_close_epoch
+
     expected_buckets = ((end_epoch - start_epoch) // step) + 1
     if len(by_time) < max(2, expected_buckets // 3):
         return candles
 
-    sorted_times = sorted(by_time.keys())
     first_known_time = sorted_times[0] if sorted_times else start_epoch
     first_known_candle = by_time.get(first_known_time)
     prev_close = float(first_known_candle["open"]) if first_known_candle else None
@@ -697,7 +816,7 @@ def _extract_ltp_and_ts(raw_payload: dict, exchange_segment: str, security_id: s
             break
 
     if payload is None:
-        raise HTTPException(status_code=502, detail="Unable to parse Dhan quote response for latest price")
+        raise HTTPException(status_code=502, detail="Unable to parse the market data response for latest price")
 
     price = None
     for key in ["lastPrice", "last_price", "ltp", "LTP", "price"]:
@@ -710,7 +829,7 @@ def _extract_ltp_and_ts(raw_payload: dict, exchange_segment: str, security_id: s
         price = _to_float(only_value)
 
     if price is None:
-        raise HTTPException(status_code=502, detail="Dhan quote did not include latest traded price")
+        raise HTTPException(status_code=502, detail="Market data response did not include the latest traded price")
 
     tick_epoch = None
     for key in ["last_traded_time", "lastTradeTime", "LTT", "timestamp", "time"]:
@@ -768,7 +887,7 @@ def _extract_quote_security_payload(raw_payload: dict, exchange_segment: str, se
         if payload:
             return payload
 
-    raise HTTPException(status_code=502, detail="Unable to parse Dhan quote response for market depth")
+    raise HTTPException(status_code=502, detail="Unable to parse the market data response for market depth")
 
 
 def _normalize_depth_side(side_payload: object, limit: int) -> list[dict]:
@@ -856,12 +975,141 @@ def _extract_depth_from_quote(raw_payload: dict, exchange_segment: str, security
             break
 
     if not buy_rows and not sell_rows:
-        raise HTTPException(status_code=502, detail="Dhan quote response did not include market depth rows")
+        raise HTTPException(status_code=502, detail="Market data response did not include market depth rows")
 
     return {
         "buy": buy_rows,
         "sell": sell_rows,
     }
+
+
+def _build_dhan_feed_ws_url() -> str:
+    """Connection URL for Dhan's live market feed."""
+    access_token = os.getenv("DHAN_ACCESS_TOKEN", "").strip()
+    client_id = os.getenv("DHAN_CLIENT_ID", "").strip()
+
+    if not access_token or not client_id:
+        raise HTTPException(
+            status_code=500,
+            detail="Market data credentials are not configured. Set DHAN_ACCESS_TOKEN and DHAN_CLIENT_ID.",
+        )
+
+    query = urlencode(
+        {
+            "version": 2,
+            "token": access_token,
+            "clientId": client_id,
+            "authType": 2,
+        }
+    )
+    return f"{DHAN_LIVE_FEED_WS_URL}?{query}"
+
+
+def _build_feed_subscribe_payload(identity: Dict[str, str]) -> dict:
+    """Ticker subscription - LTP + last-trade-time only, the lightest packet."""
+    return {
+        "RequestCode": DHAN_FEED_REQUEST_TICKER,
+        "InstrumentCount": 1,
+        "InstrumentList": [
+            {
+                "ExchangeSegment": identity["exchangeSegment"],
+                "SecurityId": str(identity["securityId"]),
+            }
+        ],
+    }
+
+
+def _split_feed_packets(frame: bytes) -> list[bytes]:
+    """A single frame can carry several packets back to back."""
+    packets: list[bytes] = []
+    offset = 0
+    n = len(frame)
+
+    while offset + 8 <= n:
+        code = frame[offset]
+        size = DHAN_FEED_PACKET_SIZES.get(code)
+
+        if size is None:
+            # Unknown code: fall back to the header's length field.
+            msg_len = int.from_bytes(frame[offset + 1:offset + 3], "little", signed=False)
+            size = msg_len if 8 <= msg_len <= (n - offset) else 0
+
+        if size <= 0 or offset + size > n:
+            break
+
+        packets.append(frame[offset:offset + size])
+        offset += size
+
+    return packets
+
+
+# Dhan's live feed sends Last-Trade-Time as seconds-since-epoch expressed in IST,
+# i.e. it is already shifted +5:30 relative to a true UTC epoch. Our candle series
+# (bootstrap/history) uses true UTC epochs, so we subtract this to line the live
+# ticks up with the candle grid; otherwise every tick lands 5.5h in the future and
+# the client rejects it as "too far ahead", freezing the chart.
+IST_OFFSET_SECONDS = 5 * 3600 + 30 * 60  # 19800
+
+
+def _parse_ticker_packet(packet: bytes) -> Optional[Dict[str, Union[int, float]]]:
+    """Ticker packet: header(8) + LTP float32 + last-trade-time int32, little endian."""
+    if len(packet) < 16 or packet[0] != DHAN_FEED_CODE_TICKER:
+        return None
+
+    try:
+        price = struct.unpack_from("<f", packet, 8)[0]
+        traded_at = struct.unpack_from("<i", packet, 12)[0]
+    except struct.error:
+        return None
+
+    if not price or price <= 0:
+        return None
+
+    if traded_at > 0:
+        timestamp = int(traded_at) - IST_OFFSET_SECONDS
+    else:
+        timestamp = int(datetime.now(timezone.utc).timestamp())
+
+    return {
+        "price": round(float(price), 4),
+        "timestamp": timestamp,
+    }
+
+
+async def _dhan_tick_stream(identity: Dict[str, str]):
+    """Yield live ticks from Dhan's market feed until it closes or goes idle.
+
+    The server pings every 10s and drops the connection after 40s without a
+    response; the websockets client answers control frames automatically.
+    """
+    url = _build_dhan_feed_ws_url()
+    subscribe = _build_feed_subscribe_payload(identity)
+
+    async with websockets.connect(
+        url,
+        open_timeout=DHAN_FEED_CONNECT_TIMEOUT_SEC,
+        close_timeout=5,
+        ping_interval=None,
+        max_size=None,
+    ) as feed:
+        await feed.send(json.dumps(subscribe))
+
+        while True:
+            try:
+                frame = await asyncio.wait_for(feed.recv(), timeout=DHAN_FEED_IDLE_TIMEOUT_SEC)
+            except asyncio.TimeoutError:
+                return
+
+            if not isinstance(frame, (bytes, bytearray)):
+                continue
+
+            for packet in _split_feed_packets(bytes(frame)):
+                if packet[0] == DHAN_FEED_CODE_DISCONNECT:
+                    return
+
+                tick = _parse_ticker_packet(packet)
+                if tick:
+                    yield tick
 
 
 def _build_dhan_full_depth_ws_url(limit: int) -> str:
@@ -871,7 +1119,7 @@ def _build_dhan_full_depth_ws_url(limit: int) -> str:
     if not access_token or not client_id:
         raise HTTPException(
             status_code=500,
-            detail="Dhan credentials are not configured. Set DHAN_ACCESS_TOKEN and DHAN_CLIENT_ID.",
+            detail="Market data credentials are not configured. Set DHAN_ACCESS_TOKEN and DHAN_CLIENT_ID.",
         )
 
     base = DHAN_FULL_DEPTH_200_WS_URL if limit >= 200 else DHAN_FULL_DEPTH_20_WS_URL
@@ -1009,14 +1257,14 @@ async def _fetch_full_depth_from_ws(identity: Dict[str, str], limit: int) -> dic
                     if buy_rows and sell_rows:
                         break
     except TimeoutError:
-        raise HTTPException(status_code=502, detail="Timed out while receiving full market depth from Dhan")
+        raise HTTPException(status_code=502, detail="Timed out while receiving full market depth")
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Unable to fetch full market depth from Dhan: {str(exc)}")
+        raise HTTPException(status_code=502, detail=f"Unable to fetch full market depth: {str(exc)}")
 
     if not buy_rows and not sell_rows:
-        raise HTTPException(status_code=502, detail="Dhan full depth feed returned no market depth rows")
+        raise HTTPException(status_code=502, detail="Market depth feed returned no market depth rows")
 
     return {
         "buy": buy_rows[:limit],
@@ -1204,6 +1452,39 @@ async def dhan_expired_rolling_options(
     return await _cached_dhan_post("/charts/rollingoption", payload.model_dump(), "history")
 
 
+async def _fetch_last_available_session(
+    identity: Dict[str, str],
+    timeframe: str,
+    max_lookback: int = CHART_SESSION_LOOKBACK_DAYS,
+) -> tuple[list[dict], Optional[date]]:
+    """Walk back trading days until a session with candles is found.
+
+    Dhan can return an empty intraday payload for the most recent session (no
+    ticks yet, or a day NSE reports as open but has no data), which would leave
+    the chart blank while the market is closed. Searching earlier sessions
+    guarantees the UI always has something to render.
+    """
+    interval_min = _resolve_timeframe(timeframe)
+    day = _previous_trading_day(_get_intraday_session_day(datetime.now(IST)))
+
+    for _ in range(max(1, max_lookback)):
+        from_dt, to_dt = _session_window(day, interval_min)
+        payload = _build_intraday_payload(identity, timeframe, from_dt, to_dt)
+        try:
+            response = await _cached_dhan_post("/charts/intraday", payload, "history")
+        except HTTPException:
+            day = _previous_trading_day(day)
+            continue
+
+        candles = _to_lightweight_candles(response.get("data") or {})
+        if candles:
+            return candles, day
+
+        day = _previous_trading_day(day)
+
+    return [], None
+
+
 @router.get("/chart/bootstrap")
 async def dhan_chart_bootstrap(
     symbol: str = Query(...),
@@ -1215,6 +1496,8 @@ async def dhan_chart_bootstrap(
     identity = await _resolve_chart_identity(symbol, securityId, exchangeSegment, instrument)
     requested_timeframe = str(timeframe).strip().upper()
     resolved_timeframe = requested_timeframe
+    session_date: Optional[date] = None
+    is_fallback_session = False
 
     if requested_timeframe == CHART_DAILY_TIMEFRAME:
         payload = _build_daily_historical_payload(identity)
@@ -1242,6 +1525,18 @@ async def dhan_chart_bootstrap(
             # Keep historical candles if live append fails.
             pass
     else:
+        # Smart default: an empty session (market closed, or a provider gap)
+        # would leave the chart blank. Fall back to the most recent session
+        # that actually has candles so there is always something to render.
+        if not candles:
+            fallback_candles, fallback_day = await _fetch_last_available_session(
+                identity, resolved_timeframe
+            )
+            if fallback_candles:
+                candles = fallback_candles
+                session_date = fallback_day
+                is_fallback_session = True
+
         candles = _fill_intraday_session_gaps(candles, resolved_timeframe)
 
     if requested_timeframe != CHART_DAILY_TIMEFRAME and candles:
@@ -1262,6 +1557,92 @@ async def dhan_chart_bootstrap(
         "resolvedTimeframe": resolved_timeframe,
         "identity": identity,
         "source": response.get("source"),
+        "sessionDate": _date_only(
+            datetime(session_date.year, session_date.month, session_date.day, tzinfo=IST)
+        ) if session_date else None,
+        "isFallbackSession": is_fallback_session,
+        "candles": candles,
+    }
+
+
+@router.get("/chart/history")
+async def dhan_chart_history(
+    symbol: str = Query(...),
+    timeframe: str = Query("5"),
+    fromDate: str = Query(..., description="Start date, YYYY-MM-DD (inclusive)"),
+    toDate: str = Query(..., description="End date, YYYY-MM-DD (inclusive)"),
+    securityId: Optional[str] = Query(None),
+    exchangeSegment: Optional[str] = Query(None),
+    instrument: Optional[str] = Query(None),
+):
+    """Static historical candles for an explicit window and interval.
+
+    Unlike /chart/bootstrap this never stores a live tick or opens a stream, so
+    it behaves identically whether the market is open or closed.
+    """
+    identity = await _resolve_chart_identity(symbol, securityId, exchangeSegment, instrument)
+    requested_timeframe = str(timeframe).strip().upper()
+
+    from_date = _parse_chart_date(fromDate, "fromDate")
+    to_date = _parse_chart_date(toDate, "toDate")
+
+    if from_date > to_date:
+        raise HTTPException(status_code=400, detail="fromDate must be on or before toDate")
+
+    today = datetime.now(IST).date()
+    if from_date > today:
+        raise HTTPException(status_code=400, detail="fromDate cannot be in the future")
+    to_date = min(to_date, today)
+
+    if requested_timeframe == CHART_DAILY_TIMEFRAME:
+        # Dhan treats the daily toDate as non-inclusive; nudge so the user's
+        # chosen end date is actually part of the result.
+        payload = _build_daily_historical_payload(identity, from_date, to_date + timedelta(days=1))
+        response = await _cached_dhan_post("/charts/historical", payload, "history")
+        candles = _to_lightweight_candles(response.get("data") or {})
+        source = response.get("source")
+    else:
+        interval_min = _resolve_timeframe(requested_timeframe)
+
+        earliest = today - timedelta(days=CHART_INTRADAY_MAX_HISTORY_DAYS)
+        if to_date < earliest:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Intraday history is only available for roughly the last "
+                    f"{CHART_INTRADAY_MAX_HISTORY_DAYS // 365} years. "
+                    "Use the daily (D) timeframe for older ranges."
+                ),
+            )
+        from_date = max(from_date, earliest)
+
+        window_start, _ = _session_window(from_date, interval_min)
+        _, window_end = _session_window(to_date, interval_min)
+
+        merged: Dict[int, dict] = {}
+        source = None
+        # Dhan caps intraday at 90 days per request, so chunk the window and merge.
+        for chunk_start, chunk_end in _intraday_chunks(window_start, window_end):
+            payload = _build_intraday_payload(identity, requested_timeframe, chunk_start, chunk_end)
+            chunk_response = await _cached_dhan_post("/charts/intraday", payload, "history")
+            source = source or chunk_response.get("source")
+            for candle in _to_lightweight_candles(chunk_response.get("data") or {}):
+                ts = _to_int(candle.get("time"))
+                if ts is not None:
+                    merged[ts] = candle
+
+        # No-ops for multi-day ranges; fills gaps when the range is one session.
+        candles = _fill_intraday_session_gaps([merged[ts] for ts in sorted(merged)], requested_timeframe)
+
+    return {
+        "symbol": identity["symbol"],
+        "timeframe": requested_timeframe,
+        "resolvedTimeframe": requested_timeframe,
+        "identity": identity,
+        "source": source,
+        "mode": "history",
+        "fromDate": _date_only(datetime(from_date.year, from_date.month, from_date.day, tzinfo=IST)),
+        "toDate": _date_only(datetime(to_date.year, to_date.month, to_date.day, tzinfo=IST)),
         "candles": candles,
     }
 
@@ -1357,6 +1738,13 @@ async def dhan_chart_ws(websocket: WebSocket):
         await websocket.close(code=1008)
         return
 
+    try:
+        identity = await _resolve_chart_identity(symbol, security_id, exchange_segment, instrument)
+    except HTTPException as exc:
+        await websocket.send_json({"event": "error", "detail": exc.detail})
+        await websocket.close(code=1008)
+        return
+
     await websocket.send_json(
         {
             "event": "subscribed",
@@ -1365,6 +1753,39 @@ async def dhan_chart_ws(websocket: WebSocket):
         }
     )
 
+    # Preferred path: Dhan's real-time binary feed pushes every trade, so there
+    # is no polling interval to wait on.
+    try:
+        async for tick in _dhan_tick_stream(identity):
+            payload = {
+                "event": "chart_tick",
+                "symbol": identity["symbol"],
+                "timeframe": str(timeframe),
+                "timestamp": tick["timestamp"],
+                "price": tick["price"],
+                "source": "feed",
+            }
+            await _store_last_tick(identity, timeframe, {
+                "timestamp": tick["timestamp"],
+                "price": tick["price"],
+            })
+            await publish_json(
+                _stream_channel(f"chart:{identity['symbol'].lower()}:{timeframe}"), payload
+            )
+            await websocket.send_json({"identity": identity, **payload})
+    except WebSocketDisconnect:
+        return
+    except Exception as exc:  # feed unavailable / auth rejected / connection dropped
+        await websocket.send_json(
+            {
+                "event": "stream_warning",
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "detail": f"Live feed unavailable ({type(exc).__name__}); falling back to polling.",
+            }
+        )
+
+    # Fallback path: poll the LTP REST endpoint on an interval.
     failures = 0
     try:
         while True:

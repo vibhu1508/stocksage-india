@@ -1,0 +1,294 @@
+<div class="landing min-h-screen bg-background text-foreground">
+  <!-- ================= NAV ================= -->
+  <header class="landing-nav">
+    <div class="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 md:px-8">
+      <a class="flex items-center gap-3" href="#top">
+        <img src="/logo-mark.png" alt="StockSage India" class="h-9 w-auto object-contain" />
+        <span class="leading-none">
+          <span class="block font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-foreground to-foreground/50 text-xl lg:text-2xl" style="font-family:'Plus Jakarta Sans',sans-serif;">StockSage India</span>
+          <span class="mt-1 block text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground">by Girish Gupta</span>
+        </span>
+      </a>
+
+      <nav class="hidden items-center gap-7 text-sm text-muted-foreground md:flex">
+        <a class="transition-colors hover:text-foreground" href="#features">Features</a>
+        <a class="transition-colors hover:text-foreground" href="#how">How it works</a>
+        <a class="transition-colors hover:text-foreground" href="#start">Get started</a>
+      </nav>
+
+      <div class="flex items-center gap-2.5">
+        <button type="button" (click)="toggleTheme()"
+                class="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card transition-colors hover:bg-muted"
+                aria-label="Toggle theme">
+          <lucide-icon [name]="themeService.isDark ? 'sun' : 'moon'" [size]="17"></lucide-icon>
+        </button>
+        @if (isLoggedIn) {
+        <button type="button" (click)="goToDashboard()"
+                class="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5">
+          Go to Dashboard
+          <lucide-icon name="arrow-right" [size]="16"></lucide-icon>
+        </button>
+        } @else {
+        <button type="button" (click)="continueWithGoogle()"
+                class="hidden rounded-full border border-border bg-card px-4 py-2 text-sm font-medium transition-colors hover:bg-muted sm:inline-flex">
+          Log in
+        </button>
+        <button type="button" (click)="continueWithGoogle()"
+                class="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5">
+          Sign up
+        </button>
+        }
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= TICKER STRIP ================= -->
+  <div class="ticker-strip border-y border-border bg-card/40" aria-hidden="true">
+    <div class="ticker-track">
+      @for (t of ticker.concat(ticker); track $index) {
+      <span class="ticker-item">
+        <span class="ticker-sym">{{ t.symbol }}</span>
+        <span class="ticker-val">{{ t.value }}</span>
+        <span class="ticker-chg" [class.up]="t.up" [class.down]="!t.up">
+          <lucide-icon [name]="t.up ? 'arrow-up-right' : 'arrow-down-right'" [size]="13"></lucide-icon>
+          {{ t.change }}
+        </span>
+      </span>
+      }
+    </div>
+  </div>
+
+  <!-- ================= HERO ================= -->
+  <section id="top" class="relative overflow-hidden">
+    <div class="hero-glow"></div>
+    <div class="mx-auto grid max-w-7xl items-center gap-10 px-5 py-16 md:px-8 md:py-24 lg:grid-cols-[1.05fr_0.95fr]">
+      <!-- Copy -->
+      <div class="reveal" #reveal>
+        <span class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+          <span class="live-dot"></span> Live NSE &amp; BSE market intelligence
+        </span>
+        <h1 class="mt-5 text-4xl font-bold leading-[1.08] tracking-tight md:text-6xl" style="font-family:'Outfit',sans-serif;">
+          The Indian market,<br />
+          <span class="text-primary">decoded for you.</span>
+        </h1>
+        <p class="mt-5 max-w-xl text-base leading-relaxed text-muted-foreground md:text-lg">
+          Live charts, F&amp;O analytics, an options strategy builder, and real-time portfolio tracking —
+          everything you need to read the market, in one terminal.
+        </p>
+
+        <div id="start" class="mt-8 flex flex-col gap-3 sm:flex-row">
+          @if (isLoggedIn) {
+          <button type="button" (click)="goToDashboard()"
+                  class="group inline-flex items-center justify-center gap-3 rounded-xl bg-primary px-6 py-3.5 text-sm font-semibold text-primary-foreground shadow-xl shadow-primary/25 transition-transform hover:-translate-y-0.5">
+            Go to Dashboard
+            <lucide-icon name="arrow-right" [size]="18"></lucide-icon>
+          </button>
+          @if (currentUser$ | async; as user) {
+          <span class="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-6 py-3.5 text-sm font-medium text-muted-foreground">
+            Welcome back, {{ user.name }}
+          </span>
+          }
+          } @else {
+          <button type="button" (click)="continueWithGoogle()"
+                  class="group inline-flex items-center justify-center gap-3 rounded-xl bg-primary px-6 py-3.5 text-sm font-semibold text-primary-foreground shadow-xl shadow-primary/25 transition-transform hover:-translate-y-0.5">
+            <svg viewBox="0 0 24 24" class="h-5 w-5">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#fff" opacity="0.95" />
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#fff" opacity="0.75" />
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#fff" opacity="0.6" />
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#fff" opacity="0.85" />
+            </svg>
+            Sign up with Google
+          </button>
+          <button type="button" (click)="continueWithGoogle()"
+                  class="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card px-6 py-3.5 text-sm font-semibold transition-colors hover:bg-muted">
+            Log in
+            <lucide-icon name="arrow-right" [size]="16"></lucide-icon>
+          </button>
+          }
+        </div>
+
+        <div class="mt-8 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
+          <span class="inline-flex items-center gap-1.5"><lucide-icon name="shield-check" [size]="14" class="text-primary"></lucide-icon> Google sign-in, no passwords</span>
+          <span class="inline-flex items-center gap-1.5"><lucide-icon name="zap" [size]="14" class="text-primary"></lucide-icon> Real-time exchange feed</span>
+          <span class="inline-flex items-center gap-1.5"><lucide-icon name="indian-rupee" [size]="14" class="text-primary"></lucide-icon> Built for NSE &amp; BSE</span>
+        </div>
+      </div>
+
+      <!-- Avatar stage: transparent mascot popping out of a glassy pedestal -->
+      <div class="reveal" #reveal>
+        <div class="avatar-hero">
+          <div class="avatar-glow"></div>
+          <div class="avatar-ring"></div>
+
+          <img src="/hero.png" alt="StockSage India" class="avatar-hero-img avatar-float" />
+
+          <!-- Floating feature chips -->
+          <div class="chip chip-1"><lucide-icon name="candlestick-chart" [size]="15"></lucide-icon> Live charts</div>
+          <div class="chip chip-2"><lucide-icon name="layers" [size]="15"></lucide-icon> Strategy builder</div>
+          <div class="chip chip-3"><lucide-icon name="briefcase" [size]="15"></lucide-icon> Live P&amp;L</div>
+
+          <!-- Speech bubble -->
+          <div class="avatar-bubble">
+            <span class="bubble-dot"></span> Namaskar! Girish Gupta ke channel me aapka swagat hai!!
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= STATS BAND ================= -->
+  <section class="border-y border-border bg-card/30">
+    <div class="mx-auto grid max-w-7xl grid-cols-2 gap-6 px-5 py-10 md:grid-cols-4 md:px-8">
+      @for (s of [
+        { k: 'NSE + BSE', v: 'Both exchanges' },
+        { k: 'Real-time', v: 'Streaming tick feed' },
+        { k: '5m → 1D', v: 'Every timeframe' },
+        { k: 'Options', v: 'Full strategy builder' }
+      ]; track s.k) {
+      <div class="reveal text-center md:text-left" #reveal>
+        <div class="text-2xl font-bold tracking-tight text-primary md:text-3xl" style="font-family:'Outfit',sans-serif;">{{ s.k }}</div>
+        <div class="mt-1 text-sm text-muted-foreground">{{ s.v }}</div>
+      </div>
+      }
+    </div>
+  </section>
+
+  <!-- ================= FEATURES (full-width, avatar pops from each card corner) ================= -->
+  <section id="features" class="mx-auto max-w-[86rem] px-5 py-16 md:px-8 md:py-24">
+    <div class="reveal mx-auto mb-16 max-w-2xl text-center" #reveal>
+      <h2 class="text-3xl font-bold tracking-tight md:text-4xl" style="font-family:'Outfit',sans-serif;">Everything in one terminal</h2>
+      <p class="mt-3 text-muted-foreground">Scroll through what you get the moment you sign in.</p>
+    </div>
+
+    <div id="how" class="flex flex-col gap-10 md:gap-12">
+      @for (f of features; track f.title; let i = $index) {
+      <article #featureRow [attr.data-index]="i"
+               class="feature-card" [class.is-active]="i === activeFeature">
+        <div class="feature-body">
+          <div class="feature-icon">
+            <lucide-icon [name]="f.icon" [size]="24" [strokeWidth]="2.2"></lucide-icon>
+          </div>
+          <h3 class="text-2xl font-semibold tracking-tight md:text-3xl" style="font-family:'Outfit',sans-serif;">{{ f.title }}</h3>
+          <p class="mt-3 max-w-xl text-base leading-relaxed text-muted-foreground">{{ f.blurb }}</p>
+          <span class="feature-cue"><span class="bubble-dot"></span> {{ f.cue }}</span>
+        </div>
+
+        <span class="feature-index">0{{ i + 1 }}</span>
+      </article>
+      }
+    </div>
+  </section>
+
+  <!-- ================= YOUTUBE ================= -->
+  <section class="mx-auto max-w-7xl px-5 py-8 md:px-8">
+    <div class="reveal yt-band" #reveal>
+      <div class="yt-band-glow"></div>
+
+      <div class="yt-icon">
+        <lucide-icon name="youtube" [size]="34"></lucide-icon>
+      </div>
+
+      <div class="yt-copy">
+        <span class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+          Free market education
+        </span>
+        <h2 class="mt-3 text-2xl font-bold tracking-tight md:text-3xl" style="font-family:'Outfit',sans-serif;">
+          Learn from <span class="text-primary">Girish Gupta</span> on YouTube
+        </h2>
+        <p class="mt-2 max-w-xl text-muted-foreground">
+          Weekly breakdowns of the Indian market, F&amp;O strategies, and how to read the tape —
+          straight from the analyst behind StockSage India.
+        </p>
+      </div>
+
+      <a href="https://www.youtube.com/@GirishGuptaOfficial" target="_blank" rel="noopener" class="yt-btn">
+        <lucide-icon name="youtube" [size]="20"></lucide-icon>
+        Subscribe on YouTube
+      </a>
+    </div>
+  </section>
+
+  <!-- ================= MOBILE APP / PLAY STORE ================= -->
+  <section class="mx-auto max-w-7xl px-5 pb-6 md:px-8">
+    <div class="reveal app-band" #reveal>
+      <div class="app-band-glow"></div>
+
+      <div class="app-copy">
+        <span class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+          <lucide-icon name="smartphone" [size]="14" class="text-primary"></lucide-icon> Now on Android
+        </span>
+        <h2 class="mt-4 text-3xl font-bold tracking-tight md:text-4xl" style="font-family:'Outfit',sans-serif;">
+          Take StockSage India <span class="text-primary">Anywhere.</span>
+        </h2>
+        <p class="mt-3 max-w-md text-muted-foreground">
+          The full terminal in your pocket — live charts, portfolio, and F&amp;O analytics on the go.
+          Find us on the Google Play Store.
+        </p>
+        <a href="#" target="_blank" rel="noopener" class="playstore-btn">
+          <lucide-icon name="play" [size]="20"></lucide-icon>
+          Find us on Google Play
+        </a>
+      </div>
+
+      <div class="app-shot">
+        <img src="/app-mobile.png" alt="StockSage India Android app" />
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FINAL CTA ================= -->
+  <section class="mx-auto max-w-7xl px-5 pb-20 md:px-8">
+    <div class="reveal cta-panel" #reveal>
+      <div class="cta-glow"></div>
+      @if (isLoggedIn) {
+      <h2 class="relative text-3xl font-bold tracking-tight md:text-4xl" style="font-family:'Outfit',sans-serif;">
+        Your terminal is ready.
+      </h2>
+      <p class="relative mt-3 max-w-xl text-muted-foreground">
+        Jump back in — your watchlist, portfolio, and charts are one click away.
+      </p>
+      <div class="relative mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+        <button type="button" (click)="goToDashboard()"
+                class="inline-flex items-center justify-center gap-3 rounded-xl bg-primary px-7 py-3.5 text-sm font-semibold text-primary-foreground shadow-xl shadow-primary/25 transition-transform hover:-translate-y-0.5">
+          Go to Dashboard
+          <lucide-icon name="arrow-right" [size]="18"></lucide-icon>
+        </button>
+      </div>
+      } @else {
+      <h2 class="relative text-3xl font-bold tracking-tight md:text-4xl" style="font-family:'Outfit',sans-serif;">
+        Start reading the market like a pro.
+      </h2>
+      <p class="relative mt-3 max-w-xl text-muted-foreground">
+        Sign in with Google and you're in — your watchlist, portfolio, and charts are one click away.
+      </p>
+      <div class="relative mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+        <button type="button" (click)="continueWithGoogle()"
+                class="inline-flex items-center justify-center gap-3 rounded-xl bg-primary px-7 py-3.5 text-sm font-semibold text-primary-foreground shadow-xl shadow-primary/25 transition-transform hover:-translate-y-0.5">
+          <svg viewBox="0 0 24 24" class="h-5 w-5">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#fff" opacity="0.95" />
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#fff" opacity="0.75" />
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#fff" opacity="0.6" />
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#fff" opacity="0.85" />
+          </svg>
+          Continue with Google
+        </button>
+      </div>
+      <p class="relative mt-4 text-xs text-muted-foreground">Free to start · No credit card · Cancel anytime</p>
+      }
+    </div>
+  </section>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="border-t border-border">
+    <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-5 py-8 text-sm text-muted-foreground md:flex-row md:px-8">
+      <div class="flex items-center gap-2">
+        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-bold">S</span>
+        <span class="font-medium text-foreground">StockSage India</span>
+      </div>
+      <p class="text-center text-xs">
+        For research and educational use only. Not investment advice. Market data may be delayed.
+      </p>
+      <span class="text-xs">© 2026 StockSage India</span>
+    </div>
+  </footer>
+</div>

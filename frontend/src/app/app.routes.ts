@@ -1,16 +1,18 @@
 import { Routes } from '@angular/router';
-import { authGuard, guestGuard } from './core/guards/auth.guard';
+import { authGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
   {
     path: '',
-    redirectTo: 'dashboard',
+    loadComponent: () => import('./features/landing/landing.component').then(m => m.LandingComponent),
     pathMatch: 'full'
   },
   {
+    // The hero page is now the entry point for signed-out users, so /login
+    // simply routes there (existing links & logout redirects keep working).
     path: 'login',
-    loadComponent: () => import('./features/auth/login/login.component').then(m => m.LoginComponent),
-    canActivate: [guestGuard]
+    redirectTo: '',
+    pathMatch: 'full'
   },
   {
     path: 'auth/callback',

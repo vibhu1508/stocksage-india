@@ -532,6 +532,10 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
   private applyCandles(candles: CandlestickData[]): void {
     this.liveCandles = candles;
     this.lastVisibleCandle = candles.length ? candles[candles.length - 1] : null;
+    if (this.hoveredCandle) {
+      const hoveredUnix = Number(this.hoveredCandle.time);
+      this.hoveredCandle = candles.find((c) => Number(c.time) === hoveredUnix) || null;
+    }
 
     if (this.mainSeries) {
       if (this.chartType === 'candlestick') {
@@ -670,9 +674,23 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private applyTick(tick: DhanChartTickResponse): void {
     try {
-      const merged = this.mergeTick(this.liveCandles, tick);
+      const normalizedTs = this.normalizeTickTimestamp(Number(tick.timestamp));
+      if (!Number.isFinite(normalizedTs) || normalizedTs <= 0) {
+        return;
+      }
+
+      if (!this.isTickTimestampUsable(normalizedTs)) {
+        return;
+      }
+
+      const normalizedTick: DhanChartTickResponse = {
+        ...tick,
+        timestamp: normalizedTs,
+      };
+
+      const merged = this.mergeTick(this.liveCandles, normalizedTick);
       this.applyCandles(merged);
-      this.liveLastPrice = Number(tick.price);
+      this.liveLastPrice = merged.length > 0 ? Number(merged[merged.length - 1].close) : 0;
       this.liveChartSource = 'live';
 
       const cacheKey = this.getChartCacheKey(this.selectedSymbol, this.liveTimeframe);
@@ -681,12 +699,44 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
         candles: merged,
         resolvedTimeframe: this.resolvedTimeframe,
         updatedAt: Date.now(),
-        source: existing?.source || 'live',
+        source: 'live',
       });
     } catch {
       this.liveChartError = 'Chart update delayed. Reloading latest candles.';
       this.loadChart();
     }
+  }
+
+  private normalizeTickTimestamp(rawTs: number): number {
+    if (!Number.isFinite(rawTs) || rawTs <= 0) {
+      return 0;
+    }
+    return rawTs > 1_000_000_000_000 ? Math.floor(rawTs / 1000) : Math.floor(rawTs);
+  }
+
+  private isTickTimestampUsable(tsSec: number): boolean {
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (tsSec > nowSec + 120) {
+      return false;
+    }
+
+    const intervalMinutes = Number(this.resolvedTimeframe || this.liveTimeframe);
+    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
+      return true;
+    }
+
+    if (this.liveCandles.length === 0) {
+      return true;
+    }
+
+    const intervalSec = intervalMinutes * 60;
+    const lastCandleTime = Number(this.liveCandles[this.liveCandles.length - 1].time);
+
+    if (tsSec < (lastCandleTime - intervalSec * 20)) {
+      return false;
+    }
+
+    return true;
   }
 
   private mergeTick(candles: CandlestickData[], tick: DhanChartTickResponse): CandlestickData[] {

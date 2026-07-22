@@ -16,13 +16,16 @@
   <!-- Header -->
   <div class="flex h-[72px] items-center px-4 border-b border-border shadow-sm" [class.justify-between]="!collapsed" [class.justify-center]="collapsed">
     @if (!collapsed) {
-    <div class="flex items-center gap-3">
-      <img src="logo.png" alt="StockSage" class="w-8 h-8 object-contain">
-      <span class="font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-foreground to-foreground/50 text-xl lg:text-2xl" style="font-family: 'Plus Jakarta Sans', sans-serif;">StockSage India</span>
+    <div class="flex min-w-0 items-center gap-2.5">
+      <img src="logo-mark.png" alt="StockSage" class="h-7 w-auto shrink-0 object-contain">
+      <span class="min-w-0 leading-none">
+        <span class="block whitespace-nowrap font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-foreground to-foreground/60 text-base" style="font-family: 'Plus Jakarta Sans', sans-serif;">StockSage India</span>
+        <span class="mt-1 block whitespace-nowrap text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">by Girish Gupta</span>
+      </span>
     </div>
     }
     <button (click)="toggleCollapse()" [title]="collapsed ? 'Expand sidebar' : 'Collapse sidebar'"
-            class="flex items-center justify-center rounded-md w-8 h-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors hidden lg:flex">
+            class="flex shrink-0 items-center justify-center rounded-md w-8 h-8 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors hidden lg:flex">
       <lucide-icon [name]="collapsed ? 'menu' : 'chevron-left'" [size]="20"></lucide-icon>
     </button>
   </div>

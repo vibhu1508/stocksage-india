@@ -28,6 +28,20 @@ export interface MarketSessionStatus {
   timestamp: string;
 }
 
+export interface TickerIndex {
+  symbol: string;
+  value: number;
+  change: number;
+  pct_change: number;
+  up: boolean;
+}
+
+export interface IndicesResponse {
+  market_status: string;
+  indices: TickerIndex[];
+  timestamp: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -39,6 +53,13 @@ export class MarketService {
 
   getLiveData(): Observable<MarketData> {
     return this.http.get<MarketData>(`${this.apiUrl}/live`);
+  }
+
+  /** Live index snapshot (SENSEX + NSE indices) for the ticker strip. */
+  getIndices(): Observable<IndicesResponse> {
+    return this.http.get<IndicesResponse>(`${this.apiUrl}/indices`).pipe(
+      catchError(() => of({ market_status: '', indices: [], timestamp: new Date().toISOString() }))
+    );
   }
 
   getSessionStatus(): Observable<MarketSessionStatus> {

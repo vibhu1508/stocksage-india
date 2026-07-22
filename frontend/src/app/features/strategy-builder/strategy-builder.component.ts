@@ -651,7 +651,7 @@ export class StrategyBuilderComponent implements OnInit, AfterViewInit, OnDestro
       },
       error: () => {
         this.liveChartLoading = false;
-        this.liveChartError = 'Unable to load live chart bootstrap from Dhan.';
+        this.liveChartError = 'Unable to load the live chart right now.';
       },
     });
   }
