@@ -15,7 +15,7 @@ from services.redis_store import close_redis
 load_dotenv()
 
 # Import routers
-from routers import auth, stocks, fo_analysis, announcements, market_data, learn, strategy_builder, portfolio, dhan_market
+from routers import auth, stocks, fo_analysis, announcements, market_data, learn, strategy_builder, portfolio, dhan_market, chat
 from database import engine, Base
 
 
@@ -99,6 +99,7 @@ app.include_router(strategy_builder.router, prefix="/api/strategy", tags=["Strat
 app.include_router(market_data.router, prefix="/api/market", tags=["Market Data"])
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["Portfolio"])
 app.include_router(dhan_market.router, prefix="/api/market/dhan", tags=["Dhan Market Data"])
+app.include_router(chat.router, prefix="/api/chat", tags=["AI Assistant"])
 @app.get("/")
 async def root():
     return {

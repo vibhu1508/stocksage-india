@@ -2,16 +2,19 @@ import { Component, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService } from '../../../core/services/auth.service';
+import { AiAssistantService } from '../../../core/services/ai-assistant.service';
+import { SageIconComponent } from '../sage-icon/sage-icon.component';
 import { LucideAngularModule } from 'lucide-angular';
 
 @Component({
   selector: 'app-sidebar',
   standalone: true,
   imports: [
-    CommonModule, 
-    RouterLink, 
+    CommonModule,
+    RouterLink,
     RouterLinkActive,
-    LucideAngularModule
+    LucideAngularModule,
+    SageIconComponent
   ],
   templateUrl: './sidebar.component.html',
   styleUrl: './sidebar.component.scss'
@@ -32,7 +35,15 @@ export class SidebarComponent {
     { path: '/learn', icon: 'graduation-cap', label: 'Learn' }
   ];
 
-  constructor(public authService: AuthService) { }
+  constructor(
+    public authService: AuthService,
+    public aiAssistant: AiAssistantService,
+  ) { }
+
+  openAssistant(): void {
+    this.aiAssistant.open();
+    this.closeMobile();
+  }
 
   toggleCollapse(): void {
     this.collapsed = !this.collapsed;
