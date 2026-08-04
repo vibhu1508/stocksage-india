@@ -18,7 +18,8 @@ itsdangerous==2.1.2
 
 # Data processing (existing dependencies)
 pandas==2.1.4
-requests==2.31.0
+# >=2.32.3 required by googlenewsdecoder
+requests>=2.32.3
 beautifulsoup4==4.12.3
 
 # CORS
