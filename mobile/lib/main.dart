@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'config/theme.dart';
 import 'core/navigation/app_tabs.dart';
 import 'core/services/auth_service.dart';
@@ -7,10 +8,12 @@ import 'features/dashboard/dashboard_screen.dart';
 import 'features/portfolio/portfolio_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/strategy_builder/strategy_builder_screen.dart';
-import 'features/stocks/stock_comparison_screen.dart';
-import 'features/fo_analysis/fo_analysis_screen.dart';
+import 'features/stocks/watchlist_screen.dart';
+import 'features/after_market_analysis/after_market_analysis_screen.dart';
 import 'features/announcements/announcements_screen.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'features/assistant/ai_assistant_screen.dart';
+import 'shared/widgets/sage_icon.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -85,6 +88,7 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = AppTabs.home;
+  bool _bottomNavVisible = true;
   final _announcementsKey = GlobalKey<AnnouncementsScreenState>();
 
   void _switchTab(int index, {int? subTab}) {
@@ -108,8 +112,8 @@ class _MainShellState extends State<MainShell> {
         onNavigateToTab: _switchTab,
       ),
       PortfolioScreen(authService: widget.authService),
-      StockComparisonScreen(authService: widget.authService),
-      FOAnalysisScreen(authService: widget.authService),
+      WatchlistScreen(authService: widget.authService),
+      AfterMarketAnalysisScreen(authService: widget.authService),
       const StrategyBuilderScreen(),
       AnnouncementsScreen(key: _announcementsKey, authService: widget.authService),
     ];
@@ -117,6 +121,8 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+
     return PopScope(
       canPop: _currentIndex == AppTabs.home,
       onPopInvokedWithResult: (didPop, result) {
@@ -125,51 +131,97 @@ class _MainShellState extends State<MainShell> {
         }
       },
       child: Scaffold(
-        body: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          switchInCurve: Curves.easeOut,
-          switchOutCurve: Curves.easeIn,
-          transitionBuilder: (child, animation) {
-            return FadeTransition(opacity: animation, child: child);
+        floatingActionButton: _bottomNavVisible
+            ? Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: FloatingActionButton(
+                  heroTag: 'stocksage-ai',
+                  backgroundColor: const Color(0xFF82192A),
+                  tooltip: 'StockSage AI',
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AiAssistantScreen()),
+                    );
+                  },
+                  child: const SageIcon(size: 28, color: Colors.white, accent: Colors.white),
+                ),
+              )
+            : null,
+        body: NotificationListener<UserScrollNotification>(
+          onNotification: (notification) {
+            if (!isLandscape) {
+              if (!_bottomNavVisible) {
+                setState(() => _bottomNavVisible = true);
+              }
+              return false;
+            }
+
+            if (notification.direction == ScrollDirection.reverse && _bottomNavVisible) {
+              setState(() => _bottomNavVisible = false);
+            } else if (notification.direction == ScrollDirection.forward && !_bottomNavVisible) {
+              setState(() => _bottomNavVisible = true);
+            }
+
+            return false;
           },
-          child: KeyedSubtree(
-            key: ValueKey(_currentIndex),
-            child: _screens[_currentIndex],
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, animation) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+            child: KeyedSubtree(
+              key: ValueKey(_currentIndex),
+              child: _screens[_currentIndex],
+            ),
           ),
         ),
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
-          ),
-          child: BottomNavigationBar(
-            currentIndex: _currentIndex,
-            onTap: _switchTab,
-            items: const [
-              BottomNavigationBarItem(
-                icon: Icon(LucideIcons.layoutDashboard),
-                label: 'Home',
+        bottomNavigationBar: AnimatedSlide(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          offset: _bottomNavVisible ? Offset.zero : const Offset(0, 1),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            opacity: _bottomNavVisible ? 1 : 0,
+            child: IgnorePointer(
+              ignoring: !_bottomNavVisible,
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
+                ),
+                child: BottomNavigationBar(
+                  currentIndex: _currentIndex,
+                  onTap: _switchTab,
+                  items: const [
+                    BottomNavigationBarItem(
+                      icon: Icon(LucideIcons.layoutDashboard),
+                      label: 'Home',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(LucideIcons.briefcase),
+                      label: 'Portfolio',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(LucideIcons.barChart2),
+                      label: 'Watchlist',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(LucideIcons.lineChart),
+                      label: 'AMA',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.account_tree_outlined),
+                      label: 'Strategy',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(LucideIcons.megaphone),
+                      label: 'News',
+                    ),
+                  ],
+                ),
               ),
-              BottomNavigationBarItem(
-                icon: Icon(LucideIcons.briefcase),
-                label: 'Portfolio',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(LucideIcons.arrowUpRight),
-                label: 'Stocks',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(LucideIcons.lineChart),
-                label: 'F&O',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.account_tree_outlined),
-                label: 'Strategy',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(LucideIcons.megaphone),
-                label: 'News',
-              ),
-            ],
+            ),
           ),
         ),
       ),

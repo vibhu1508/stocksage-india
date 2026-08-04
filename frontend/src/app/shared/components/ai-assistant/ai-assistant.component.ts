@@ -1,11 +1,17 @@
-import { AfterViewChecked, Component, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
+import { AfterViewChecked, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LucideAngularModule } from 'lucide-angular';
+import { marked } from 'marked';
+import { Subscription } from 'rxjs';
+
+marked.setOptions({ breaks: true, gfm: true });
 
 import { AiAssistantService } from '../../../core/services/ai-assistant.service';
 import { AiChatService } from '../../../core/services/ai-chat.service';
+import { VoiceService } from '../../../core/services/voice.service';
 import { SageIconComponent } from '../sage-icon/sage-icon.component';
+import { VoiceWaveComponent } from './voice-wave.component';
 
 /**
  * StockSage AI assistant panel — live chat over WS /api/chat/ws.
@@ -15,7 +21,7 @@ import { SageIconComponent } from '../sage-icon/sage-icon.component';
 @Component({
   selector: 'app-ai-assistant',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule, SageIconComponent],
+  imports: [CommonModule, FormsModule, LucideAngularModule, SageIconComponent, VoiceWaveComponent],
   template: `
     @if (aiAssistant.isOpen$ | async) {
     <div class="fixed inset-0 z-[70]">
@@ -42,8 +48,15 @@ import { SageIconComponent } from '../sage-icon/sage-icon.component';
             <div class="text-sm font-semibold text-foreground">StockSage AI</div>
             <div class="text-[11px] text-muted-foreground">Your market guide · आपका मार्गदर्शक</div>
           </div>
+          <button type="button" (click)="toggleVoiceReplies()"
+            [title]="voiceReplies ? 'Voice replies on' : 'Voice replies off'"
+            [disabled]="!voice.ttsSupported"
+            class="ml-auto flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-muted disabled:opacity-40"
+            [class.text-primary]="voiceReplies" [class.text-muted-foreground]="!voiceReplies">
+            <lucide-icon [name]="voiceReplies ? 'volume-2' : 'volume-x'" [size]="16"></lucide-icon>
+          </button>
           <button type="button" (click)="chat.reset()" title="New chat"
-            class="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+            class="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
             <lucide-icon name="refresh-cw" [size]="16"></lucide-icon>
           </button>
           <button type="button" (click)="aiAssistant.close()" aria-label="Close assistant"
@@ -89,8 +102,10 @@ import { SageIconComponent } from '../sage-icon/sage-icon.component';
                   <span class="flex gap-1 py-1">
                     <span class="sage-dot"></span><span class="sage-dot" style="animation-delay:.15s"></span><span class="sage-dot" style="animation-delay:.3s"></span>
                   </span>
-                } @else {
+                } @else if (m.streaming) {
                   <span class="whitespace-pre-wrap">{{ m.text }}</span>
+                } @else {
+                  <div class="sage-md" [innerHTML]="renderMarkdown(m.text)"></div>
                 }
 
                 <!-- per-message bilingual disclaimer (ⓘ) -->
@@ -112,17 +127,37 @@ import { SageIconComponent } from '../sage-icon/sage-icon.component';
 
         <!-- input -->
         <div class="border-t border-border p-3">
+          @if (voice.recording$ | async) {
+          <!-- recording: live waveform + a clear Stop button -->
+          <div class="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2">
+            <button type="button" (click)="cancelMic()" title="Cancel"
+              class="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted">
+              <lucide-icon name="x" [size]="16"></lucide-icon>
+            </button>
+            <app-voice-wave class="flex-1" [voice]="voice"></app-voice-wave>
+            <button type="button" (click)="toggleMic()" title="Stop & send"
+              class="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90">
+              <lucide-icon name="square" [size]="13"></lucide-icon>
+              Stop
+            </button>
+          </div>
+          } @else {
           <div class="flex items-end gap-2 rounded-xl border border-border bg-background px-3 py-2 focus-within:ring-1 focus-within:ring-primary/40">
             <input
               [(ngModel)]="draft"
               (keydown.enter)="onSend()"
               [disabled]="chat.isBusy"
               type="text"
-              placeholder="Ask about the market… (EN / हिंदी / Hinglish)"
+              [placeholder]="(voice.transcribing$ | async) ? 'Transcribing…' : 'Ask about the market… (EN / हिंदी / Hinglish)'"
               class="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
             />
-            <button type="button" title="Voice — coming soon" disabled
-              class="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground opacity-50">
+            <button type="button" (click)="toggleMic()"
+              [disabled]="!voice.sttSupported || chat.isBusy || (voice.transcribing$ | async)"
+              [title]="voice.sttSupported ? 'Speak' : 'Voice input not supported in this browser'"
+              class="flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted disabled:opacity-40"
+              [class.text-primary]="voice.transcribing$ | async"
+              [class.animate-pulse]="voice.transcribing$ | async"
+              [class.text-muted-foreground]="!(voice.transcribing$ | async)">
               <lucide-icon name="mic" [size]="17"></lucide-icon>
             </button>
             <button type="button" (click)="onSend()" [disabled]="!draft.trim() || chat.isBusy" aria-label="Send"
@@ -130,9 +165,14 @@ import { SageIconComponent } from '../sage-icon/sage-icon.component';
               <lucide-icon name="send" [size]="17"></lucide-icon>
             </button>
           </div>
+          }
+          @if (voiceHint) {
+          <p class="mt-2 text-center text-[10px] text-primary">{{ voiceHint }}</p>
+          } @else {
           <p class="mt-2 text-center text-[10px] text-muted-foreground">
             Market information &amp; education only — not financial advice.
           </p>
+          }
         </div>
       </aside>
 
@@ -155,11 +195,34 @@ import { SageIconComponent } from '../sage-icon/sage-icon.component';
       0%, 80%, 100% { transform: translateY(0); opacity: .5; }
       40% { transform: translateY(-4px); opacity: 1; }
     }
+    :host ::ng-deep .sage-md > *:first-child { margin-top: 0; }
+    :host ::ng-deep .sage-md > *:last-child { margin-bottom: 0; }
+    :host ::ng-deep .sage-md p { margin: 0 0 .5rem; }
+    :host ::ng-deep .sage-md strong { font-weight: 600; }
+    :host ::ng-deep .sage-md em { font-style: italic; }
+    :host ::ng-deep .sage-md ul,
+    :host ::ng-deep .sage-md ol { margin: .35rem 0 .5rem; padding-left: 1.15rem; }
+    :host ::ng-deep .sage-md ul { list-style: disc; }
+    :host ::ng-deep .sage-md ol { list-style: decimal; }
+    :host ::ng-deep .sage-md li { margin: .2rem 0; }
+    :host ::ng-deep .sage-md a { color: hsl(var(--primary)); text-decoration: underline; }
+    :host ::ng-deep .sage-md h1,
+    :host ::ng-deep .sage-md h2,
+    :host ::ng-deep .sage-md h3 { font-weight: 600; margin: .4rem 0 .3rem; font-size: 1em; }
+    :host ::ng-deep .sage-md code { background: hsl(var(--muted)); padding: .05rem .3rem; border-radius: .25rem; font-size: .85em; }
   `],
 })
-export class AiAssistantComponent implements AfterViewChecked, OnInit {
+export class AiAssistantComponent implements AfterViewChecked, OnInit, OnDestroy {
   @ViewChild('scrollBox') private scrollBox?: ElementRef<HTMLElement>;
   draft = '';
+
+  // ── Voice ──
+  /** When on, assistant replies are read aloud. */
+  voiceReplies = false;
+  voiceHint = '';
+  private msgSub?: Subscription;
+  private lastSpoken = '';
+  private hintTimer: ReturnType<typeof setTimeout> | undefined;
 
   // ── Resizable panel (desktop) ──
   panelWidth = 440;
@@ -178,12 +241,32 @@ export class AiAssistantComponent implements AfterViewChecked, OnInit {
     'StockSage AI केवल बाज़ार की जानकारी और शिक्षा देता है — यह वित्तीय सलाह नहीं है। ' +
     'हम किसी भी शेयर को खरीदने या बेचने की सलाह नहीं देते। कोई भी निर्णय लेने से पहले कृपया अपने वित्तीय सलाहकार से परामर्श करें।';
 
-  constructor(public aiAssistant: AiAssistantService, public chat: AiChatService) {}
+  constructor(
+    public aiAssistant: AiAssistantService,
+    public chat: AiChatService,
+    public voice: VoiceService,
+  ) {}
 
   ngOnInit(): void {
     const saved = Number(localStorage.getItem(this.widthKey));
     if (saved && saved >= this.minWidth) this.panelWidth = saved;
     this.updateIsDesktop();
+
+    // Read out each completed assistant reply when voice replies are on.
+    this.msgSub = this.chat.messages$.subscribe((msgs) => {
+      const last = msgs[msgs.length - 1];
+      if (!last || last.role !== 'assistant') return;
+      if (last.streaming) return;
+      if (!this.voiceReplies || !last.text || last.text === this.lastSpoken) return;
+      this.lastSpoken = last.text;
+      this.voice.speak(last.text);
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.msgSub?.unsubscribe();
+    this.voice.stopSpeaking();
+    this.voice.cancelRecording();
   }
 
   ngAfterViewChecked(): void {
@@ -232,7 +315,52 @@ export class AiAssistantComponent implements AfterViewChecked, OnInit {
   onSend(): void {
     const text = this.draft;
     this.draft = '';
+    this.voice.stopSpeaking();
     this.chat.send(text);
+  }
+
+  async toggleMic(): Promise<void> {
+    if (!this.voice.sttSupported) {
+      this.showVoiceHint('Voice input isn’t supported in this browser.');
+      return;
+    }
+    if (this.voice.recording$.value) {
+      const text = await this.voice.stopRecording();
+      if (text) {
+        this.draft = text;
+        this.onSend();
+      } else {
+        this.showVoiceHint('I didn’t catch that — please try again.');
+      }
+      return;
+    }
+    this.voiceHint = '';
+    await this.voice.startRecording((msg) => this.showVoiceHint(msg));
+  }
+
+  /** Discard the recording without transcribing/sending. */
+  cancelMic(): void {
+    this.voice.cancelRecording();
+  }
+
+  private showVoiceHint(msg: string): void {
+    this.voiceHint = msg;
+    clearTimeout(this.hintTimer);
+    this.hintTimer = setTimeout(() => { this.voiceHint = ''; }, 6000);
+  }
+
+  toggleVoiceReplies(): void {
+    this.voiceReplies = !this.voiceReplies;
+    if (!this.voiceReplies) this.voice.stopSpeaking();
+  }
+
+  /** Render assistant markdown → HTML (Angular sanitizes the [innerHTML] output). */
+  renderMarkdown(text: string): string {
+    try {
+      return marked.parse(text ?? '', { async: false }) as string;
+    } catch {
+      return text ?? '';
+    }
   }
 
   toolLabel(tool: string): string {
