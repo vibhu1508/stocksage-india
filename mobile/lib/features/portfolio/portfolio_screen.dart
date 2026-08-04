@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import '../../core/services/auth_service.dart';
+import '../../core/services/api_service.dart';
 import '../../shared/widgets/profile_menu.dart';
 import '../profile/profile_screen.dart';
+import '../stocks/stock_comparison_screen.dart';
+import '../stocks/stock_detail_screen.dart';
 import '../strategy_builder/strategy_builder_screen.dart';
 import '../strategy_builder/strategy_service.dart';
 import 'portfolio_service.dart';
@@ -23,31 +29,214 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
   String? _error;
   int _count = 0;
   double _totalInvested = 0;
+  double _totalCurrentValue = 0;
+  double _totalPnl = 0;
+  double _totalPnlPct = 0;
+  int _liveCount = 0;
   List<PortfolioHolding> _holdings = [];
+  _PortfolioViewMode _viewMode = _PortfolioViewMode.both;
+  Timer? _liveRefreshTimer;
+  Timer? _liveReconnectTimer;
+  WebSocket? _liveSocket;
+  StreamSubscription<dynamic>? _liveSocketSub;
+
+  List<_MergedHolding> get _mergedHoldings {
+    final grouped = <String, _MergedHolding>{};
+
+    for (final h in _holdings) {
+      final key = _holdingMergeKey(h);
+      final qty = h.qty > 0 ? h.qty : 0;
+      final lots = h.lots > 0 ? h.lots : 0;
+      final invested = h.invested;
+      final currentValue = h.currentValue ?? invested;
+      final pnl = h.pnl ?? (currentValue - invested);
+
+      final existing = grouped[key];
+      if (existing == null) {
+        grouped[key] = _MergedHolding(
+          key: key,
+          symbol: h.symbol,
+          instrumentType: h.instrumentType,
+          totalQty: qty,
+          totalLots: lots,
+          totalInvested: invested,
+          totalCurrentValue: currentValue,
+          totalPnl: pnl,
+          positions: 1,
+        );
+      } else {
+        grouped[key] = existing.copyWith(
+          totalQty: existing.totalQty + qty,
+          totalLots: existing.totalLots + lots,
+          totalInvested: existing.totalInvested + invested,
+          totalCurrentValue: existing.totalCurrentValue + currentValue,
+          totalPnl: existing.totalPnl + pnl,
+          positions: existing.positions + 1,
+        );
+      }
+    }
+
+    final list = grouped.values.toList()
+      ..sort((a, b) => a.symbol.compareTo(b.symbol));
+    return list;
+  }
 
   @override
   void initState() {
     super.initState();
     _loadHoldings();
+    _connectLiveStream();
   }
 
-  Future<void> _loadHoldings({bool showSyncedToast = false}) async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  @override
+  void dispose() {
+    _stopLiveStream();
+    _stopPollingFallback();
+    _liveReconnectTimer?.cancel();
+    _liveReconnectTimer = null;
+    super.dispose();
+  }
+
+  Future<void> _connectLiveStream() async {
+    _stopLiveStream();
 
     try {
-      final result = await _service.getHoldings();
+      final token = await ApiService.getToken();
+      if (token == null || token.isEmpty) {
+        _startPollingFallback();
+        return;
+      }
+
+      final uri = _service.portfolioLiveWebSocketUri(token: token);
+      final socket = await WebSocket.connect(uri.toString());
+      socket.pingInterval = const Duration(seconds: 20);
+
+      if (!mounted) {
+        await socket.close();
+        return;
+      }
+
+      _liveSocket = socket;
+      _liveSocketSub = socket.listen(
+        (event) {
+          if (!mounted || event is! String) return;
+          try {
+            final decoded = jsonDecode(event);
+            if (decoded is! Map<String, dynamic>) return;
+            if (decoded['event'] != 'portfolio_live_snapshot') return;
+
+            final data = decoded['data'];
+            if (data is! Map<String, dynamic>) return;
+
+            _applyLiveSnapshot(data);
+            _stopPollingFallback();
+          } catch (_) {
+            // Ignore malformed frames and keep stream alive.
+          }
+        },
+        onError: (_) {
+          _startPollingFallback();
+          _scheduleLiveReconnect();
+        },
+        onDone: () {
+          if (!mounted) return;
+          _startPollingFallback();
+          _scheduleLiveReconnect();
+        },
+        cancelOnError: false,
+      );
+    } catch (_) {
+      _startPollingFallback();
+      _scheduleLiveReconnect();
+    }
+  }
+
+  void _scheduleLiveReconnect() {
+    _liveReconnectTimer?.cancel();
+    _liveReconnectTimer = Timer(const Duration(milliseconds: 2500), () {
+      if (!mounted) return;
+      _connectLiveStream();
+    });
+  }
+
+  void _stopLiveStream() {
+    _liveSocketSub?.cancel();
+    _liveSocketSub = null;
+    _liveSocket?.close();
+    _liveSocket = null;
+  }
+
+  void _startPollingFallback() {
+    if (_liveRefreshTimer != null) {
+      return;
+    }
+    _liveRefreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      _loadHoldings(showLoading: false);
+    });
+  }
+
+  void _stopPollingFallback() {
+    _liveRefreshTimer?.cancel();
+    _liveRefreshTimer = null;
+  }
+
+  void _applyLiveSnapshot(Map<String, dynamic> result) {
+    if (!mounted) return;
+    setState(() {
+      _count = (result['count'] as num?)?.toInt() ?? 0;
+      _totalInvested = (result['total_invested'] as num?)?.toDouble() ?? 0;
+      _totalCurrentValue = (result['total_current_value'] as num?)?.toDouble() ?? 0;
+      _totalPnl = (result['total_pnl'] as num?)?.toDouble() ?? 0;
+      _totalPnlPct = (result['total_pnl_pct'] as num?)?.toDouble() ?? 0;
+      _liveCount = (result['live_count'] as num?)?.toInt() ?? 0;
+
+      final holdingsRaw = (result['holdings'] as List? ?? const []);
+      _holdings = holdingsRaw.map((item) {
+        if (item is PortfolioHolding) {
+          return item;
+        }
+        if (item is Map<String, dynamic>) {
+          return PortfolioHolding.fromJson(item);
+        }
+        if (item is Map) {
+          return PortfolioHolding.fromJson(Map<String, dynamic>.from(item));
+        }
+        return null;
+      }).whereType<PortfolioHolding>().toList();
+
+      _error = null;
+      _loading = false;
+    });
+  }
+
+  Future<void> _loadHoldings({bool showSyncedToast = false, bool showLoading = true}) async {
+    if (showLoading) {
       setState(() {
-        _count = result['count'] as int;
-        _totalInvested = result['total_invested'] as double;
-        _holdings = (result['holdings'] as List<PortfolioHolding>);
+        _loading = true;
+        _error = null;
       });
+    }
+
+    try {
+      final result = await _service.getHoldingsLive();
+      _applyLiveSnapshot(result);
     } catch (e) {
-      setState(() {
-        _error = e.toString().replaceAll('Exception: ', '');
-      });
+      try {
+        final fallback = await _service.getHoldings();
+        setState(() {
+          _count = fallback['count'] as int;
+          _totalInvested = fallback['total_invested'] as double;
+          _totalCurrentValue = _totalInvested;
+          _totalPnl = 0;
+          _totalPnlPct = 0;
+          _liveCount = 0;
+          _holdings = (fallback['holdings'] as List<PortfolioHolding>);
+        });
+      } catch (_) {
+        setState(() {
+          _error = e.toString().replaceAll('Exception: ', '');
+        });
+      }
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -99,6 +288,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
   }
 
   Future<void> _openHoldingSheet({PortfolioHolding? existing}) async {
+    bool sheetActive = true;
     final symbolCtrl = TextEditingController(text: existing?.symbol ?? '');
     final symbolFocusNode = FocusNode();
     final avgPriceCtrl = TextEditingController(
@@ -162,7 +352,9 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       String rawQuery,
     ) async {
       final query = rawQuery.trim();
+      if (!sheetActive) return;
       if (query.length < 2 || existing != null || suppressSymbolSearch) {
+        if (!sheetActive) return;
         setModalState(() {
           symbolSuggestions = const [];
           searchingSymbols = false;
@@ -171,6 +363,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       }
 
       final currentRequest = ++symbolSearchRequestId;
+      if (!sheetActive) return;
       setModalState(() {
         searchingSymbols = true;
       });
@@ -181,14 +374,14 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
           searchType: symbolSearchType,
           limit: 8,
         );
-        if (!mounted || currentRequest != symbolSearchRequestId) return;
+        if (!mounted || !sheetActive || currentRequest != symbolSearchRequestId) return;
         setModalState(() {
           symbolSuggestions = results;
           selectedSuggestion = null;
           searchingSymbols = false;
         });
       } catch (_) {
-        if (!mounted || currentRequest != symbolSearchRequestId) return;
+        if (!mounted || !sheetActive || currentRequest != symbolSearchRequestId) return;
         setModalState(() {
           symbolSuggestions = const [];
           searchingSymbols = false;
@@ -197,7 +390,9 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     }
 
     Future<void> loadContracts(void Function(void Function()) setModalState) async {
+      if (!sheetActive) return;
       if (instrumentType == 'EQUITY') {
+        if (!sheetActive) return;
         setModalState(() {
           availableExpiries = const [];
           availableStrikes = const [];
@@ -210,6 +405,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
 
       final symbol = symbolCtrl.text.trim().toUpperCase();
       if (symbol.length < 2) {
+        if (!sheetActive) return;
         setModalState(() {
           availableExpiries = const [];
           availableStrikes = const [];
@@ -219,6 +415,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       }
 
       final currentRequest = ++contractRequestId;
+      if (!sheetActive) return;
       setModalState(() {
         loadingContracts = true;
       });
@@ -229,7 +426,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
           instrumentType: instrumentType,
           expiry: expiryCtrl.text.trim().isEmpty ? null : expiryCtrl.text.trim(),
         );
-        if (!mounted || currentRequest != contractRequestId) return;
+        if (!mounted || !sheetActive || currentRequest != contractRequestId) return;
 
         if (expiryCtrl.text.trim().isEmpty && contracts.selectedExpiry != null) {
           expiryCtrl.text = contracts.selectedExpiry!;
@@ -241,7 +438,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
           loadingContracts = false;
         });
       } catch (_) {
-        if (!mounted || currentRequest != contractRequestId) return;
+        if (!mounted || !sheetActive || currentRequest != contractRequestId) return;
         setModalState(() {
           availableExpiries = const [];
           availableStrikes = const [];
@@ -251,23 +448,26 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     }
 
     Future<void> loadLotHint(void Function(void Function()) setModalState) async {
+      if (!sheetActive) return;
       if (instrumentType == 'EQUITY') {
+        if (!sheetActive) return;
         setModalState(() => lotHint = null);
         return;
       }
 
       final symbol = symbolCtrl.text.trim().toUpperCase();
       if (symbol.length < 2) {
+        if (!sheetActive) return;
         setModalState(() => lotHint = null);
         return;
       }
 
       try {
         final lotSize = await _service.getLotSize(symbol);
-        if (!mounted) return;
+        if (!mounted || !sheetActive) return;
         setModalState(() => lotHint = lotSize > 1 ? '1 lot = $lotSize qty' : null);
       } catch (_) {
-        if (!mounted) return;
+        if (!mounted || !sheetActive) return;
         setModalState(() => lotHint = null);
       }
     }
@@ -281,6 +481,8 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
             final isDerivative = instrumentType != 'EQUITY';
 
             Future<void> submit() async {
+              bool sheetClosed = false;
+              String successMessage = '';
               final symbol = symbolCtrl.text.trim().toUpperCase();
               final avgPrice = double.tryParse(avgPriceCtrl.text.trim());
               final qtyOrLots = int.tryParse(qtyOrLotsCtrl.text.trim());
@@ -332,7 +534,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                     action: isDerivative ? action : null,
                     notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
                   );
-                  _showToast('Holding added');
+                  successMessage = 'Holding added';
                 } else {
                   await _service.updateHolding(
                     id: existing.id,
@@ -345,17 +547,25 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                     action: isDerivative ? action : null,
                     notes: notesCtrl.text.trim(),
                   );
-                  _showToast('Holding updated');
+                  successMessage = 'Holding updated';
                 }
 
                 if (ctx.mounted) {
+                  sheetActive = false;
                   Navigator.pop(ctx);
+                  sheetClosed = true;
                 }
                 await _loadHoldings();
+                if (successMessage.isNotEmpty && mounted) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    _showToast(successMessage);
+                  });
+                }
               } catch (e) {
                 _showToast(e.toString().replaceAll('Exception: ', ''), isError: true);
               } finally {
-                if (ctx.mounted) {
+                if (!sheetClosed && ctx.mounted) {
                   setModalState(() => submitting = false);
                 }
               }
@@ -383,6 +593,15 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                           ChoiceChip(
                             label: const Text('Equity'),
                             selected: symbolSearchType == 'equity',
+                            selectedColor: Theme.of(context).colorScheme.primaryContainer,
+                            backgroundColor: Theme.of(context).cardColor,
+                            checkmarkColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                            labelStyle: TextStyle(
+                              color: symbolSearchType == 'equity'
+                                  ? Theme.of(context).colorScheme.onPrimaryContainer
+                                  : Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
                             onSelected: (_) {
                               setModalState(() {
                                 symbolSearchType = 'equity';
@@ -400,6 +619,15 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                           ChoiceChip(
                             label: const Text('Derivatives'),
                             selected: symbolSearchType == 'derivatives',
+                            selectedColor: Theme.of(context).colorScheme.primaryContainer,
+                            backgroundColor: Theme.of(context).cardColor,
+                            checkmarkColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                            labelStyle: TextStyle(
+                              color: symbolSearchType == 'derivatives'
+                                  ? Theme.of(context).colorScheme.onPrimaryContainer
+                                  : Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
                             onSelected: (_) {
                               setModalState(() {
                                 symbolSearchType = 'derivatives';
@@ -416,6 +644,15 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                           ChoiceChip(
                             label: const Text('ETF'),
                             selected: symbolSearchType == 'etf',
+                            selectedColor: Theme.of(context).colorScheme.primaryContainer,
+                            backgroundColor: Theme.of(context).cardColor,
+                            checkmarkColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                            labelStyle: TextStyle(
+                              color: symbolSearchType == 'etf'
+                                  ? Theme.of(context).colorScheme.onPrimaryContainer
+                                  : Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.w600,
+                            ),
                             onSelected: (_) {
                               setModalState(() {
                                 symbolSearchType = 'etf';
@@ -699,7 +936,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       },
     );
 
-    symbolFocusNode.dispose();
+    sheetActive = false;
   }
 
   void _openHoldingInStrategyBuilder(PortfolioHolding h) {
@@ -731,6 +968,37 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         ),
       ),
     );
+  }
+
+  void _openHoldingChart(PortfolioHolding h) {
+    final raw = h.symbol.trim();
+    if (raw.isEmpty) {
+      _showToast('Unable to open chart for empty symbol', isError: true);
+      return;
+    }
+
+    final symbol = raw.split(RegExp(r'\s+')).first.toUpperCase();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StockDetailScreen(symbol: symbol),
+      ),
+    );
+  }
+
+  String _holdingMergeKey(PortfolioHolding h) {
+    final symbol = h.symbol.trim().toUpperCase();
+    final instrument = h.instrumentType;
+
+    if (instrument == 'EQUITY') {
+      return '$symbol|$instrument';
+    }
+
+    final expiry = (h.expiry ?? '').trim().toUpperCase();
+    final strike = h.strike != null ? h.strike!.toStringAsFixed(2) : 'NA';
+    final optionType = (h.optionType ?? '').trim().toUpperCase();
+    final action = (h.action ?? '').trim().toUpperCase();
+    return '$symbol|$instrument|$expiry|$strike|$optionType|$action';
   }
 
   String _formatHoldingMeta(PortfolioHolding h) {
@@ -766,6 +1034,18 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       appBar: AppBar(
         title: const Text('Portfolio'),
         actions: [
+          IconButton(
+            tooltip: 'Search stocks',
+            icon: const Icon(Icons.manage_search),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => StockComparisonScreen(authService: widget.authService),
+                ),
+              );
+            },
+          ),
           ProfileMenu(
             authService: widget.authService,
             onOpenProfile: () {
@@ -809,26 +1089,246 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                           border: Border.all(color: Colors.white10),
                           color: theme.cardColor,
                         ),
-                        child: Row(
+                        child: Column(
                           children: [
-                            Expanded(
-                              child: _MetricTile(
-                                label: 'Total Holdings',
-                                value: '$_count',
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _MetricTile(
+                                    label: 'Total Holdings',
+                                    value: '$_count',
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _MetricTile(
+                                    label: 'Total Invested',
+                                    value: 'Rs ${_totalInvested.toStringAsFixed(2)}',
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _MetricTile(
-                                label: 'Total Invested',
-                                value: 'Rs ${_totalInvested.toStringAsFixed(2)}',
-                              ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _MetricTile(
+                                    label: 'Current Value',
+                                    value: 'Rs ${_totalCurrentValue.toStringAsFixed(2)}',
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _MetricTile(
+                                    label: 'Live P/L',
+                                    value: '${_totalPnl >= 0 ? '+' : ''}Rs ${_totalPnl.toStringAsFixed(2)}',
+                                    valueColor: _totalPnl >= 0 ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                                    helperText: '${_totalPnl >= 0 ? '+' : ''}${_totalPnlPct.toStringAsFixed(2)}%',
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: _liveCount == 0
+                                        ? const Color(0xFF64748B)
+                                        : (_liveCount == _holdings.length
+                                            ? const Color(0xFF10B981)
+                                            : const Color(0xFFF59E0B)),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    _liveCount == 0
+                                        ? 'Waiting for live feed'
+                                        : (_liveCount == _holdings.length
+                                            ? 'Live updates active'
+                                            : 'Partial live updates ($_liveCount/${_holdings.length})'),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.8),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 14),
-                      if (_holdings.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.white10),
+                          color: theme.cardColor,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Holdings View',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                ChoiceChip(
+                                  label: const Text('Both'),
+                                  selected: _viewMode == _PortfolioViewMode.both,
+                                  selectedColor: theme.colorScheme.primaryContainer,
+                                  backgroundColor: theme.cardColor,
+                                  labelStyle: TextStyle(
+                                    color: _viewMode == _PortfolioViewMode.both
+                                        ? theme.colorScheme.onPrimaryContainer
+                                        : theme.colorScheme.onSurface,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  onSelected: (_) {
+                                    setState(() => _viewMode = _PortfolioViewMode.both);
+                                  },
+                                ),
+                                ChoiceChip(
+                                  label: const Text('Merged'),
+                                  selected: _viewMode == _PortfolioViewMode.merged,
+                                  selectedColor: theme.colorScheme.primaryContainer,
+                                  backgroundColor: theme.cardColor,
+                                  labelStyle: TextStyle(
+                                    color: _viewMode == _PortfolioViewMode.merged
+                                        ? theme.colorScheme.onPrimaryContainer
+                                        : theme.colorScheme.onSurface,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  onSelected: (_) {
+                                    setState(() => _viewMode = _PortfolioViewMode.merged);
+                                  },
+                                ),
+                                ChoiceChip(
+                                  label: const Text('Individual'),
+                                  selected: _viewMode == _PortfolioViewMode.individual,
+                                  selectedColor: theme.colorScheme.primaryContainer,
+                                  backgroundColor: theme.cardColor,
+                                  labelStyle: TextStyle(
+                                    color: _viewMode == _PortfolioViewMode.individual
+                                        ? theme.colorScheme.onPrimaryContainer
+                                        : theme.colorScheme.onSurface,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  onSelected: (_) {
+                                    setState(() => _viewMode = _PortfolioViewMode.individual);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      if ((_viewMode == _PortfolioViewMode.both || _viewMode == _PortfolioViewMode.merged) && _mergedHoldings.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white10),
+                            color: theme.cardColor,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Merged Holdings Summary',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                              ),
+                              const SizedBox(height: 10),
+                              ..._mergedHoldings.map(
+                                (m) => Container(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.white10),
+                                    color: theme.brightness == Brightness.dark
+                                        ? const Color(0xFF0F172A)
+                                        : const Color(0xFFF8FAFC),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              m.symbol,
+                                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '${m.instrumentType} • ${m.positions} positions',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          Text(
+                                            m.instrumentType == 'EQUITY'
+                                                ? 'Qty ${m.totalQty}'
+                                                : 'Qty ${m.totalQty} (${m.totalLots} lots)',
+                                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Avg Rs ${m.avgPrice.toStringAsFixed(2)}',
+                                            style: const TextStyle(fontSize: 11),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Invested Rs ${m.totalInvested.toStringAsFixed(2)}',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.8),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Current Rs ${m.totalCurrentValue.toStringAsFixed(2)}',
+                                            style: const TextStyle(fontSize: 11),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '${m.totalPnl >= 0 ? '+' : ''}Rs ${m.totalPnl.toStringAsFixed(2)} (${m.totalPnl >= 0 ? '+' : ''}${m.pnlPct.toStringAsFixed(2)}%)',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: m.totalPnl >= 0 ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      if ((_viewMode == _PortfolioViewMode.both || _viewMode == _PortfolioViewMode.individual) && _holdings.isEmpty)
                         Container(
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
@@ -841,7 +1341,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                             textAlign: TextAlign.center,
                           ),
                         )
-                      else
+                      else if (_viewMode == _PortfolioViewMode.both || _viewMode == _PortfolioViewMode.individual)
                         ..._holdings.map(
                           (h) => Container(
                             margin: const EdgeInsets.only(bottom: 10),
@@ -860,7 +1360,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                                       child: Text(
                                         h.symbol,
                                         style: const TextStyle(
-                                          fontSize: 16,
+                                          fontSize: 15,
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
@@ -876,7 +1376,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                                       ),
                                       child: Text(
                                         h.instrumentType,
-                                        style: const TextStyle(fontSize: 11),
+                                        style: const TextStyle(fontSize: 10),
                                       ),
                                     ),
                                   ],
@@ -885,23 +1385,50 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                                 Text(
                                   _formatHoldingMeta(h),
                                   style: TextStyle(
-                                    fontSize: 12,
-                                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.75),
+                                    fontSize: 11,
+                                    color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
                                   'Avg Rs ${h.avgPrice.toStringAsFixed(2)} • Invested Rs ${h.invested.toStringAsFixed(2)}',
                                   style: TextStyle(
-                                    fontSize: 13,
-                                    color: theme.textTheme.bodyMedium?.color?.withOpacity(0.85),
+                                    fontSize: 12,
+                                    color: theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.85),
                                   ),
                                 ),
+                                const SizedBox(height: 6),
+                                if (h.liveAvailable && h.livePrice != null)
+                                  Text(
+                                    'LTP Rs ${h.livePrice!.toStringAsFixed(2)} • ${h.pnl != null ? (h.pnl! >= 0 ? '+' : '') : ''}Rs ${(h.pnl ?? 0).toStringAsFixed(2)} (${h.pnlPct != null ? ((h.pnlPct! >= 0 ? '+' : '') + h.pnlPct!.toStringAsFixed(2) + '%') : '--'})',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: (h.pnl ?? 0) >= 0 ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  )
+                                else
+                                  Text(
+                                    'Live quote unavailable right now',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: theme.textTheme.bodySmall?.color?.withValues(alpha: 0.75),
+                                    ),
+                                  ),
                                 const SizedBox(height: 10),
                                 Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: [
+                                    FilledButton.tonalIcon(
+                                      onPressed: () => _openHoldingChart(h),
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: theme.colorScheme.primaryContainer,
+                                        foregroundColor: theme.colorScheme.onPrimaryContainer,
+                                      ),
+                                      icon: const Icon(Icons.show_chart, size: 16),
+                                      label: const Text('View Chart'),
+                                    ),
                                     OutlinedButton.icon(
                                       onPressed: () => _openHoldingSheet(existing: h),
                                       icon: const Icon(Icons.edit_outlined, size: 16),
@@ -915,6 +1442,10 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                                     if (h.instrumentType == 'OPTION')
                                       FilledButton.tonalIcon(
                                         onPressed: () => _openHoldingInStrategyBuilder(h),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: theme.colorScheme.primaryContainer,
+                                          foregroundColor: theme.colorScheme.onPrimaryContainer,
+                                        ),
                                         icon: const Icon(Icons.hub_outlined, size: 16),
                                         label: const Text('Open in Builder'),
                                       ),
@@ -936,11 +1467,15 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
   }
 }
 
+enum _PortfolioViewMode { both, merged, individual }
+
 class _MetricTile extends StatelessWidget {
   final String label;
   final String value;
+  final Color? valueColor;
+  final String? helperText;
 
-  const _MetricTile({required this.label, required this.value});
+  const _MetricTile({required this.label, required this.value, this.valueColor, this.helperText});
 
   @override
   Widget build(BuildContext context) {
@@ -950,16 +1485,76 @@ class _MetricTile extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            fontSize: 12,
-            color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.75),
+            fontSize: 11,
+            color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.75),
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 3),
         Text(
           value,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: valueColor),
         ),
+        if (helperText != null && helperText!.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            helperText!,
+            style: TextStyle(
+              fontSize: 10,
+              color: Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.8),
+            ),
+          ),
+        ],
       ],
+    );
+  }
+}
+
+class _MergedHolding {
+  final String key;
+  final String symbol;
+  final String instrumentType;
+  final int totalQty;
+  final int totalLots;
+  final double totalInvested;
+  final double totalCurrentValue;
+  final double totalPnl;
+  final int positions;
+
+  const _MergedHolding({
+    required this.key,
+    required this.symbol,
+    required this.instrumentType,
+    required this.totalQty,
+    required this.totalLots,
+    required this.totalInvested,
+    required this.totalCurrentValue,
+    required this.totalPnl,
+    required this.positions,
+  });
+
+  double get avgPrice => totalQty > 0 ? totalInvested / totalQty : 0;
+  double get pnlPct => totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+
+  _MergedHolding copyWith({
+    int? totalQty,
+    int? totalLots,
+    double? totalInvested,
+    double? totalCurrentValue,
+    double? totalPnl,
+    int? positions,
+  }) {
+    return _MergedHolding(
+      key: key,
+      symbol: symbol,
+      instrumentType: instrumentType,
+      totalQty: totalQty ?? this.totalQty,
+      totalLots: totalLots ?? this.totalLots,
+      totalInvested: totalInvested ?? this.totalInvested,
+      totalCurrentValue: totalCurrentValue ?? this.totalCurrentValue,
+      totalPnl: totalPnl ?? this.totalPnl,
+      positions: positions ?? this.positions,
     );
   }
 }

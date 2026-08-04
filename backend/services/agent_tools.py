@@ -9,6 +9,7 @@ confirmation).
 import asyncio
 import json
 import logging
+import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
@@ -148,6 +149,17 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "elaborate_news",
+            "description": "Fetch the FULL text of one news story that was just listed, when the user asks to explain/elaborate/read more about it ('elaborate on the 2nd one', 'us HDFC waali khabar ke baare mein aur batao', 'explain that news in detail'). Use ONLY after news has already been shown.",
+            "parameters": {
+                "type": "object",
+                "properties": {"reference": {"type": "string", "description": "Which story: a position like '2' / 'second', or a keyword from its headline like 'HDFC'. Omit for the first/most recent."}},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_sentiment",
             "description": "A neutral, market-aware read on a stock: recent trusted-source news, today's index trend, and the stock's % change today. Use for 'sentiment', 'news', 'mahaul', 'khabar kaisi hai'.",
             "parameters": {
@@ -199,7 +211,11 @@ async def _stock_price(symbol: str) -> Dict[str, Any]:
         )
         return {"symbol": sym, "price": r.get("price"), "source": r.get("source")}
     except Exception:
-        logger.exception("get_stock_price failed for %s", sym)
+        # Dhan can fail (e.g. expired token) — fall back to the NSE quote's last price.
+        logger.warning("Dhan price failed for %s; falling back to NSE quote", sym)
+        quote = await _stock_quote(sym)
+        if isinstance(quote, dict) and quote.get("last_price"):
+            return {"symbol": sym, "price": quote["last_price"], "source": "nse"}
         return {"symbol": sym, "error": "price unavailable right now"}
 
 
@@ -360,26 +376,101 @@ async def _record_holding(user_id: Optional[int], symbol, quantity, avg_price) -
     return {"status": "needs_confirmation", "symbol": sym, "quantity": qty, "avg_price": price}
 
 
-async def _news(symbol: Optional[str] = None) -> Dict[str, Any]:
+def _clean_company(name: Optional[str]) -> str:
+    """Strip 'Limited/Ltd' so the news query matches the common company name."""
+    if not name:
+        return ""
+    return re.sub(r"\s+(limited|ltd\.?)\s*$", "", name.strip(), flags=re.IGNORECASE).strip()
+
+
+async def _company_name(sym: str) -> str:
+    quote = await _stock_quote(sym)
+    return _clean_company(quote.get("company")) if isinstance(quote, dict) else ""
+
+
+# Last news list shown to each user, so they can ask to "elaborate on the 2nd one".
+_LAST_NEWS: Dict[Optional[int], list] = {}
+
+
+async def _news(symbol: Optional[str] = None, user_id: Optional[int] = None) -> Dict[str, Any]:
     sym = (symbol or "").strip().upper()
-    query = f"{sym} share stock NSE India" if sym else "Indian stock market Sensex Nifty today"
-    items = await news_service.fetch_trusted_news(query, limit=6)
-    return {"topic": sym or "market", "news": items}
+    if not sym:
+        items = await news_service.fetch_trusted_news("Indian stock market Sensex Nifty when:7d", limit=8)
+        topic = "market"
+    else:
+        # Query by the real company name + recency for relevant, recent, stock-specific news.
+        name = await _company_name(sym)
+        term = name or sym
+        items = await news_service.fetch_trusted_news(f"{term} share price when:30d", limit=8)
+        if not items:
+            items = await news_service.fetch_trusted_news(f"{term} stock", limit=8)
+        topic = name or sym
+
+    # Pull the actual article text for the top items so the reply can explain what
+    # each story SAYS (and identify its tone), not just echo a headline.
+    await news_service.enrich_with_snippets(items, top_n=3)
+    _LAST_NEWS[user_id] = items
+    return {
+        "topic": topic,
+        "news": items,
+        "note": "Summarise what each story reports and its tone/sentiment. Numbered so the user can ask to elaborate on a specific one.",
+    }
 
 
-async def _sentiment(symbol: str) -> Dict[str, Any]:
+def _match_news(items: list, reference: Optional[str]):
+    """Pick a news item from a stored list by number ('the 2nd') or keyword ('the HDFC one')."""
+    if not items:
+        return None
+    ref = (reference or "").strip().lower()
+    if not ref:
+        return items[0]
+    m = re.search(r"\d+", ref)
+    if m:
+        idx = int(m.group()) - 1
+        if 0 <= idx < len(items):
+            return items[idx]
+    for it in items:
+        if ref in (it.get("title", "").lower() + " " + it.get("source", "").lower()):
+            return it
+    return items[0]
+
+
+async def _elaborate_news(user_id: Optional[int], reference: Optional[str] = None) -> Dict[str, Any]:
+    """Fetch the FULL text of one previously-listed news item and return it."""
+    items = _LAST_NEWS.get(user_id) or _LAST_NEWS.get(None) or []
+    if not items:
+        return {"error": "no news has been shown yet", "hint": "fetch news first, then elaborate"}
+    item = _match_news(items, reference)
+    if not item:
+        return {"error": "could not match that news item"}
+    article = await news_service.fetch_article_content(item.get("link", ""))
+    return {
+        "title": item.get("title"),
+        "source": item.get("source"),
+        "published": item.get("published"),
+        "content": article.get("content") or item.get("snippet") or "(full text unavailable)",
+        "note": "Explain this story in detail in the user's language. Report facts and tone only — never turn it into buy/sell advice.",
+    }
+
+
+async def _sentiment(symbol: str, user_id: Optional[int] = None) -> Dict[str, Any]:
     sym = (symbol or "").strip().upper()
     if not sym:
         return {"error": "no symbol provided"}
-    news = await news_service.fetch_trusted_news(f"{sym} share stock NSE India", limit=5)
+    quote = await _stock_quote(sym)
+    name = _clean_company(quote.get("company")) if isinstance(quote, dict) else ""
+    news = await news_service.fetch_trusted_news(f"{name or sym} share price when:30d", limit=6)
+    await news_service.enrich_with_snippets(news, top_n=3)
+    _LAST_NEWS[user_id] = news
     try:
         overview = await md.get_indices()
     except Exception:
         overview = {}
-    quote = await _stock_quote(sym)
     return {
         "symbol": sym,
+        "company": name or sym,
         "recent_news": news,
+        "note": "Judge sentiment from what the stories actually report (not just keywords). State the tone as informational — no buy/sell/hold guidance.",
         "market_status": overview.get("market_status") if isinstance(overview, dict) else None,
         "index_trend": [
             {"symbol": i.get("symbol"), "pct_change": i.get("pct_change")}
@@ -420,9 +511,11 @@ async def execute_tool(name: str, args_json: str, user_id: Optional[int] = None)
                 user_id, args.get("symbol"), args.get("quantity"), args.get("avg_price")
             )
         if name == "get_news":
-            return await _news(args.get("symbol"))
+            return await _news(args.get("symbol"), user_id)
+        if name == "elaborate_news":
+            return await _elaborate_news(user_id, args.get("reference"))
         if name == "get_sentiment":
-            return await _sentiment(args.get("symbol", ""))
+            return await _sentiment(args.get("symbol", ""), user_id)
         return {"error": f"unknown tool: {name}"}
     except Exception as exc:
         logger.exception("tool %s failed", name)

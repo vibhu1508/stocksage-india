@@ -15,16 +15,43 @@ Server → client: {"type": "token", "text": ...}       (streamed answer chunks)
                  {"type": "error", "detail": ...}
 """
 
+import asyncio
 import logging
+import os
+import tempfile
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, File, UploadFile, WebSocket, WebSocketDisconnect
 
 from services.agent import run_agent_stream, run_confirm_holding, run_cancel_holding
 from services.portfolio_actions import user_id_from_token
+from services.transcribe import transcribe_file
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.post("/transcribe")
+async def transcribe(audio: UploadFile = File(...)):
+    """Speech-to-text for voice input (works in any browser — the browser records,
+    we transcribe with Whisper). Returns {text, language}."""
+    data = await audio.read()
+    if not data:
+        return {"text": "", "language": None}
+    suffix = os.path.splitext(audio.filename or "clip.webm")[1] or ".webm"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        tmp.write(data)
+        tmp.close()
+        return await asyncio.to_thread(transcribe_file, tmp.name)
+    except Exception:
+        logger.exception("transcription failed")
+        return {"text": "", "language": None, "error": "transcription failed"}
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
 
 MAX_HISTORY_MESSAGES = 40
 

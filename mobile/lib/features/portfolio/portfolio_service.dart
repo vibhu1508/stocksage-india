@@ -17,6 +17,11 @@ class PortfolioHolding {
   final String? optionType;
   final String? action;
   final String? notes;
+  final double? livePrice;
+  final double? currentValue;
+  final double? pnl;
+  final double? pnlPct;
+  final bool liveAvailable;
 
   PortfolioHolding({
     required this.id,
@@ -32,6 +37,11 @@ class PortfolioHolding {
     this.optionType,
     this.action,
     this.notes,
+    this.livePrice,
+    this.currentValue,
+    this.pnl,
+    this.pnlPct,
+    required this.liveAvailable,
   });
 
   factory PortfolioHolding.fromJson(Map<String, dynamic> json) {
@@ -49,6 +59,11 @@ class PortfolioHolding {
       optionType: json['option_type']?.toString(),
       action: json['action']?.toString(),
       notes: json['notes']?.toString(),
+      livePrice: (json['live_price'] as num?)?.toDouble(),
+      currentValue: (json['current_value'] as num?)?.toDouble(),
+      pnl: (json['pnl'] as num?)?.toDouble(),
+      pnlPct: (json['pnl_pct'] as num?)?.toDouble(),
+      liveAvailable: json['live_available'] == true,
     );
   }
 }
@@ -93,6 +108,40 @@ class DerivativeContractsData {
 }
 
 class PortfolioService {
+  String _extractErrorMessage(String body, String fallback) {
+    try {
+      final data = jsonDecode(body);
+      if (data is Map<String, dynamic>) {
+        final detail = data['detail'];
+        if (detail is String && detail.trim().isNotEmpty) {
+          return detail.trim();
+        }
+        final message = data['message'];
+        if (message is String && message.trim().isNotEmpty) {
+          return message.trim();
+        }
+      }
+    } catch (_) {
+      // Ignore invalid payload and fall back to default message.
+    }
+    return fallback;
+  }
+
+  Uri portfolioLiveWebSocketUri({required String token}) {
+    final base = Uri.parse(ApiConfig.baseUrl);
+    final wsScheme = base.scheme == 'https' ? 'wss' : 'ws';
+
+    return Uri(
+      scheme: wsScheme,
+      host: base.host,
+      port: base.hasPort ? base.port : null,
+      path: '/api/portfolio/holdings/live/ws',
+      queryParameters: {
+        'token': token,
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> getHoldings() async {
     final res = await ApiService.get(ApiConfig.portfolioHoldings);
     if (res.statusCode != 200) {
@@ -109,6 +158,31 @@ class PortfolioService {
     return {
       'count': data['count'] ?? holdings.length,
       'total_invested': (data['total_invested'] as num?)?.toDouble() ?? 0,
+      'holdings': holdings,
+    };
+  }
+
+  Future<Map<String, dynamic>> getHoldingsLive() async {
+    final res = await ApiService.get(ApiConfig.portfolioHoldingsLive);
+    if (res.statusCode != 200) {
+      throw Exception('Unable to load live portfolio holdings');
+    }
+
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final holdingsRaw = (data['holdings'] as List? ?? []);
+    final holdings = holdingsRaw
+        .whereType<Map<String, dynamic>>()
+        .map(PortfolioHolding.fromJson)
+        .toList();
+
+    return {
+      'count': data['count'] ?? holdings.length,
+      'live_count': data['live_count'] ?? 0,
+      'total_invested': (data['total_invested'] as num?)?.toDouble() ?? 0,
+      'total_current_value': (data['total_current_value'] as num?)?.toDouble() ?? 0,
+      'total_pnl': (data['total_pnl'] as num?)?.toDouble() ?? 0,
+      'total_pnl_pct': (data['total_pnl_pct'] as num?)?.toDouble() ?? 0,
+      'as_of': (data['as_of'] as num?)?.toInt(),
       'holdings': holdings,
     };
   }
@@ -191,8 +265,8 @@ class PortfolioService {
 
   Future<void> deleteHolding(int id) async {
     final res = await ApiService.delete('${ApiConfig.portfolioHoldings}/$id');
-    if (res.statusCode != 200) {
-      throw Exception('Unable to delete holding');
+    if (res.statusCode != 200 && res.statusCode != 204) {
+      throw Exception(_extractErrorMessage(res.body, 'Unable to delete holding'));
     }
   }
 
@@ -222,8 +296,8 @@ class PortfolioService {
     };
 
     final res = await ApiService.post(ApiConfig.portfolioHoldings, body: body);
-    if (res.statusCode != 200) {
-      throw Exception('Unable to add holding');
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw Exception(_extractErrorMessage(res.body, 'Unable to add holding'));
     }
   }
 
@@ -250,8 +324,8 @@ class PortfolioService {
     };
 
     final res = await ApiService.put('${ApiConfig.portfolioHoldings}/$id', body: body);
-    if (res.statusCode != 200) {
-      throw Exception('Unable to update holding');
+    if (res.statusCode != 200 && res.statusCode != 204) {
+      throw Exception(_extractErrorMessage(res.body, 'Unable to update holding'));
     }
   }
 }

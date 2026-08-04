@@ -44,7 +44,11 @@ for a price, market status, movers, or a company's announcements.
 For index names (NIFTY 50, SENSEX, BANKNIFTY, FINNIFTY, NIFTY IT) use get_market_overview, NOT
 get_stock_price. get_stock_price is only for individual company stocks (RELIANCE, TCS, etc.).
 Call get_news for news/khabar about a stock or the market. Call get_sentiment for questions about
-'sentiment', 'mahaul', or how a stock's news/mood looks."""
+'sentiment', 'mahaul', or how a stock's news/mood looks.
+Call elaborate_news when the user wants more detail on a story that was JUST listed — "elaborate
+on the 2nd one", "explain that news", "us HDFC waali khabar ke baare mein aur batao", "read more".
+Pass the reference (a number like "2", or a keyword from the headline). Do NOT call get_news again
+for this — the story is already in the recent list."""
 
 WRITER_SYSTEM = """You are StockSage AI, a friendly, respectful guide to the Indian stock market
 and to the StockSage India app, created by Girish Gupta. Any live data needed has already been
@@ -84,10 +88,22 @@ For "what is X" / definition / concept questions, explain from your own knowledg
 is needed. If the provided data is an error or empty, ignore it and answer from your knowledge.
 
 ## News & sentiment
-When presenting news, list the headlines and name each item's source. When describing sentiment,
-be NEUTRAL and informational (e.g. "recent coverage leans positive / negative / mixed", factoring
-in the overall market trend and the stock's move) — it is a read on the mood, NEVER a buy/sell
-recommendation. Add the usual not-advice reminder.
+When presenting news, give the **top 3–5 most recent** items as a numbered list. For items that
+include a "snippet" (the actual article text), write a one-line takeaway of what the story
+actually REPORTS — the substance, not just the headline — plus its **source** and date. Number
+the items so the user can ask you to elaborate on a specific one. Prefer the freshest, most
+stock-specific items; skip stale or unrelated ones. End by inviting them to ask for more detail
+on any story ("kisi khabar par aur detail chahiye toh batayein").
+When the data is an "elaborate_news" result, explain THAT one story in depth from its full text,
+in the user's language.
+Identify each story's tone from what it reports (leans positive / negative / neutral) — do NOT
+decide tone from keywords alone. If a story mentions a brokerage call, rating, or price target,
+report it strictly as what THAT source/analyst said (e.g. "MoneyControl reports Anand Rathi has a
+Buy call with a ₹963 target") — it is the source's view for information only, NEVER your own
+recommendation, and never present it as something the user should act on.
+When describing sentiment, be NEUTRAL and informational (e.g. "recent coverage leans positive /
+negative / mixed", factoring in the overall market trend and the stock's move) — a read on the
+mood, never a buy/sell call. Add the not-advice reminder.
 
 ## Tone & respect (ALWAYS)
 Always be polite, warm, and respectful. In Hindi/Hinglish ALWAYS address the user with the
@@ -126,6 +142,58 @@ def _latest_user_text(history: List[Dict]) -> str:
         if m.get("role") == "user" and isinstance(m.get("content"), str):
             return m["content"]
     return ""
+
+
+# Month names (English, Hindi/Devanagari, common Hinglish) → month number.
+_MONTHS = {
+    "january": 1, "jan": 1, "february": 2, "feb": 2, "march": 3, "mar": 3, "april": 4, "apr": 4,
+    "may": 5, "june": 6, "jun": 6, "july": 7, "jul": 7, "august": 8, "aug": 8,
+    "september": 9, "sept": 9, "sep": 9, "october": 10, "oct": 10, "november": 11, "nov": 11,
+    "december": 12, "dec": 12,
+    "जनवरी": 1, "फरवरी": 2, "मार्च": 3, "मर्च": 3, "अप्रैल": 4, "अप्रेल": 4, "मई": 5, "जून": 6,
+    "जुलाई": 7, "अगस्त": 8, "सितंबर": 9, "सितम्बर": 9, "अक्टूबर": 10, "अक्तूबर": 10,
+    "नवंबर": 11, "नवम्बर": 11, "दिसंबर": 12, "दिसम्बर": 12,
+    "janvari": 1, "farvari": 2, "aprail": 4, "julai": 7, "agast": 8, "sitambar": 9,
+    "aktubar": 10, "navambar": 11, "disambar": 12,
+}
+_MONTH_RE = re.compile(r"(?<!\w)(" + "|".join(sorted(_MONTHS, key=len, reverse=True)) + r")(?!\w)", re.IGNORECASE)
+_DEVA_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+
+
+def _parse_date_from_text(text: str):
+    """Deterministically pull (day, month, year|None) from a message — the 8B router
+    is unreliable at Hindi month names, so we parse the date ourselves."""
+    if not text:
+        return None
+    normalized = text.translate(_DEVA_DIGITS)
+    month_match = _MONTH_RE.search(normalized)
+    if not month_match:
+        return None
+    month = _MONTHS[month_match.group(1).lower()]
+    day_match = re.search(r"\b([1-9]|[12]\d|3[01])\b", normalized)
+    if not day_match:
+        return None
+    year_match = re.search(r"\b(19|20)\d{2}\b", normalized)
+    return (int(day_match.group(1)), month, int(year_match.group(0)) if year_match else None)
+
+
+def _corrected_date_args(args_json: str, text: str) -> str:
+    """Override get_price_on_date's day/month/year with a deterministic parse of the message."""
+    parsed = _parse_date_from_text(text)
+    if not parsed:
+        return args_json
+    day, month, year = parsed
+    try:
+        obj = json.loads(args_json or "{}")
+    except json.JSONDecodeError:
+        obj = {}
+    obj["day"] = day
+    obj["month"] = month
+    if year:
+        obj["year"] = year
+    else:
+        obj.pop("year", None)
+    return json.dumps(obj)
 
 
 def _writer_system_for(history: List[Dict]) -> str:
@@ -178,8 +246,11 @@ async def _gather_tool_data(client, history: List[Dict], user_id=None) -> AsyncG
         if key in seen:  # de-dupe identical parallel calls
             continue
         seen.add(key)
+        args = tc.function.arguments or "{}"
+        if tc.function.name == "get_price_on_date":
+            args = _corrected_date_args(args, _latest_user_text(history))
         yield {"type": "tool", "name": tc.function.name}
-        result = await execute_tool(tc.function.name, tc.function.arguments or "{}", user_id)
+        result = await execute_tool(tc.function.name, args, user_id)
         collected.append({"tool": tc.function.name, "result": result})
 
     yield {"_data": collected}

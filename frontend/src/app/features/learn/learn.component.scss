@@ -23,10 +23,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: $accent-primary;
-  background: rgba(59, 130, 246, 0.12);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.15);
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.12);
+  border: 1px solid hsl(var(--primary) / 0.2);
+  box-shadow: 0 4px 14px hsl(var(--primary) / 0.18);
 }
 
 .search-icon-wrap {
@@ -191,7 +191,8 @@
 .player-modal {
   width: 90%;
   max-width: 900px;
-  background: $secondary-dark;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
   border-radius: $radius-lg;
   overflow: hidden;
   position: relative;
@@ -270,7 +271,7 @@
   width: 40px;
   height: 40px;
   border: 3px solid rgba(255, 255, 255, 0.1);
-  border-top-color: $accent-primary;
+  border-top-color: hsl(var(--primary));
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto $spacing-md;

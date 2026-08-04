@@ -34,3 +34,8 @@ redis==5.2.1
 
 # StockSage AI assistant (NVIDIA NIM, OpenAI-compatible)
 openai>=1.40
+
+# Whisper STT (server-side voice, works in any browser)
+faster-whisper
+trafilatura>=2.0
+googlenewsdecoder>=0.1.7

@@ -114,6 +114,11 @@ class StrategyService {
     return json.decode(res.body);
   }
 
+  Future<Map<String, dynamic>> getYearwiseData(String symbol) async {
+    final res = await ApiService.get('$_strategyUrl/yearwise-data/${symbol.toUpperCase()}');
+    return json.decode(res.body);
+  }
+
   Future<Map<String, dynamic>> getFuturesData(String symbol, {String? expiry, String? identifier}) async {
     final params = <String, String>{};
     if (expiry != null && expiry.isNotEmpty) params['expiry'] = expiry;

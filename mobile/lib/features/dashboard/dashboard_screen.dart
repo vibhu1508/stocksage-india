@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'dart:async';
 import '../../core/navigation/app_tabs.dart';
 import '../../core/services/auth_service.dart';
@@ -7,6 +7,7 @@ import '../../config/theme.dart';
 import '../../shared/widgets/profile_menu.dart';
 import '../learn/learn_screen.dart';
 import '../profile/profile_screen.dart';
+import '../stocks/stock_detail_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final AuthService authService;
@@ -173,6 +174,15 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  void _openStockDetail(String symbol) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StockDetailScreen(symbol: symbol),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = widget.authService.currentUser;
@@ -184,7 +194,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header — animated
+              // Header - animated
               _animated(
                 0,
                 Row(
@@ -227,7 +237,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
               const SizedBox(height: 28),
 
-              // Stats Cards — each animated separately
+              // Stats Cards - each animated separately
               _buildAnimatedStatsGrid(),
               SizedBox(height: 20),
 
@@ -289,27 +299,29 @@ class _DashboardScreenState extends State<DashboardScreen>
                             final price = (g['price'] as num?)?.toDouble() ?? 0;
                             final change =
                                 (g['change'] as num?)?.toDouble() ?? 0;
-                            return Container(
-                              margin: EdgeInsets.symmetric(horizontal: 2),
-                              padding: EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.greenAccent.withValues(alpha: 0.08),
-                                    Theme.of(context).cardColor,
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: Colors.greenAccent.withValues(
-                                    alpha: 0.2,
+                            return GestureDetector(
+                              onTap: () => _openStockDetail((g['symbol'] ?? '').toString()),
+                              child: Container(
+                                margin: EdgeInsets.symmetric(horizontal: 2),
+                                padding: EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.greenAccent.withValues(alpha: 0.08),
+                                      Theme.of(context).cardColor,
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: Colors.greenAccent.withValues(
+                                      alpha: 0.2,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              child: Row(
-                                children: [
+                                child: Row(
+                                  children: [
                                   // Left: Symbol + Price
                                   Expanded(
                                     child: Column(
@@ -328,7 +340,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                         ),
                                         SizedBox(height: 4),
                                         Text(
-                                          '₹${price.toStringAsFixed(2)}',
+                                          '\u20b9${price.toStringAsFixed(2)}',
                                           style: TextStyle(
                                             fontSize: 13,
                                             color: Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.6),
@@ -389,6 +401,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   ),
                                 ],
                               ),
+                            ),
                             );
                           },
                         ),
@@ -479,27 +492,29 @@ class _DashboardScreenState extends State<DashboardScreen>
                             final price = (g['price'] as num?)?.toDouble() ?? 0;
                             final change =
                                 (g['change'] as num?)?.toDouble() ?? 0;
-                            return Container(
-                              margin: EdgeInsets.symmetric(horizontal: 2),
-                              padding: EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.redAccent.withValues(alpha: 0.08),
-                                    Theme.of(context).cardColor,
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: Colors.redAccent.withValues(
-                                    alpha: 0.2,
+                            return GestureDetector(
+                              onTap: () => _openStockDetail((g['symbol'] ?? '').toString()),
+                              child: Container(
+                                margin: EdgeInsets.symmetric(horizontal: 2),
+                                padding: EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.redAccent.withValues(alpha: 0.08),
+                                      Theme.of(context).cardColor,
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color: Colors.redAccent.withValues(
+                                      alpha: 0.2,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              child: Row(
-                                children: [
+                                child: Row(
+                                  children: [
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
@@ -577,6 +592,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                   ),
                                 ],
                               ),
+                            ),
                             );
                           },
                         ),
@@ -729,7 +745,11 @@ class _DashboardScreenState extends State<DashboardScreen>
             chartGoingUp: chartUp,
             onTap: label == 'My Portfolio'
                 ? () => widget.onNavigateToTab(AppTabs.portfolio)
-                : null,
+                : label == 'NIFTY 50'
+                    ? () => _openStockDetail('NIFTY')
+                    : label == 'SENSEX'
+                        ? () => _openStockDetail('SENSEX')
+                        : null,
           ),
         );
       },
@@ -739,16 +759,16 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget _buildQuickActions(BuildContext context) {
     final actions = [
       {
-        'label': 'Compare Stocks',
-        'desc': 'Analyze price changes',
-        'icon': Icons.compare_arrows_rounded,
+        'label': 'Watchlist',
+        'desc': 'Track symbols with chart and market depth',
+        'icon': Icons.bar_chart_rounded,
         'tab': AppTabs.stocks,
       },
       {
-        'label': 'F&O Analysis',
-        'desc': 'Futures & options data',
+        'label': 'After Market Analysis',
+        'desc': 'F&O, stock comparison, and moving averages',
         'icon': Icons.candlestick_chart_rounded,
-        'tab': AppTabs.fo,
+        'tab': AppTabs.afterMarket,
       },
       {
         'label': 'Strategy Builder',

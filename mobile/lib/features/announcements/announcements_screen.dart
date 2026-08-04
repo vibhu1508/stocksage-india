@@ -113,7 +113,7 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
   }
 
   Future<void> _fetchNseSuggestions(String query) async {
-    if (query.length < 1) {
+    if (query.isEmpty) {
       setState(() {
         _nseSuggestions = [];
         _showNseSuggestions = false;
@@ -241,17 +241,23 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
   }
 
   Widget _buildNSETab() {
-    return GestureDetector(
-      onTap: () {
-        FocusScope.of(context).unfocus();
-        setState(() => _showNseSuggestions = false);
-      },
-      child: Column(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compactHeight = constraints.maxHeight < 620;
+
+        return GestureDetector(
+          onTap: () {
+            FocusScope.of(context).unfocus();
+            setState(() => _showNseSuggestions = false);
+          },
+          child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: compactHeight ? 300 : 420),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
                 // Company search
                 TextField(
                   controller: _nseSymbolController,
@@ -344,9 +350,12 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                   ),
                 const SizedBox(height: 12),
                 // Date pickers row
-                Row(
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
                   children: [
-                    Expanded(
+                    SizedBox(
+                      width: compactHeight ? double.infinity : (constraints.maxWidth - 44) / 2,
                       child: GestureDetector(
                         onTap: () => _pickNseDate(true),
                         child: InputDecorator(
@@ -362,8 +371,8 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
+                    SizedBox(
+                      width: compactHeight ? double.infinity : (constraints.maxWidth - 44) / 2,
                       child: GestureDetector(
                         onTap: () => _pickNseDate(false),
                         child: InputDecorator(
@@ -402,7 +411,8 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                     ),
                   ),
                 ),
-              ],
+                ],
+              ),
             ),
           ),
 
@@ -450,18 +460,26 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                   ),
           ),
         ],
-      ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildBSETab() {
-    return Column(
-      children: [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compactHeight = constraints.maxHeight < 620;
+
+        return Column(
+          children: [
         // Filters
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: compactHeight ? 280 : 360),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
               // Company name input
               TextField(
                 controller: _bseCompanyController,
@@ -476,17 +494,20 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
               const SizedBox(height: 12),
 
               // Date range
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
                 children: [
-                  Expanded(
+                  SizedBox(
+                    width: compactHeight ? double.infinity : (constraints.maxWidth - 44) / 2,
                     child: _buildBseDateCard(
                       'From',
                       _bseFromDate,
                       () => _pickBseDate(true),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
+                  SizedBox(
+                    width: compactHeight ? double.infinity : (constraints.maxWidth - 44) / 2,
                     child: _buildBseDateCard(
                       'To',
                       _bseToDate,
@@ -517,7 +538,8 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
                   ),
                 ),
               ),
-            ],
+              ],
+            ),
           ),
         ),
 
@@ -601,7 +623,9 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
             ),
           ),
         ],
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -613,7 +637,7 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
         decoration: BoxDecoration(
           color: Theme.of(context).cardTheme.color,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+          border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -688,7 +712,7 @@ class AnnouncementsScreenState extends State<AnnouncementsScreen>
       decoration: BoxDecoration(
         color: Theme.of(context).cardTheme.color,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+        border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

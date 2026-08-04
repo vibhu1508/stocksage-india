@@ -3,10 +3,16 @@ import 'api_service.dart';
 import '../../config/api_config.dart';
 
 class FOService {
-  // Get NIFTY data
-  static Future<NiftyData> getNiftyData(String? date) async {
+  // Get the index option chain plus index futures
+  static Future<NiftyData> getNiftyData(
+    String? date, {
+    String? symbol,
+    String? expiry,
+  }) async {
     final params = <String, String>{};
     if (date != null) params['target_date'] = date;
+    if (symbol != null && symbol.isNotEmpty) params['symbol'] = symbol;
+    if (expiry != null && expiry.isNotEmpty) params['expiry'] = expiry;
 
     final response = await ApiService.get(
       ApiConfig.foNifty,
@@ -16,16 +22,39 @@ class FOService {
     return NiftyData.fromJson(data);
   }
 
-  // Get futures analysis
-  static Future<Map<String, dynamic>> getFuturesAnalysis(String? date) async {
+  // Get futures analysis (momentum screener)
+  static Future<Map<String, dynamic>> getFuturesAnalysis(
+    String? date, {
+    String? expiry,
+  }) async {
     final params = <String, String>{};
     if (date != null) params['target_date'] = date;
+    if (expiry != null && expiry.isNotEmpty) params['expiry_month'] = expiry;
 
     final response = await ApiService.get(
       ApiConfig.foFuturesAnalysis,
       queryParams: params,
     );
     return ApiService.decodeResponse(response);
+  }
+
+  // Get index (IDF) or stock (STF) futures contracts with their filter values
+  static Future<FuturesTableData> getFuturesTable(
+    String segment, {
+    String? date,
+    String? expiry,
+    String? symbol,
+  }) async {
+    final params = <String, String>{'segment': segment};
+    if (date != null) params['target_date'] = date;
+    if (expiry != null && expiry.isNotEmpty) params['expiry'] = expiry;
+    if (symbol != null && symbol.isNotEmpty) params['symbol'] = symbol;
+
+    final response = await ApiService.get(
+      ApiConfig.foFuturesTable,
+      queryParams: params,
+    );
+    return FuturesTableData.fromJson(ApiService.decodeResponse(response));
   }
 
   // Get futures data for a symbol
@@ -41,23 +70,21 @@ class FOService {
     return FOData.fromJson(data);
   }
 
-  // Get options data for a symbol
-  static Future<FOData> getOptionsData(
+  // Get the option chain for a symbol
+  static Future<OptionChainData> getOptionsData(
     String symbol,
-    String? date,
-    String? optionType,
-  ) async {
+    String? date, {
+    String? expiry,
+  }) async {
     final params = <String, String>{};
     if (date != null) params['target_date'] = date;
-    if (optionType != null && optionType.isNotEmpty) {
-      params['option_type'] = optionType;
-    }
+    if (expiry != null && expiry.isNotEmpty) params['expiry'] = expiry;
 
     final response = await ApiService.get(
       ApiConfig.foOptions(symbol),
       queryParams: params,
     );
     final data = ApiService.decodeResponse(response);
-    return FOData.fromJson(data);
+    return OptionChainData.fromJson(data);
   }
 }

@@ -1,40 +1,56 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { FOService, NiftyData } from '../../core/services/fo.service';
+import {
+  FOService,
+  NiftyData,
+  OptionChainData,
+  OptionChainRow,
+  FuturesTableData,
+} from '../../core/services/fo.service';
 import { LucideAngularModule } from 'lucide-angular';
+import { SearchableSelectComponent } from '../../shared/components/searchable-select/searchable-select.component';
+
+type Tab = 'momentum' | 'nifty' | 'futures' | 'options';
 
 @Component({
   selector: 'app-fo-analysis',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule, SearchableSelectComponent],
   templateUrl: './fo-analysis.component.html',
   styleUrl: './fo-analysis.component.scss'
 })
 export class FOAnalysisComponent implements OnInit {
-  activeTab: 'nifty' | 'futures' | 'options' | 'momentum' = 'momentum';
+  activeTab: Tab = 'momentum';
   selectedDate = '';
-  symbol = 'NIFTY';
-  optionType = '';
 
   loading = false;
   error: string | null = null;
 
-  niftyData: NiftyData | null = null;
-  futuresData: any[] = [];
-  optionsData: any[] = [];
-  momentumData: any = null;
-
   math = Math;
 
-  // Filtering Properties for NIFTY Tab
-  uniqueSymbols: string[] = [];
-  uniqueExpiries: string[] = [];
-  selectedSymbol: string = 'NIFTY'; // Default
-  selectedExpiry: string = '';
+  // --- Momentum screener ---
+  momentumData: any = null;
+  momentumExpiry = '';
 
-  filteredFutures: any[] = [];
-  filteredOptions: any[] = [];
+  // --- NIFTY index tab ---
+  niftyData: NiftyData | null = null;
+  niftySymbol = 'NIFTY';
+  niftyExpiry = '';
+
+  // --- Futures tab ---
+  futuresTable: FuturesTableData | null = null;
+  futuresSegment: 'index' | 'stock' = 'index';
+  futuresExpiry = '';
+  futuresSymbol = '';
+
+  // --- Options tab ---
+  optionsData: OptionChainData | null = null;
+  optionsSymbol = 'NIFTY';
+  optionsExpiry = '';
+
+  /** Largest CE/PE open interest in the visible chain - drives the OI bar widths. */
+  private maxChainOi = 1;
 
   constructor(private foService: FOService) { }
 
@@ -42,194 +58,174 @@ export class FOAnalysisComponent implements OnInit {
     this.loadMomentumData();
   }
 
-  private formatDate(date: Date): string {
-    return date.toISOString().split('T')[0];
+  // ---------------------------------------------------------------- loaders
+
+  loadMomentumData(): void {
+    this.startLoad();
+    this.foService.getFuturesAnalysis(this.selectedDate, this.momentumExpiry).subscribe({
+      next: (data) => {
+        this.momentumData = data;
+        if (!this.momentumExpiry) this.momentumExpiry = data.expiry_date || '';
+        this.loading = false;
+      },
+      error: (err) => this.failLoad(err, 'Failed to load momentum data')
+    });
   }
 
   loadNiftyData(): void {
-    this.loading = true;
-    this.error = null;
-
-    this.foService.getNiftyData(this.selectedDate).subscribe({
+    this.startLoad();
+    this.foService.getNiftyData(this.selectedDate, this.niftySymbol, this.niftyExpiry).subscribe({
       next: (data) => {
         this.niftyData = data;
-        this.processNiftyDataForFiltering(data);
+        this.niftySymbol = data.symbol;
+        this.niftyExpiry = data.expiry || '';
+        this.computeMaxChainOi(data.chain);
         this.loading = false;
       },
       error: (err) => {
-        this.error = err.error?.detail || 'Failed to load NIFTY data';
-        this.loading = false;
-        // Reset filters on error
-        this.resetFilters();
+        this.niftyData = null;
+        this.failLoad(err, 'Failed to load NIFTY data');
       }
     });
   }
 
   loadFuturesData(): void {
-    this.loading = true;
-    this.error = null;
-
-    this.foService.getFuturesData(this.symbol, this.selectedDate).subscribe({
+    this.startLoad();
+    this.foService.getFuturesTable(
+      this.futuresSegment, this.selectedDate, this.futuresExpiry, this.futuresSymbol
+    ).subscribe({
       next: (data) => {
-        this.futuresData = data.data;
+        this.futuresTable = data;
+        this.futuresExpiry = data.expiry || '';
+        this.futuresSymbol = data.symbol || '';
         this.loading = false;
       },
       error: (err) => {
-        this.error = err.error?.detail || 'Failed to load futures data';
-        this.loading = false;
+        this.futuresTable = null;
+        this.failLoad(err, 'Failed to load futures data');
       }
     });
   }
 
   loadOptionsData(): void {
-    this.loading = true;
-    this.error = null;
-
-    this.foService.getOptionsData(this.symbol, this.selectedDate, this.optionType).subscribe({
+    this.startLoad();
+    this.foService.getOptionsData(this.optionsSymbol, this.selectedDate, this.optionsExpiry).subscribe({
       next: (data) => {
-        this.optionsData = data.data;
+        this.optionsData = data;
+        this.optionsExpiry = data.expiry || '';
+        this.computeMaxChainOi(data.chain);
         this.loading = false;
       },
       error: (err) => {
-        this.error = err.error?.detail || 'Failed to load options data';
-        this.loading = false;
+        this.optionsData = null;
+        this.failLoad(err, 'Failed to load options data');
       }
     });
   }
 
-  loadMomentumData(): void {
+  private startLoad(): void {
     this.loading = true;
     this.error = null;
-
-    this.foService.getFuturesAnalysis(this.selectedDate).subscribe({
-      next: (data) => {
-        this.momentumData = data;
-        this.loading = false;
-      },
-      error: (err) => {
-        this.error = err.error?.detail || 'Failed to load momentum data';
-        this.loading = false;
-      }
-    });
   }
 
-
-  private processNiftyDataForFiltering(data: NiftyData): void {
-    // Combine futures and options to find all unique symbols and expiries
-    const allItems = [...(data.futures || []), ...(data.options || [])];
-
-    if (allItems.length === 0) {
-      this.resetFilters();
-      return;
-    }
-
-    // Extract Unique Symbols
-    this.uniqueSymbols = [...new Set(allItems.map(item => item.TckrSymb || item.UndrlygVal || ''))].filter(Boolean).sort();
-
-    // Set default symbol if current selection is invalid
-    if (!this.selectedSymbol || !this.uniqueSymbols.includes(this.selectedSymbol)) {
-      // Prefer 'NIFTY' or 'BANKNIFTY' if available, else first one
-      if (this.uniqueSymbols.includes('NIFTY')) this.selectedSymbol = 'NIFTY';
-      else if (this.uniqueSymbols.includes('BANKNIFTY')) this.selectedSymbol = 'BANKNIFTY';
-      else this.selectedSymbol = this.uniqueSymbols[0] || '';
-    }
-
-    // Extract Unique Expiries for the selected symbol specifically (or all if that's preferred, but usually dependent on symbol)
-    // Actually expiries are global for the day mostly, but let's filter by symbol first for correctness?
-    // The Streamlit logic filters expiries AFTER symbol selection.
-    this.updateExpiriesForSymbol();
-
-    this.applyFilters();
+  private failLoad(err: any, fallback: string): void {
+    this.error = err?.error?.detail || fallback;
+    this.loading = false;
   }
 
-  updateExpiriesForSymbol(): void {
-    if (!this.niftyData) return;
+  // ------------------------------------------------------------ chain view
 
-    const allItems = [...(this.niftyData.futures || []), ...(this.niftyData.options || [])];
-    const symbolItems = allItems.filter(item =>
-      (item.TckrSymb === this.selectedSymbol) || (item.UndrlygVal === this.selectedSymbol)
-    );
-
-    // Extract Expiries
-    const unsortedExpiries = [...new Set(symbolItems.map(item => item.XpryDt))].filter(Boolean);
-
-    // Sort dates
-    this.uniqueExpiries = unsortedExpiries.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-
-    // Select nearest expiry by default if none selected or invalid
-    if (!this.selectedExpiry || !this.uniqueExpiries.includes(this.selectedExpiry)) {
-      this.selectedExpiry = this.uniqueExpiries[0] || '';
-    }
+  /** The chain currently on screen - the NIFTY and Options tabs share the table. */
+  get activeChain(): OptionChainData | null {
+    return this.activeTab === 'nifty' ? this.niftyData : this.optionsData;
   }
 
-  onSymbolChange(): void {
-    this.updateExpiriesForSymbol();
-    this.applyFilters();
+  private computeMaxChainOi(chain: OptionChainRow[]): void {
+    const values = (chain || []).flatMap(r => [r.CE_OpnIntrst || 0, r.PE_OpnIntrst || 0]);
+    this.maxChainOi = Math.max(1, ...values);
   }
 
-  onExpiryChange(): void {
-    this.applyFilters();
+  /** Width % for the open-interest bar behind a chain cell. */
+  oiBarWidth(value: number | null): number {
+    if (!value || value <= 0) return 0;
+    return Math.min(100, (value / this.maxChainOi) * 100);
   }
 
-  applyFilters(): void {
-    if (!this.niftyData) return;
-
-    // Filter Futures
-    this.filteredFutures = (this.niftyData.futures || []).filter(item => {
-      const matchSymbol = (item.TckrSymb === this.selectedSymbol) || (item.UndrlygVal === this.selectedSymbol);
-      const matchExpiry = item.XpryDt === this.selectedExpiry;
-      return matchSymbol && matchExpiry;
-    });
-
-    // Filter Options
-    this.filteredOptions = (this.niftyData.options || []).filter(item => {
-      const matchSymbol = (item.TckrSymb === this.selectedSymbol) || (item.UndrlygVal === this.selectedSymbol);
-      const matchExpiry = item.XpryDt === this.selectedExpiry;
-      return matchSymbol && matchExpiry;
-    });
+  /** In-the-money strikes are shaded, as on the NSE chain. */
+  isCallItm(row: OptionChainRow): boolean {
+    const spot = this.activeChain?.underlying_price;
+    return spot != null && row.StrkPric < spot;
   }
 
-  resetFilters(): void {
-    this.uniqueSymbols = [];
-    this.uniqueExpiries = [];
-    this.filteredFutures = [];
-    this.filteredOptions = [];
+  isPutItm(row: OptionChainRow): boolean {
+    const spot = this.activeChain?.underlying_price;
+    return spot != null && row.StrkPric > spot;
   }
 
-  onTabChange(tab: 'futures' | 'options' | 'nifty' | 'momentum'): void {
+  isAtm(row: OptionChainRow): boolean {
+    return this.activeChain?.summary?.atm_strike === row.StrkPric;
+  }
+
+  // ------------------------------------------------------------- handlers
+
+  onTabChange(tab: Tab): void {
     this.activeTab = tab;
     this.error = null;
 
     switch (tab) {
-      case 'nifty':
-        if (!this.niftyData) this.loadNiftyData();
-        break;
-      case 'futures':
-        this.loadFuturesData();
-        break;
-      case 'options':
-        this.loadOptionsData();
-        break;
       case 'momentum':
         if (!this.momentumData) this.loadMomentumData();
+        break;
+      case 'nifty':
+        if (!this.niftyData) this.loadNiftyData();
+        else this.computeMaxChainOi(this.niftyData.chain);
+        break;
+      case 'futures':
+        if (!this.futuresTable) this.loadFuturesData();
+        break;
+      case 'options':
+        if (!this.optionsData) this.loadOptionsData();
+        else this.computeMaxChainOi(this.optionsData.chain);
         break;
     }
   }
 
+  onNiftySymbolChange(): void {
+    this.niftyExpiry = ''; // expiries differ per index - let the backend pick the nearest
+    this.loadNiftyData();
+  }
+
+  onOptionsSymbolChange(symbol: string): void {
+    this.optionsSymbol = symbol;
+    this.optionsExpiry = '';
+    this.loadOptionsData();
+  }
+
+  onFuturesSymbolChange(symbol: string): void {
+    this.futuresSymbol = symbol;
+    this.loadFuturesData();
+  }
+
+  onFuturesSegmentChange(segment: 'index' | 'stock'): void {
+    if (this.futuresSegment === segment) return;
+    this.futuresSegment = segment;
+    this.futuresExpiry = '';
+    this.futuresSymbol = '';
+    this.loadFuturesData();
+  }
+
   refresh(): void {
     switch (this.activeTab) {
-      case 'nifty':
-        this.loadNiftyData();
-        break;
-      case 'futures':
-        this.loadFuturesData();
-        break;
-      case 'options':
-        this.loadOptionsData();
-        break;
-      case 'momentum':
-        this.loadMomentumData();
-        break;
+      case 'momentum': this.loadMomentumData(); break;
+      case 'nifty': this.loadNiftyData(); break;
+      case 'futures': this.loadFuturesData(); break;
+      case 'options': this.loadOptionsData(); break;
     }
+  }
+
+  /** Latest data date shown in the filter strip, whichever tab is open. */
+  get dataDate(): string | null {
+    return this.momentumData?.date || this.niftyData?.date
+      || this.futuresTable?.date || this.optionsData?.date || null;
   }
 }
