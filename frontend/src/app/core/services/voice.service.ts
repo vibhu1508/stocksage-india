@@ -194,9 +194,38 @@ export class VoiceService {
 
   // ── Text to speech (browser) ──
 
-  speak(text: string): void {
+  /**
+   * Strip markdown so the voice reads the words, not the syntax.
+   * Without this, "**RELIANCE**" is read aloud as "star star RELIANCE star star"
+   * (and "## Heading" as "hash hash…") by most speech engines.
+   */
+  toSpeakable(md: string): string {
+    return (md || '')
+      .replace(/```[\s\S]*?```/g, ' ')            // fenced code blocks
+      .replace(/`([^`]*)`/g, '$1')                // inline code
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')      // images
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')    // links → their text
+      .replace(/^\s{0,3}#{1,6}\s+/gm, '')         // headings
+      .replace(/^\s{0,3}>\s?/gm, '')              // blockquotes
+      .replace(/^\s*([-*_]\s*){3,}$/gm, ' ')      // horizontal rules
+      .replace(/^\s*[-*+]\s+/gm, '')              // bullet markers
+      .replace(/^\s*\d+[.)]\s+/gm, '')            // numbered list markers
+      .replace(/(\*\*|__)(.*?)\1/g, '$2')         // bold
+      .replace(/(\*|_)(.*?)\1/g, '$2')            // italic
+      .replace(/~~(.*?)~~/g, '$1')                // strikethrough
+      .replace(/[*_`#]/g, '')                     // any stragglers
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+  }
+
+  /**
+   * @param queue when true, follow whatever is already speaking instead of
+   *        cutting it off — lets a reply be spoken sentence by sentence as it streams.
+   */
+  speak(text: string, opts: { queue?: boolean } = {}): void {
     if (!this.ttsSupported || !text.trim()) return;
-    this.stopSpeaking();
+    // speechSynthesis queues natively; only cancel when explicitly replacing.
+    if (!opts.queue) this.stopSpeaking();
 
     const isDevanagari = /[ऀ-ॿ]/.test(text);
     const targetLang = isDevanagari ? 'hi-IN' : 'en-IN';

@@ -229,6 +229,11 @@ export class AiAssistantComponent implements AfterViewChecked, OnInit, OnDestroy
   /** Memoised markdown renders, keyed by source text. */
   private readonly mdCache = new Map<string, string>();
 
+  // ── Incremental speech ──
+  /** How much of the current reply has already been sent to the speech engine. */
+  private spokenChars = 0;
+  private spokenForIndex = -1;
+
   // ── Scroll following ──
   /** False once the user scrolls up to read history; new output stops chasing them. */
   pinnedToBottom = true;
@@ -239,7 +244,6 @@ export class AiAssistantComponent implements AfterViewChecked, OnInit, OnDestroy
   voiceReplies = false;
   voiceHint = '';
   private msgSub?: Subscription;
-  private lastSpoken = '';
   private hintTimer: ReturnType<typeof setTimeout> | undefined;
 
   // ── Resizable panel (desktop) ──
@@ -270,14 +274,40 @@ export class AiAssistantComponent implements AfterViewChecked, OnInit, OnDestroy
     if (saved && saved >= this.minWidth) this.panelWidth = saved;
     this.updateIsDesktop();
 
-    // Read out each completed assistant reply when voice replies are on.
+    // Speak replies AS THEY STREAM, a sentence at a time, so the voice keeps pace
+    // with the text instead of waiting for the whole message to finish.
     this.msgSub = this.chat.messages$.subscribe((msgs) => {
-      const last = msgs[msgs.length - 1];
+      const idx = msgs.length - 1;
+      const last = msgs[idx];
       if (!last || last.role !== 'assistant') return;
-      if (last.streaming) return;
-      if (!this.voiceReplies || !last.text || last.text === this.lastSpoken) return;
-      this.lastSpoken = last.text;
-      this.voice.speak(last.text);
+
+      // Chunk on the RAW text: it only ever grows, so offsets stay valid. Slicing
+      // the stripped text instead would shift already-spoken offsets the moment a
+      // list marker or heading got removed, and clip words.
+      const raw = last.text || '';
+
+      if (!this.voiceReplies) {
+        // Stay in sync while muted, so switching on doesn't replay from the start.
+        this.spokenForIndex = idx;
+        this.spokenChars = raw.length;
+        return;
+      }
+
+      if (idx !== this.spokenForIndex) {
+        this.spokenForIndex = idx;
+        this.spokenChars = 0;
+      }
+      if (!raw) return;
+
+      // Mid-stream, only speak up to the last finished sentence — the tail may
+      // still be a half-typed word. Once done, flush whatever is left.
+      const upTo = last.streaming ? this.lastSentenceEnd(raw) : raw.length;
+      if (upTo <= this.spokenChars) return;
+
+      // Markdown stripped per chunk, else "**" is read aloud as "star star".
+      const chunk = this.voice.toSpeakable(raw.slice(this.spokenChars, upTo));
+      this.spokenChars = upTo;
+      if (chunk) this.voice.speak(chunk, { queue: true });
     });
   }
 
@@ -414,6 +444,21 @@ export class AiAssistantComponent implements AfterViewChecked, OnInit, OnDestroy
     if (this.mdCache.size > 60) this.mdCache.clear();
     this.mdCache.set(src, html);
     return html;
+  }
+
+  /**
+   * Index just past the last completed sentence, or -1.
+   * Requiring whitespace after the terminator stops "₹1,402.30" from splitting
+   * mid-number, and there is deliberately no end-of-string case: a trailing "."
+   * while streaming is far more likely a decimal than a finished sentence.
+   * `।` covers Hindi.
+   */
+  private lastSentenceEnd(text: string): number {
+    const re = /[.!?।]["')\]]?(?=\s)|\n/g;
+    let end = -1;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) end = m.index + m[0].length;
+    return end;
   }
 
   /**
