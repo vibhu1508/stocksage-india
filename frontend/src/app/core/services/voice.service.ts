@@ -169,11 +169,25 @@ export class VoiceService {
     this.recording$.next(false);
   }
 
+  /** Set when the server says voice is unavailable, so the UI can explain why. */
+  unavailableReason = '';
+
   private async upload(blob: Blob): Promise<string> {
     const form = new FormData();
     form.append('audio', blob, 'clip.webm');
     const resp = await fetch(`${this.backend}/api/chat/transcribe`, { method: 'POST', body: form });
-    if (!resp.ok) throw new Error('transcription failed');
+    if (!resp.ok) {
+      // 503 = voice disabled on this server (e.g. not enough RAM for the model).
+      let detail = '';
+      try {
+        detail = (await resp.json())?.detail || '';
+      } catch {
+        /* non-JSON error body */
+      }
+      this.unavailableReason = detail || 'Voice input is unavailable right now.';
+      throw new Error(this.unavailableReason);
+    }
+    this.unavailableReason = '';
     const data = await resp.json();
     return (data?.text || '').trim();
   }

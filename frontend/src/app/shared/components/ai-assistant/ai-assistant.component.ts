@@ -330,7 +330,10 @@ export class AiAssistantComponent implements AfterViewChecked, OnInit, OnDestroy
         this.draft = text;
         this.onSend();
       } else {
-        this.showVoiceHint('I didn’t catch that — please try again.');
+        // Distinguish "server has no voice" from "I couldn't hear you".
+        this.showVoiceHint(
+          this.voice.unavailableReason || 'I didn’t catch that — please try again.',
+        );
       }
       return;
     }

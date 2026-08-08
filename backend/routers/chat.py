@@ -21,20 +21,41 @@ import os
 import tempfile
 
 from fastapi import APIRouter, File, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 
 from services.agent import run_agent_stream, run_confirm_holding, run_cancel_holding
 from services.portfolio_actions import user_id_from_token
-from services.transcribe import transcribe_file
+from services.transcribe import SttUnavailable, stt_status, transcribe_file
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
+@router.get("/voice-status")
+async def voice_status():
+    """Whether voice input is usable on this server, so clients can hide the mic."""
+    return stt_status()
+
+
 @router.post("/transcribe")
 async def transcribe(audio: UploadFile = File(...)):
     """Speech-to-text for voice input (works in any browser — the browser records,
     we transcribe with Whisper). Returns {text, language}."""
+    status = stt_status()
+    if not status.get("available"):
+        # Answer through FastAPI (503 WITH CORS headers) rather than letting an
+        # oversized model load and get the whole process OOM-killed.
+        return JSONResponse(
+            status_code=503,
+            content={
+                "text": "",
+                "language": None,
+                "error": status.get("reason", "voice_unavailable"),
+                "detail": status.get("detail", "Voice input is unavailable."),
+            },
+        )
+
     data = await audio.read()
     if not data:
         return {"text": "", "language": None}
@@ -44,6 +65,11 @@ async def transcribe(audio: UploadFile = File(...)):
         tmp.write(data)
         tmp.close()
         return await asyncio.to_thread(transcribe_file, tmp.name)
+    except SttUnavailable as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"text": "", "language": None, "error": "voice_unavailable", "detail": str(exc)},
+        )
     except Exception:
         logger.exception("transcription failed")
         return {"text": "", "language": None, "error": "transcription failed"}
