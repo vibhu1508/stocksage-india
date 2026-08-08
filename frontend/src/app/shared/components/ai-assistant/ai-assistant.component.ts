@@ -66,7 +66,7 @@ import { VoiceWaveComponent } from './voice-wave.component';
         </div>
 
         <!-- messages -->
-        <div #scrollBox class="flex-1 space-y-3 overflow-y-auto p-4">
+        <div #scrollBox (scroll)="onScroll()" class="relative flex-1 space-y-3 overflow-y-auto p-4">
           <!-- session disclaimer -->
           <div class="space-y-2 rounded-xl border border-border bg-background/60 p-3 text-[11px] leading-relaxed text-muted-foreground">
             <p>{{ disclaimerEn }}</p>
@@ -102,10 +102,9 @@ import { VoiceWaveComponent } from './voice-wave.component';
                   <span class="flex gap-1 py-1">
                     <span class="sage-dot"></span><span class="sage-dot" style="animation-delay:.15s"></span><span class="sage-dot" style="animation-delay:.3s"></span>
                   </span>
-                } @else if (m.streaming) {
-                  <span class="whitespace-pre-wrap">{{ m.text }}</span>
                 } @else {
-                  <div class="sage-md" [innerHTML]="renderMarkdown(m.text)"></div>
+                  <!-- formatted while streaming too, so asterisks never show -->
+                  <div class="sage-md" [innerHTML]="renderMarkdown(m.text, m.streaming)"></div>
                 }
 
                 <!-- per-message bilingual disclaimer (ⓘ) -->
@@ -124,6 +123,17 @@ import { VoiceWaveComponent } from './voice-wave.component';
             }
           }
         </div>
+
+        <!-- jump back to live output (only while reading history) -->
+        @if (!pinnedToBottom) {
+        <div class="pointer-events-none relative">
+          <button type="button" (click)="scrollToLatest()"
+            class="pointer-events-auto absolute -top-11 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-[11px] font-medium text-foreground shadow-lg transition-colors hover:bg-muted">
+            <lucide-icon name="arrow-down" [size]="13"></lucide-icon>
+            Jump to latest
+          </button>
+        </div>
+        }
 
         <!-- input -->
         <div class="border-t border-border p-3">
@@ -216,6 +226,14 @@ export class AiAssistantComponent implements AfterViewChecked, OnInit, OnDestroy
   @ViewChild('scrollBox') private scrollBox?: ElementRef<HTMLElement>;
   draft = '';
 
+  /** Memoised markdown renders, keyed by source text. */
+  private readonly mdCache = new Map<string, string>();
+
+  // ── Scroll following ──
+  /** False once the user scrolls up to read history; new output stops chasing them. */
+  pinnedToBottom = true;
+  private readonly pinThresholdPx = 80;
+
   // ── Voice ──
   /** When on, assistant replies are read aloud. */
   voiceReplies = false;
@@ -269,7 +287,26 @@ export class AiAssistantComponent implements AfterViewChecked, OnInit, OnDestroy
     this.voice.cancelRecording();
   }
 
+  /** Track whether the user is reading history, so we don't yank them to the bottom. */
+  onScroll(): void {
+    const el = this.scrollBox?.nativeElement;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    this.pinnedToBottom = distanceFromBottom <= this.pinThresholdPx;
+  }
+
+  scrollToLatest(): void {
+    const el = this.scrollBox?.nativeElement;
+    if (!el) return;
+    this.pinnedToBottom = true;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }
+
   ngAfterViewChecked(): void {
+    // Only follow new output while the user is already at the bottom. Scrolling
+    // unconditionally here made it impossible to read earlier messages, because
+    // this hook runs after EVERY change-detection pass.
+    if (!this.pinnedToBottom) return;
     const el = this.scrollBox?.nativeElement;
     if (el) el.scrollTop = el.scrollHeight;
   }
@@ -316,6 +353,8 @@ export class AiAssistantComponent implements AfterViewChecked, OnInit, OnDestroy
     const text = this.draft;
     this.draft = '';
     this.voice.stopSpeaking();
+    // Sending is an explicit "I want to see what happens next".
+    this.pinnedToBottom = true;
     this.chat.send(text);
   }
 
@@ -358,12 +397,46 @@ export class AiAssistantComponent implements AfterViewChecked, OnInit, OnDestroy
   }
 
   /** Render assistant markdown → HTML (Angular sanitizes the [innerHTML] output). */
-  renderMarkdown(text: string): string {
+  renderMarkdown(text: string, streaming = false): string {
+    const src = streaming ? this.closeOpenMarkers(text ?? '') : (text ?? '');
+
+    // The template re-invokes this on every change-detection pass, so memoise —
+    // otherwise a streaming reply re-parses the whole message on each token.
+    const cached = this.mdCache.get(src);
+    if (cached !== undefined) return cached;
+
+    let html: string;
     try {
-      return marked.parse(text ?? '', { async: false }) as string;
+      html = marked.parse(src, { async: false }) as string;
     } catch {
-      return text ?? '';
+      html = src;
     }
+    if (this.mdCache.size > 60) this.mdCache.clear();
+    this.mdCache.set(src, html);
+    return html;
+  }
+
+  /**
+   * Markdown streams in a token at a time, so a bold run reads as "**Reliance"
+   * until its closing "**" lands. Speculatively close any open delimiter so text
+   * appears already formatted, instead of flashing raw asterisks at the reader.
+   */
+  private closeOpenMarkers(input: string): string {
+    let t = input;
+
+    // Unterminated code fence: close it; nothing inside needs further balancing.
+    if (((t.match(/```/g) || []).length) % 2 === 1) return `${t}\n\`\`\``;
+
+    // A delimiter still being typed — drop it rather than show a stray character.
+    t = t.replace(/(?:\*{1,3}|_{1,2}|`)$/, '');
+
+    // Close what's still open: inline code, then bold, then italic.
+    if (((t.match(/`/g) || []).length) % 2 === 1) t += '`';
+    if (((t.match(/\*\*/g) || []).length) % 2 === 1) t += '**';
+    const singleStars = (t.replace(/\*\*/g, '').match(/\*/g) || []).length;
+    if (singleStars % 2 === 1) t += '*';
+
+    return t;
   }
 
   toolLabel(tool: string): string {

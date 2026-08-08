@@ -17,6 +17,7 @@ neither, so audio is decoded to 16 kHz mono PCM WAV first (verified: raw webm is
 rejected with INVALID_ARGUMENT, transcoded audio transcribes perfectly).
 """
 
+import importlib.util
 import io
 import logging
 import os
@@ -71,6 +72,17 @@ def stt_status() -> dict:
                 "available": False,
                 "reason": "not_configured",
                 "detail": "Voice input needs NVIDIA_NIM_API_KEY to be set on the server.",
+            }
+        # A stale build cache can ship the code without its dependencies; say so
+        # plainly instead of reporting every attempt as "transcription failed".
+        if importlib.util.find_spec("riva") is None:
+            return {
+                "available": False,
+                "reason": "missing_dependency",
+                "detail": (
+                    "Voice input needs the 'nvidia-riva-client' package, which is not "
+                    "installed on this server. Redeploy with a cleared build cache."
+                ),
             }
         return {"available": True, "provider": "nim", "model": "whisper-large-v3"}
 
