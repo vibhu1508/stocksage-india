@@ -36,7 +36,11 @@ redis==5.2.1
 # StockSage AI assistant (NVIDIA NIM, OpenAI-compatible)
 openai>=1.40
 
-# Whisper STT (server-side voice, works in any browser)
+# Speech-to-text.
+# Default provider is NVIDIA-hosted whisper-large-v3 (free tier, no RAM cost here):
+nvidia-riva-client
+av                      # decode browser webm/opus + mobile m4a -> PCM for ASR
+# Optional local fallback for offline dev (weights load in-process — see transcribe.py):
 faster-whisper
 trafilatura>=2.0
 googlenewsdecoder>=0.1.7
