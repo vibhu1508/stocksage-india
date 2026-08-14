@@ -52,11 +52,17 @@ def _cache_ttls() -> dict:
     }
 
 
+# Fallback index IDs (Dhan IDX_I security IDs) for when the scrip master can't be
+# fetched. Values verified against Dhan's api-scrip-master.csv.
 DEFAULT_CHART_SYMBOL_MAP = {
+    # NSE
     "NIFTY": "13",
     "BANKNIFTY": "25",
     "FINNIFTY": "27",
     "MIDCPNIFTY": "442",
+    # BSE
+    "SENSEX": "51",
+    "BANKEX": "69",
 }
 
 CHART_TIMEFRAME_TO_INTERVAL = {
@@ -324,7 +330,15 @@ def _build_symbols_from_scrip_master(csv_content: str) -> Dict[str, Dict[str, st
         exch = _safe_row_value(row, "SEM_EXM_EXCH_ID").upper()
         segment = _safe_row_value(row, "SEM_SEGMENT").upper()
         security_id = _safe_row_value(row, "SEM_SMST_SECURITY_ID")
-        if exch != "NSE" or segment != "E" or not security_id:
+        if not security_id:
+            continue
+
+        # Indices live in segment "I" on both NSE and BSE (SENSEX and BANKEX are
+        # BSE-only). Skipping them meant every index outside the small hardcoded
+        # map failed to resolve, so their charts 400'd.
+        is_index = segment == "I"
+        is_nse_equity = exch == "NSE" and segment == "E"
+        if not (is_index or is_nse_equity):
             continue
 
         symbol_name = _safe_row_value(row, "SM_SYMBOL_NAME")
@@ -333,17 +347,25 @@ def _build_symbols_from_scrip_master(csv_content: str) -> Dict[str, Dict[str, st
 
         identity = {
             "securityId": security_id,
-            "exchangeSegment": "NSE_EQ",
-            "instrument": instrument_name,
+            # Dhan addresses every index through IDX_I, whichever exchange it is on.
+            "exchangeSegment": "IDX_I" if is_index else "NSE_EQ",
+            "instrument": "INDEX" if is_index else instrument_name,
         }
 
-        symbol_key = _normalize_symbol_key(symbol_name)
-        if symbol_key:
-            parsed_map[symbol_key] = identity
+        def _record(key: str) -> None:
+            if not key:
+                return
+            # A tradeable NSE stock always wins a ticker clash with an index.
+            if is_index:
+                parsed_map.setdefault(key, identity)
+            else:
+                parsed_map[key] = identity
+
+        _record(_normalize_symbol_key(symbol_name))
 
         trading_key = _normalize_symbol_key(trading_symbol)
         if trading_key:
-            parsed_map[trading_key] = identity
+            _record(trading_key)
             if "-" in trading_key:
                 base = _normalize_symbol_key(trading_key.split("-", 1)[0])
                 if base:
