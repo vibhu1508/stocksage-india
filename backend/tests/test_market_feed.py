@@ -115,6 +115,83 @@ def test_prev_close_is_the_close_before_the_session():
     assert session_date(datetime(2026, 10, 22, 18, 29, tzinfo=timezone.utc).timestamp()) == "2026-10-22"
 
 
+class _FakeRedis:
+    """Just enough of redis.asyncio for Ingest: hashes, publish, pipelines."""
+
+    def __init__(self):
+        self.hashes, self.published = {}, []
+
+    async def hgetall(self, key):
+        return dict(self.hashes.get(key, {}))
+
+    async def hmget(self, key, *fields):
+        return [self.hashes.get(key, {}).get(f) for f in fields]
+
+    async def hset(self, key, field=None, value=None, mapping=None):
+        self.hashes.setdefault(key, {}).update(mapping or {field: value})
+
+    async def hdel(self, key, *fields):
+        for f in fields:
+            self.hashes.get(key, {}).pop(f, None)
+
+    async def publish(self, channel, message):
+        self.published.append(channel)
+
+    def pipeline(self, transaction=False):
+        redis = self
+
+        class _Pipe:
+            def __init__(self):
+                self.calls = []
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            def __getattr__(self, name):
+                return lambda *a, **kw: self.calls.append((name, a, kw))
+
+            async def execute(self):
+                for name, a, kw in self.calls:
+                    await getattr(redis, name)(*a, **kw)
+
+        return _Pipe()
+
+
+def test_same_security_id_in_two_segments_stays_separate():
+    import asyncio
+    import os
+    os.environ.setdefault("SECRET_KEY", "test-only-secret")
+    from market.service import Ingest
+    from services.redis_store import _key as rkey
+
+    async def run():
+        redis = _FakeRedis()
+        # An entry written before keys carried the segment (bare id -> segment) still loads.
+        redis.hashes[rkey("market:instruments")] = {"13": "IDX_I"}
+        ingest = Ingest(redis)
+        await ingest.add_saved()
+        await ingest.add("NSE_EQ:13")
+        assert set(ingest.instruments) == {"IDX_I:13", "NSE_EQ:13"}
+
+        # NIFTY 50 and ABB share security id 13; each tick must land on its own key.
+        await ingest.on_tick({"type": "ticker", "segment": "IDX_I", "security_id": "13", "ltp": 22687.65, "ltt": 1792664942}, 1792664943)
+        await ingest.on_tick({"type": "ticker", "segment": "NSE_EQ", "security_id": "13", "ltp": 5321.5, "ltt": 1792664942}, 1792664943)
+        assert redis.hashes[rkey("quote:IDX_I:13")]["price"] == 22687.65
+        assert redis.hashes[rkey("quote:NSE_EQ:13")]["price"] == 5321.5
+        assert redis.published == [rkey("tick:IDX_I:13"), rkey("tick:NSE_EQ:13")]
+
+        # A stock with no trade yet arrives as price 0 at midnight (BSE FOCUS, 22 Oct); it is not a price.
+        await ingest.add("BSE_EQ:543312")
+        await ingest.on_tick({"type": "quote", "segment": "BSE_EQ", "security_id": "543312", "ltp": 0.0, "ltt": 1792607400,
+                              "open": 0.0, "high": 0.0, "low": 0.0, "volume": 0}, 1792664943)
+        assert rkey("quote:BSE_EQ:543312") not in redis.hashes
+
+    asyncio.run(run())
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
