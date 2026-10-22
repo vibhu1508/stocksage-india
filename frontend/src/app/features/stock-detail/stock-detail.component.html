@@ -176,6 +176,9 @@
     }
 
     @if (!marketDepthLoading && !marketDepthError) {
+    @if (marketDepthNote) {
+    <p class="chart-state">{{ marketDepthNote }}</p>
+    }
     <div class="depth-grid">
       <div>
         <h3>Buy Orders</h3>
@@ -188,7 +191,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (row of marketDepthBuy; track row.price + ':' + row.quantity + ':' + row.orders) {
+            @for (row of marketDepthBuy; track $index) {
             <tr>
               <td>{{ row.orders }}</td>
               <td>{{ row.quantity }}</td>
@@ -209,7 +212,7 @@
             </tr>
           </thead>
           <tbody>
-            @for (row of marketDepthSell; track row.price + ':' + row.quantity + ':' + row.orders) {
+            @for (row of marketDepthSell; track $index) {
             <tr>
               <td>{{ row.price | number:'1.2-2' }}</td>
               <td>{{ row.quantity }}</td>

@@ -73,9 +73,19 @@ export interface DhanMarketDepthResponse {
   symbol: string;
   identity: DhanChartIdentity;
   source: 'live' | 'cache';
+  mode?: 'full_depth_ws' | 'quote_snapshot';
+  marketOpen?: boolean;
   limit: number;
   buy: DhanDepthLevel[];
   sell: DhanDepthLevel[];
+}
+
+/** What the depth table is showing, when it isn't the live 20/200-level book. */
+export function depthNote(res: DhanMarketDepthResponse): string {
+  if (res.marketOpen === false) {
+    return 'Market closed: showing the last order book reported. Live 20 and 200-level depth streams 9:15 AM to 3:30 PM IST.';
+  }
+  return res.mode === 'quote_snapshot' ? 'Full depth is unavailable right now, so this shows the top 5 levels.' : '';
 }
 
 @Injectable({

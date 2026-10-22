@@ -31,6 +31,7 @@ import {
   DhanChartRequest,
   DhanDepthLevel,
   DhanLiveChartService,
+  depthNote,
 } from '../../core/services/dhan-live-chart.service';
 import { MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
 
@@ -80,7 +81,7 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
   marketDepthLimit = 20;
   marketDepthBuy: DhanDepthLevel[] = [];
   marketDepthSell: DhanDepthLevel[] = [];
-  marketDepthMode = '';
+  marketDepthNote = '';
   hoveredCandle: CandlestickData | null = null;
   lastVisibleCandle: CandlestickData | null = null;
 
@@ -596,7 +597,7 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
       next: (res: any) => {
         this.marketDepthBuy = Array.isArray(res?.buy) ? res.buy : [];
         this.marketDepthSell = Array.isArray(res?.sell) ? res.sell : [];
-        this.marketDepthMode = String(res?.mode || '');
+        this.marketDepthNote = depthNote(res);
         this.marketDepthLoading = false;
       },
       error: (err: HttpErrorResponse) => {

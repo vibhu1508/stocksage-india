@@ -33,6 +33,7 @@ import {
   DhanChartRequest,
   DhanDepthLevel,
   DhanLiveChartService,
+  depthNote,
 } from '../../core/services/dhan-live-chart.service';
 import { LiveQuote, MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
 import { FlashDirective } from '../../shared/directives/flash.directive';
@@ -100,6 +101,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   quickAddSuccess = '';
   marketDepthLoading = false;
   marketDepthError = '';
+  marketDepthNote = '';
   marketDepthLimit = 20;
   marketDepthBuy: DhanDepthLevel[] = [];
   marketDepthSell: DhanDepthLevel[] = [];
@@ -876,6 +878,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       next: (res) => {
         this.marketDepthBuy = Array.isArray(res.buy) ? res.buy : [];
         this.marketDepthSell = Array.isArray(res.sell) ? res.sell : [];
+        this.marketDepthNote = depthNote(res);
         this.marketDepthLoading = false;
       },
       error: (err: HttpErrorResponse) => {

@@ -148,8 +148,8 @@
           </div>
         </div>
 
-        @if (marketDepthMode) {
-        <p class="muted">Mode: {{ marketDepthMode === 'full_depth_ws' ? 'Full Depth WebSocket' : 'Snapshot Depth' }}</p>
+        @if (marketDepthNote && !marketDepthLoading && !marketDepthError) {
+        <p class="muted">{{ marketDepthNote }}</p>
         }
 
         @if (marketDepthLoading) {
@@ -172,7 +172,7 @@
                 </tr>
               </thead>
               <tbody>
-                @for (row of marketDepthBuy; track row.price + ':' + row.quantity + ':' + row.orders) {
+                @for (row of marketDepthBuy; track $index) {
                 <tr>
                   <td>{{ formatQty(row.orders) }}</td>
                   <td>{{ formatQty(row.quantity) }}</td>
@@ -193,7 +193,7 @@
                 </tr>
               </thead>
               <tbody>
-                @for (row of marketDepthSell; track row.price + ':' + row.quantity + ':' + row.orders) {
+                @for (row of marketDepthSell; track $index) {
                 <tr>
                   <td>{{ formatPrice(row.price) }}</td>
                   <td>{{ formatQty(row.quantity) }}</td>

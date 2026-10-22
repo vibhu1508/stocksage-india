@@ -1292,6 +1292,7 @@ async def _fetch_full_depth_from_ws(identity: Dict[str, str], limit: int) -> dic
 
     buy_rows: list[dict] = []
     sell_rows: list[dict] = []
+    sides_seen: set[str] = set()
 
     try:
         async with asyncio.timeout(max(2.0, DHAN_FULL_DEPTH_TIMEOUT_SEC)):
@@ -1314,12 +1315,14 @@ async def _fetch_full_depth_from_ws(identity: Dict[str, str], limit: int) -> dic
 
                     for packet in _split_full_depth_packets(bytes(message)):
                         side, rows = _parse_full_depth_packet(packet)
+                        if side:
+                            sides_seen.add(side)
                         if side == "buy" and rows:
                             buy_rows = rows
                         elif side == "sell" and rows:
                             sell_rows = rows
 
-                    if buy_rows and sell_rows:
+                    if len(sides_seen) == 2:
                         break
     except TimeoutError:
         raise HTTPException(status_code=502, detail="Timed out while receiving full market depth")
@@ -1441,9 +1444,14 @@ async def dhan_market_depth(
 ):
     identity = await _resolve_chart_identity(symbol, securityId, exchangeSegment, instrument)
 
+    now = datetime.now(IST)
+    minute = now.hour * 60 + now.minute
+    # Pre-open (09:00) to close; outside it Dhan's depth feeds send nothing or all-zero books.
+    market_open = 9 * 60 <= minute < 15 * 60 + 30 and not await asyncio.to_thread(is_market_holiday, now.date())
+
     # Dhan Full Market Depth (20/200) is a binary websocket feed.
-    full_depth_error: Optional[str] = None
-    if limit >= 20:
+    full_depth_error: Optional[str] = None if market_open else "Market closed"
+    if limit >= 20 and market_open:
         try:
             full_depth = await _fetch_full_depth_from_ws(identity, 200 if limit >= 200 else 20)
             return {
@@ -1451,6 +1459,7 @@ async def dhan_market_depth(
                 "identity": identity,
                 "source": "live",
                 "mode": "full_depth_ws",
+                "marketOpen": True,
                 "limit": limit,
                 "buy": full_depth["buy"][:limit],
                 "sell": full_depth["sell"][:limit],
@@ -1474,6 +1483,7 @@ async def dhan_market_depth(
         "identity": identity,
         "source": response.get("source"),
         "mode": "quote_snapshot",
+        "marketOpen": market_open,
         "limit": limit,
         "actualDepthLevels": max(len(depth["buy"]), len(depth["sell"])),
         "fallbackReason": full_depth_error,
