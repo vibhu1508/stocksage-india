@@ -73,10 +73,13 @@
           <button
             type="button"
             (mousedown)="selectSuggestion(item)"
-            class="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors"
+            class="w-full text-left px-3 py-2 hover:bg-muted/50 transition-colors flex items-center gap-2.5"
           >
-            <div class="text-sm font-semibold">{{ item.symbol }} @if (item.series) { <span class="text-xs text-muted-foreground">({{ item.series }})</span> }</div>
-            <div class="text-xs text-muted-foreground truncate">{{ item.name }}</div>
+            <app-company-logo [symbol]="item.symbol" [size]="26"></app-company-logo>
+            <span class="min-w-0">
+              <span class="block text-sm font-semibold">{{ item.symbol }} @if (item.series) { <span class="text-xs text-muted-foreground">({{ item.series }})</span> }</span>
+              <span class="block text-xs text-muted-foreground truncate">{{ item.name }}</span>
+            </span>
           </button>
           }
         </div>

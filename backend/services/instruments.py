@@ -25,6 +25,7 @@ LOCAL_PATH = Path(tempfile.gettempdir()) / "stocksage" / "dhan_api_scrip_master_
 REFRESH_SECONDS = 86400
 
 _cache: dict[str, dict] = {}
+_indices: dict[str, dict] = {}
 _loaded_at = 0.0
 _lock = asyncio.Lock()
 
@@ -67,9 +68,26 @@ def build_instruments(rows: Iterable[dict]) -> dict[str, dict]:
     return out
 
 
-def _parse_file(path: Path) -> dict[str, dict]:
+def build_indices(rows: Iterable[dict]) -> dict[str, dict]:
+    """Index rows (segment I, NSE and BSE) -> {"INDEX:<symbol>": {symbol, name, exchange, sid}}.
+    The prefix keeps an index apart from a stock with the same ticker."""
+    out: dict[str, dict] = {}
+    for row in rows:
+        if row.get("SEGMENT") != "I" or row.get("EXCH_ID") not in ("NSE", "BSE"):
+            continue
+        symbol = row["UNDERLYING_SYMBOL"].strip().upper()
+        out.setdefault(f"INDEX:{symbol}", {
+            "symbol": symbol, "name": (row.get("DISPLAY_NAME") or symbol).strip(),
+            "exchange": row["EXCH_ID"], "sid": row["SECURITY_ID"].strip(),
+        })
+    return out
+
+
+def _parse_file(path: Path) -> tuple[dict[str, dict], dict[str, dict]]:
     with path.open(newline="", encoding="utf-8") as f:
-        return build_instruments(csv.DictReader(f))
+        # Only equity and index rows are used (~25k of ~210k), so hold just those.
+        rows = [r for r in csv.DictReader(f) if r.get("SEGMENT") in ("E", "I")]
+    return build_instruments(rows), build_indices(rows)
 
 
 async def _download() -> None:
@@ -86,7 +104,7 @@ async def _download() -> None:
 
 async def get_instruments() -> dict[str, dict]:
     """The company list, refreshed daily; on a failed refresh the last good copy is kept."""
-    global _cache, _loaded_at
+    global _cache, _indices, _loaded_at
     if _cache and time.time() - _loaded_at < REFRESH_SECONDS:
         return _cache
     async with _lock:
@@ -100,10 +118,16 @@ async def get_instruments() -> dict[str, dict]:
                 return _cache
         try:
             # Parsing ~200k rows takes a second or two; keep it off the event loop.
-            _cache = await asyncio.to_thread(_parse_file, LOCAL_PATH)
+            _cache, _indices = await asyncio.to_thread(_parse_file, LOCAL_PATH)
             _loaded_at = time.time()
-            logger.info("instrument list: %d companies and ETFs", len(_cache))
+            logger.info("instrument list: %d companies and ETFs, %d indices", len(_cache), len(_indices))
         except Exception as exc:
             logger.warning("instrument list parse failed: %s", exc)
             _loaded_at = time.time() - REFRESH_SECONDS + 600  # retry in 10 minutes, not on every request
     return _cache
+
+
+async def get_indices() -> dict[str, dict]:
+    """NSE and BSE indices, loaded and refreshed with the company list."""
+    await get_instruments()
+    return _indices

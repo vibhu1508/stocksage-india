@@ -32,6 +32,7 @@
             <app-company-logo class="mr-2" [symbol]="suggestion.symbol" [size]="24"></app-company-logo>
             <span class="font-semibold text-foreground bg-primary/20 text-primary px-2 py-0.5 rounded-md mr-3 text-xs w-20 text-center">{{ suggestion.symbol }}</span>
             <span class="text-muted-foreground flex-1 truncate">{{ suggestion.name }}</span>
+            <app-exchange-badges [exchanges]="suggestion.exchanges ?? []"></app-exchange-badges>
           </div>
           }
         </div>

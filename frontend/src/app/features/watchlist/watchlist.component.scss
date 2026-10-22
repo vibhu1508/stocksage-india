@@ -125,7 +125,9 @@
 }
 
 .add-suggestions button small {
-  margin-left: auto;  /* company name on the right, logo and symbol on the left */
+  flex: 1;  /* name fills the middle; exchange badges sit at the right edge */
+  min-width: 0;
+  text-overflow: ellipsis;
 }
 
 .add-suggestions button:hover {

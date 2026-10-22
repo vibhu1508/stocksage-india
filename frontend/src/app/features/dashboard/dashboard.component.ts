@@ -8,11 +8,12 @@ import { MarketService, MarketData, StockMover } from '../../core/services/marke
 import { LucideAngularModule } from 'lucide-angular';
 import { LiveQuote, MarketStreamService } from '../../core/services/market-stream.service';
 import { FlashDirective } from '../../shared/directives/flash.directive';
+import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, LucideAngularModule, FlashDirective],
+  imports: [CommonModule, RouterLink, LucideAngularModule, FlashDirective, CompanyLogoComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   animations: [
@@ -233,7 +234,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         icon: this.niftyPositive ? 'trending-up' : 'trending-down',
         iconClass: this.niftyPositive ? 'text-green-500' : 'text-red-500',
         change: this.niftyChange || null,
-        route: null as string | null,
+        route: '/stocks/INDEX:NIFTY' as string | null,
         changePositive: this.niftyPositive,
         raw: this.liveNifty?.price ?? null
       },
@@ -243,7 +244,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         icon: this.sensexPositive ? 'trending-up' : 'trending-down',
         iconClass: this.sensexPositive ? 'text-green-500' : 'text-red-500',
         change: this.sensexChange || null,
-        route: null as string | null,
+        route: '/stocks/INDEX:SENSEX' as string | null,
         changePositive: this.sensexPositive,
         raw: this.liveSensex?.price ?? null
       },

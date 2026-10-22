@@ -7,11 +7,12 @@ import { MarketService } from '../../core/services/market.service';
 import { LucideAngularModule } from 'lucide-angular';
 import { FlashDirective } from '../../shared/directives/flash.directive';
 import { Subject, Subscription, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
+import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 
 @Component({
   selector: 'app-portfolio',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, FlashDirective],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, FlashDirective, CompanyLogoComponent],
   templateUrl: './portfolio.component.html',
   styleUrl: './portfolio.component.scss'
 })

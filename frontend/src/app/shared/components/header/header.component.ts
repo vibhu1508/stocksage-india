@@ -11,11 +11,12 @@ import { LucideAngularModule } from 'lucide-angular';
 import { Observable, Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
 import { CompanyLogoComponent } from '../company-logo/company-logo.component';
+import { ExchangeBadgesComponent } from '../exchange-badges/exchange-badges.component';
 
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule, CompanyLogoComponent],
+  imports: [CommonModule, FormsModule, LucideAngularModule, CompanyLogoComponent, ExchangeBadgesComponent],
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss'
 })

@@ -7,11 +7,12 @@ import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { LucideAngularModule } from 'lucide-angular';
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
+import { ExchangeBadgesComponent } from '../../shared/components/exchange-badges/exchange-badges.component';
 
 @Component({
   selector: 'app-stock-comparison',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule, RouterLink, CompanyLogoComponent],
+  imports: [CommonModule, FormsModule, LucideAngularModule, RouterLink, CompanyLogoComponent, ExchangeBadgesComponent],
   templateUrl: './stock-comparison.component.html',
   styleUrl: './stock-comparison.component.scss'
 })
@@ -86,7 +87,8 @@ export class StockComparisonComponent implements OnInit {
   private fetchSuggestions(query: string): void {
     this.stockService.searchSymbols(query, 10).subscribe({
       next: (response) => {
-        this.suggestions = response.results;
+        // Comparison reads NSE stock bhavcopies, so BSE-only companies and indices can't be compared.
+        this.suggestions = response.results.filter((r) => r.kind !== 'index' && (!r.exchanges || r.exchanges.includes('NSE')));
         this.showSuggestions = this.suggestions.length > 0;
       },
       error: () => {

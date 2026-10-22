@@ -25,6 +25,8 @@ import {
 import { LucideAngularModule } from 'lucide-angular';
 
 import { StrategyService, YearwiseDataPoint } from '../../core/services/strategy.service';
+import { IndexAnalysis, StockService } from '../../core/services/stock.service';
+import { IndexOverviewComponent } from './index-overview/index-overview.component';
 import { AnnouncementService, NSEAnnouncement } from '../../core/services/announcement.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { PortfolioService } from '../../core/services/portfolio.service';
@@ -59,7 +61,7 @@ interface Technicals {
 @Component({
   selector: 'app-stock-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, FlashDirective, CompanyLogoComponent],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, FlashDirective, CompanyLogoComponent, IndexOverviewComponent],
   templateUrl: './stock-detail.component.html',
   styleUrl: './stock-detail.component.scss',
 })
@@ -69,6 +71,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   error = '';
 
   quote: any = null;
+  indexData: IndexAnalysis | null = null;  // set when the page shows an index (symbol "INDEX:<symbol>")
   announcements: NSEAnnouncement[] = [];
   announcementsLoading = false;
   performanceData: YearwiseDataPoint | null = null;
@@ -179,6 +182,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   constructor(
     private route: ActivatedRoute,
     private strategyService: StrategyService,
+    private stockService: StockService,
     private announcementService: AnnouncementService,
     private marketStream: MarketStreamService,
     private themeService: ThemeService,
@@ -205,6 +209,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.loading = true;
       this.error = '';
       this.quote = null;
+      this.indexData = null;
       this.announcements = [];
       this.performanceData = null;
       this.liveChartError = '';
@@ -232,11 +237,13 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.candleCache.clear();
 
       this.loadQuote();
-      this.loadAnnouncements();
-      this.loadYearwiseData();
       this.reloadLiveChart();
       this.loadIndicatorCandles();
-      this.loadMarketDepth(20);
+      if (!this.isIndex) {  // announcements, NSE returns and order book exist only for stocks
+        this.loadAnnouncements();
+        this.loadYearwiseData();
+        this.loadMarketDepth(20);
+      }
     });
   }
 
@@ -447,6 +454,43 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     return Array.from(dedup.values()).sort((a, b) => Number(a.time) - Number(b.time));
   }
 
+  get isIndex(): boolean {
+    return this.symbol.startsWith('INDEX:');
+  }
+
+  /** The pill text: "NIFTY" rather than the "INDEX:NIFTY" key. */
+  get symbolLabel(): string {
+    return this.isIndex ? this.symbol.slice('INDEX:'.length) : this.symbol;
+  }
+
+  private loadIndex(): void {
+    this.stockService.getIndexAnalysis(this.symbol).subscribe({
+      next: (res) => {
+        const o = res.overview;
+        this.indexData = res;
+        // The header and chart read these quote fields; the live level comes from watchQuote.
+        this.quote = {
+          info: { companyName: res.name },
+          last: o?.last ?? 0,
+          previousClose: o?.previousClose,
+          priceInfo: { previousClose: o?.previousClose, weekHighLow: { max: o?.yearHigh, min: o?.yearLow } },
+          exchange: res.exchange,
+          securityInfo: {},
+        };
+        this.loading = false;
+        this.scheduleChartRefresh();
+      },
+      error: () => {
+        this.error = 'Unable to load this index right now.';
+        this.loading = false;
+      },
+    });
+  }
+
+  get isBseOnly(): boolean {
+    return !this.isIndex && this.quote?.exchange === 'BSE';
+  }
+
   get displayName(): string {
     return this.quote?.info?.companyName || this.quote?.metadata?.companyName || this.symbol;
   }
@@ -573,6 +617,10 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private loadQuote(): void {
+    if (this.isIndex) {
+      this.loadIndex();
+      return;
+    }
     this.strategyService.getSymbolData(this.symbol).subscribe({
       next: (res) => {
         this.quote = this.normalizeQuoteResponse(res);
@@ -1075,6 +1123,12 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     if (msg.op === 'snapshot') {
+      if (msg.candles.length === 0) {
+        // Thinly traded stocks can go a week without a trade; daily candles still show their history.
+        this.setLiveTimeframe('D');
+        this.sessionNotice = 'No trades in the last week, so this shows daily candles';
+        return;
+      }
       this.applyCandlesToChart(msg.candles.map(toCandle), this.liveTimeframe, false);
       this.showRecentBars();
       this.liveChartLoading = false;
@@ -1239,6 +1293,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       low: meta.dayLow ?? trade.intraDayHighLow?.min,
       previousClose: meta.previousClose ?? price.previousClose,
       timestamp: first.lastUpdateTime,
+      exchange: first.exchange ?? 'NSE',  // 'BSE' for BSE-only companies (quote from Dhan)
     };
   }
 

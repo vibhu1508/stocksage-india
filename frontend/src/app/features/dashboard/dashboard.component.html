@@ -56,9 +56,12 @@
       
       @for (g of [currentGainer]; track gainerIndex) {
       <div class="flex justify-between items-center" @slideUp>
-        <div class="flex flex-col gap-1">
-          <a class="text-xl md:text-2xl font-bold text-foreground hover:text-primary transition-colors" [routerLink]="['/stocks', g!.symbol]">{{ g!.symbol }}</a>
-          <span class="text-sm font-medium text-muted-foreground self-start" [appFlash]="moverPrice(g!)">₹{{ moverPrice(g!) | number:'1.2-2' }}</span>
+        <div class="flex items-center gap-3 min-w-0">
+          <app-company-logo [symbol]="g!.symbol" [size]="44"></app-company-logo>
+          <div class="flex flex-col gap-1 min-w-0">
+            <a class="text-xl md:text-2xl font-bold text-foreground hover:text-primary transition-colors" [routerLink]="['/stocks', g!.symbol]">{{ g!.symbol }}</a>
+            <span class="text-sm font-medium text-muted-foreground self-start" [appFlash]="moverPrice(g!)">₹{{ moverPrice(g!) | number:'1.2-2' }}</span>
+          </div>
         </div>
         <div class="flex flex-col items-end gap-1">
           <span class="text-lg font-bold" [class.text-green-500]="moverPct(g!) >= 0" [class.text-red-500]="moverPct(g!) < 0">{{ moverPct(g!) >= 0 ? '+' : '' }}{{ moverPct(g!) | number:'1.2-2' }}%</span>
@@ -89,9 +92,12 @@
       
       @for (l of [currentLoser]; track loserIndex) {
       <div class="flex justify-between items-center" @slideUp>
-        <div class="flex flex-col gap-1">
-          <a class="text-xl md:text-2xl font-bold text-foreground hover:text-primary transition-colors" [routerLink]="['/stocks', l!.symbol]">{{ l!.symbol }}</a>
-          <span class="text-sm font-medium text-muted-foreground self-start" [appFlash]="moverPrice(l!)">₹{{ moverPrice(l!) | number:'1.2-2' }}</span>
+        <div class="flex items-center gap-3 min-w-0">
+          <app-company-logo [symbol]="l!.symbol" [size]="44"></app-company-logo>
+          <div class="flex flex-col gap-1 min-w-0">
+            <a class="text-xl md:text-2xl font-bold text-foreground hover:text-primary transition-colors" [routerLink]="['/stocks', l!.symbol]">{{ l!.symbol }}</a>
+            <span class="text-sm font-medium text-muted-foreground self-start" [appFlash]="moverPrice(l!)">₹{{ moverPrice(l!) | number:'1.2-2' }}</span>
+          </div>
         </div>
         <div class="flex flex-col items-end gap-1">
           <span class="text-lg font-bold" [class.text-green-500]="moverPct(l!) >= 0" [class.text-red-500]="moverPct(l!) < 0">{{ moverPct(l!) >= 0 ? '+' : '' }}{{ moverPct(l!) | number:'1.2-2' }}%</span>

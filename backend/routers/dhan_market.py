@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from routers.auth import authenticate_websocket, get_current_user
 from models import User
 from utils.market_utils import IST, get_latest_market_date, is_market_holiday
+from services.instruments import get_indices, get_instruments
 from services.redis_store import (
     _key as redis_key,
     cache_get_json,
@@ -461,6 +462,12 @@ async def _resolve_chart_identity(
     if not normalized_symbol:
         raise HTTPException(status_code=400, detail="Symbol is required")
 
+    if normalized_symbol.startswith("INDEX:"):
+        index = (await get_indices()).get(normalized_symbol)
+        if not index:
+            raise HTTPException(status_code=404, detail="Unknown index")
+        return {"symbol": normalized_symbol, "securityId": index["sid"], "exchangeSegment": "IDX_I", "instrument": "INDEX"}
+
     env_symbol_map = _chart_symbol_map()
     resolved_security_id = (security_id or "").strip()
     resolved_exchange = (exchange_segment or "").strip()
@@ -484,6 +491,16 @@ async def _resolve_chart_identity(
         except Exception:
             # Soft-fail and fall back to existing behavior when scrip-master is unavailable.
             pass
+
+    if not resolved_security_id:
+        # The compact list above holds NSE stocks and indices only; BSE-only companies (key
+        # "SYMBOL", or "BSE:SYMBOL" when an NSE company has that symbol) come from the full list.
+        entry = (await get_instruments()).get(normalized_symbol)
+        listing = entry and (entry["nse"] or entry["bse"])
+        if listing:
+            resolved_security_id = listing["sid"]
+            resolved_exchange = "NSE_EQ" if entry["nse"] else "BSE_EQ"
+            resolved_instrument = "EQUITY"
 
     if not resolved_security_id:
         raise HTTPException(
@@ -1451,7 +1468,8 @@ async def dhan_market_depth(
 
     # Dhan Full Market Depth (20/200) is a binary websocket feed.
     full_depth_error: Optional[str] = None if market_open else "Market closed"
-    if limit >= 20 and market_open:
+    # Dhan's 20/200-level feeds cover NSE only; BSE stocks go straight to the 5-level quote.
+    if limit >= 20 and market_open and identity["exchangeSegment"].startswith("NSE"):
         try:
             full_depth = await _fetch_full_depth_from_ws(identity, 200 if limit >= 200 else 20)
             return {

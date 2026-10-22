@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
 from typing import Optional, List, Dict, Any, Literal
 import asyncio
+import csv
+import logging
 import pandas as pd
 import requests
 import httpx
@@ -17,9 +19,11 @@ import time
 from database import get_db
 from routers.auth import get_current_user
 from models import User
-from services.instruments import get_instruments
+from routers.strategy_builder import nse_session
+from services.instruments import get_indices, get_instruments
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Configuration
 BASE_URL = "https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date}_F_0000.csv.zip"
@@ -61,7 +65,7 @@ def download_bhavcopy(target_date: date) -> Optional[pd.DataFrame]:
             csv_filename = z.namelist()[0]
             with z.open(csv_filename) as f:
                 # OPTIMIZATION: Only load necessary columns
-                target_cols = ['TradDt', 'SctySrs', 'FinInstrmNm', 'ClsPric', 'TckrSymb', 'TtlTradgVol']
+                target_cols = ['TradDt', 'SctySrs', 'FinInstrmNm', 'ClsPric', 'PrvsClsgPric', 'TckrSymb', 'TtlTradgVol']
                 
                 # Check headers
                 header_check = pd.read_csv(f, nrows=0)
@@ -75,7 +79,7 @@ def download_bhavcopy(target_date: date) -> Optional[pd.DataFrame]:
             df = df[df['SctySrs'].isin(['EQ', 'BE'])].copy()
         
         # OPTIMIZATION: Downcast numeric types
-        for col in ['ClsPric', 'TtlTradgVol']:
+        for col in ['ClsPric', 'PrvsClsgPric', 'TtlTradgVol']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').astype('float32')
         
@@ -146,13 +150,6 @@ async def get_symbols(current_user: User = Depends(get_current_user)):
             return {"symbols": df['TckrSymb'].unique().tolist()}
         return {"symbols": []}
 
-# Cache for symbols data to avoid repeated downloads
-_symbols_cache = {
-    "data": None,
-    "timestamp": None
-}
-CACHE_DURATION = timedelta(hours=1)
-
 _nse_search_cache: Dict[str, dict] = {}
 _nse_search_cache_ttl = timedelta(seconds=30)
 _nse_client: Optional[httpx.AsyncClient] = None
@@ -213,34 +210,43 @@ def _allowed_instruments(symbol: str, name: str, series: str) -> List[str]:
     return ["EQUITY", "FUTURE", "OPTION"]
 
 
-def get_cached_symbols() -> Optional[pd.DataFrame]:
-    """Get symbols data from cache or download if expired/missing."""
-    global _symbols_cache
-    
-    now = datetime.now()
-    
-    # Check if cache is valid
-    if (_symbols_cache["data"] is not None and 
-        _symbols_cache["timestamp"] is not None and
-        now - _symbols_cache["timestamp"] < CACHE_DURATION):
-        return _symbols_cache["data"]
-    
-    # Try to download fresh data
-    today = date.today()
-    df = None
-    
-    for days_back in range(5):
-        target_date = today - timedelta(days=days_back)
-        df = download_bhavcopy(target_date)
-        if df is not None:
-            break
-    
-    if df is not None:
-        # Update cache
-        _symbols_cache["data"] = df
-        _symbols_cache["timestamp"] = now
-    
-    return df
+def _squash(text: str) -> str:
+    return text.replace(" ", "").upper()
+
+
+def rank_search(instruments: dict, query: str, limit: int, indices: Optional[dict] = None) -> list[dict]:
+    """Best matches first: exact symbol or name, symbol prefix, name prefix, then anywhere; spaces are
+    ignored ("nifty50" finds Nifty 50). Ties: indices, then NSE-listed, then shorter symbols.
+    `exchanges` drives the NSE/BSE badges; indices also carry kind "index"."""
+    q = _squash(query)
+    if not q:
+        return []
+    candidates = [
+        (key, e["symbol"], e["name"], 1 if e["nse"] else 2,
+         {"symbol": key, "name": e["name"], "exchanges": [x for x in ("NSE", "BSE") if e[x.lower()]]})
+        for key, e in instruments.items()
+    ] + [
+        (key, e["symbol"], e["name"], 0, {"symbol": key, "name": e["name"], "exchanges": [e["exchange"]], "kind": "index"})
+        for key, e in (indices or {}).items()
+    ]
+    ranked = []
+    for key, symbol, name, tie, result in candidates:
+        sym, nm = _squash(symbol), _squash(name)
+        if q in (sym, nm, _squash(key)):
+            rank = 0
+        elif sym.startswith(q):
+            rank = 1
+        elif nm.startswith(q):
+            rank = 2
+        elif q in sym:
+            rank = 3
+        elif q in nm:
+            rank = 4
+        else:
+            continue
+        ranked.append((rank, tie, len(symbol), key, result))
+    ranked.sort(key=lambda r: r[:4])
+    return [r[4] for r in ranked[:limit]]
 
 
 @router.get("/search")
@@ -249,43 +255,9 @@ async def search_symbols(
     limit: int = Query(10, ge=1, le=50, description="Max results to return"),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Search for stock symbols with company names.
-    Returns matching symbols with their company names for autocomplete.
-    Uses cached data to avoid slow downloads on every request.
-    """
-    # Get cached symbols data
-    df = get_cached_symbols()
-    
-    if df is None or 'TckrSymb' not in df.columns:
-        return {"results": [], "query": q, "count": 0}
-    
-    # Search for matching symbols
-    query_upper = q.upper()
-    
-    # Get relevant columns
-    if 'FinInstrmNm' in df.columns:
-        # Has company name
-        search_df = df[['TckrSymb', 'FinInstrmNm']].drop_duplicates()
-        search_df.columns = ['symbol', 'name']
-    else:
-        # No company name, just use symbol
-        search_df = df[['TckrSymb']].drop_duplicates()
-        search_df.columns = ['symbol']
-        search_df['name'] = search_df['symbol']
-    
-    # Filter by query - match on symbol or company name
-    mask = (
-        search_df['symbol'].str.upper().str.contains(query_upper, na=False) |
-        search_df['name'].str.upper().str.contains(query_upper, na=False)
-    )
-    results = search_df[mask].head(limit)
-    
-    return {
-        "query": q,
-        "count": len(results),
-        "results": results.to_dict(orient='records')
-    }
+    """Autocomplete over every NSE and BSE company and ETF (SME and BSE-only included)."""
+    results = rank_search(await get_instruments(), q, limit, await get_indices())
+    return {"query": q, "count": len(results), "results": results}
 
 
 @router.get("/isin-map")
@@ -577,3 +549,127 @@ async def compare_stocks(
         "losers": comparison.tail(10).to_dict(orient='records'),
         "data": comparison.to_dict(orient='records')
     }
+
+
+# ---------------------------------------------------------------------------------------------
+# Index analysis: NSE's index overview (level, breadth, valuation) and, for the indices NSE
+# publishes a constituent list for, each member's day move from the latest bhavcopy.
+
+# Dhan index symbol -> (NSE allIndices name, NSE archive constituents file ind_<file>list.csv).
+INDEX_CONSTITUENTS = {
+    "NIFTY": ("NIFTY 50", "nifty50"), "NIFTYNXT50": ("NIFTY NEXT 50", "niftynext50"),
+    "NIFTY 100": ("NIFTY 100", "nifty100"), "NIFTY 200": ("NIFTY 200", "nifty200"), "NIFTY 500": ("NIFTY 500", "nifty500"),
+    "BANKNIFTY": ("NIFTY BANK", "niftybank"), "FINNIFTY": ("NIFTY FINANCIAL SERVICES", "niftyfinance"),
+    "NIFTYIT": ("NIFTY IT", "niftyit"), "NIFTY AUTO": ("NIFTY AUTO", "niftyauto"), "NIFTY PHARMA": ("NIFTY PHARMA", "niftypharma"),
+    "NIFTY FMCG": ("NIFTY FMCG", "niftyfmcg"), "NIFTY METAL": ("NIFTY METAL", "niftymetal"), "NIFTY REALTY": ("NIFTY REALTY", "niftyrealty"),
+    "NIFTY ENERGY": ("NIFTY ENERGY", "niftyenergy"), "NIFTY MEDIA": ("NIFTY MEDIA", "niftymedia"),
+    "NIFTY PSU BANK": ("NIFTY PSU BANK", "niftypsubank"), "NIFTY PVT BANK": ("NIFTY PRIVATE BANK", "nifty_privatebank"),
+    "NIFTYMCAP50": ("NIFTY MIDCAP 50", "niftymidcap50"), "NIFTY MID100 FREE": ("NIFTY MIDCAP 100", "niftymidcap100"),
+    "NIFTY MIDCAP 150": ("NIFTY MIDCAP 150", "niftymidcap150"), "NIFTY SMALLCAP 100": ("NIFTY SMALLCAP 100", "niftysmallcap100"),
+    "NIFTY SMALLCAP 250": ("NIFTY SMALLCAP 250", "niftysmallcap250"), "NIFTY HEALTHCARE": ("NIFTY HEALTHCARE INDEX", "niftyhealthcare"),
+    "NIFTY CONSUMPTION": ("NIFTY INDIA CONSUMPTION", "niftyconsumption"), "NIFTYINFRA": ("NIFTY INFRASTRUCTURE", "niftyinfra"),
+    "NIFTY COMMODITIES": ("NIFTY COMMODITIES", "niftycommodities"), "NIFTYCPSE": ("NIFTY CPSE", "niftycpse"),
+    "NIFTYPSE": ("NIFTY PSE", "niftypse"), "NIFTY OIL AND GAS": ("NIFTY OIL & GAS", "niftyoilgas"),
+}
+_OVERVIEW_FIELDS = ("last", "variation", "percentChange", "open", "high", "low", "previousClose", "yearHigh", "yearLow",
+                    "pe", "pb", "dy", "advances", "declines", "unchanged", "perChange30d", "perChange365d",
+                    "oneWeekAgoVal", "oneMonthAgoVal", "oneYearAgoVal")
+_all_indices_cache: dict = {"at": 0.0, "rows": []}
+_members_cache: dict[str, tuple[float, list]] = {}
+_bhav_cache: dict = {"at": 0.0, "date": None, "prices": {}}
+
+
+def _number(value) -> Optional[float]:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def constituent_moves(members: list[dict], prices: dict[str, tuple[float, float]]) -> dict:
+    """Join an index's members with bhavcopy (close, previous close): each member's day move,
+    biggest movers first, plus how many rose/fell and an industry summary."""
+    rows = []
+    for m in members:
+        close, prev = prices.get(m["symbol"], (None, None))
+        change = round(close - prev, 2) if close and prev else None
+        rows.append({**m, "close": close, "change": change, "pct": round(change / prev * 100, 2) if change is not None else None})
+    priced = sorted((r for r in rows if r["pct"] is not None), key=lambda r: r["pct"], reverse=True)
+    industries: dict[str, list] = {}
+    for r in priced:
+        industries.setdefault(r["industry"] or "Other", []).append(r["pct"])
+    return {
+        "rows": priced + [r for r in rows if r["pct"] is None],
+        "advances": sum(r["pct"] > 0 for r in priced),
+        "declines": sum(r["pct"] < 0 for r in priced),
+        "unchanged": sum(r["pct"] == 0 for r in priced),
+        "industries": sorted(
+            ({"industry": k, "count": len(v), "avgPct": round(sum(v) / len(v), 2)} for k, v in industries.items()),
+            key=lambda i: (-i["count"], i["industry"]),
+        ),
+    }
+
+
+async def _nse_index_overview(nse_name: str) -> Optional[dict]:
+    """One index's row from NSE allIndices (level, breadth, P/E, P/B, yield, period returns), cached 60 s."""
+    if time.time() - _all_indices_cache["at"] > 60:
+        try:
+            data = await nse_session.get_data("https://www.nseindia.com/api/allIndices")
+            _all_indices_cache.update(at=time.time(), rows=data.get("data") or [])
+        except Exception as exc:  # keep serving the last copy
+            logger.warning("allIndices fetch failed: %s", exc)
+    row = next((r for r in _all_indices_cache["rows"] if (r.get("index") or "").upper() == nse_name.upper()), None)
+    if not row:
+        return None
+    out = {k: _number(row.get(k)) for k in _OVERVIEW_FIELDS}
+    out["name"] = row.get("index")
+    return out
+
+
+async def _index_members(csv_file: str) -> list[dict]:
+    """Constituents from NSE's archive CSV (company, industry, symbol), cached a day."""
+    cached = _members_cache.get(csv_file)
+    if cached and time.time() - cached[0] < 86400:
+        return cached[1]
+    async with httpx.AsyncClient(timeout=30, headers=HEADERS) as client:
+        resp = await client.get(f"https://nsearchives.nseindia.com/content/indices/ind_{csv_file}list.csv")
+        resp.raise_for_status()
+    members = [
+        {"symbol": r["Symbol"].strip(), "name": r["Company Name"].strip(), "industry": r["Industry"].strip()}
+        for r in csv.DictReader(io.StringIO(resp.text)) if r.get("Symbol")
+    ]
+    _members_cache[csv_file] = (time.time(), members)
+    return members
+
+
+async def _latest_bhav_prices() -> tuple[Optional[str], dict]:
+    """{symbol: (close, previous close)} from the newest NSE bhavcopy, re-checked hourly."""
+    if time.time() - _bhav_cache["at"] > 3600 or not _bhav_cache["prices"]:
+        for back in range(7):
+            day = date.today() - timedelta(days=back)
+            df = await asyncio.to_thread(download_bhavcopy, day)
+            if df is not None and "PrvsClsgPric" in df.columns:
+                prices = {s: (round(float(c), 2), round(float(p), 2)) for s, c, p in zip(df["TckrSymb"], df["ClsPric"], df["PrvsClsgPric"])}
+                _bhav_cache.update(at=time.time(), date=day.isoformat(), prices=prices)
+                break
+    return _bhav_cache["date"], _bhav_cache["prices"]
+
+
+@router.get("/index/{key}")
+async def index_analysis(key: str, current_user: User = Depends(get_current_user)):
+    """Everything the index page shows beyond the chart: NSE's overview and constituent moves."""
+    index = (await get_indices()).get(key.strip().upper())
+    if not index:
+        raise HTTPException(status_code=404, detail="Unknown index")
+    nse_name, csv_file = INDEX_CONSTITUENTS.get(index["symbol"], (index["name"], None))
+    overview = await _nse_index_overview(nse_name) if index["exchange"] == "NSE" else None
+    constituents = None
+    if csv_file:
+        try:
+            members = await _index_members(csv_file)
+            as_of, prices = await _latest_bhav_prices()
+            constituents = {"asOf": as_of, **constituent_moves(members, prices)}
+        except Exception as exc:
+            logger.warning("constituents for %s failed: %s", key, exc)
+    return {"key": key.strip().upper(), "symbol": index["symbol"], "name": index["name"], "exchange": index["exchange"],
+            "overview": overview, "constituents": constituents}

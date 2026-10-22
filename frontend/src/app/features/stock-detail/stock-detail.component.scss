@@ -62,6 +62,16 @@
   font-size: 0.85rem;
 }
 
+.exchange-pill {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: hsl(var(--muted-foreground));
+}
+
 .hero-sub .industry {
   display: inline-flex;
   align-items: center;

@@ -40,6 +40,38 @@ export interface ComparisonItem {
 export interface SymbolSearchResult {
   symbol: string;
   name: string;
+  /** Where it trades: ['NSE'], ['BSE'] or ['NSE', 'BSE']. */
+  exchanges?: string[];
+  /** 'index' for indices (key "INDEX:<symbol>"). */
+  kind?: 'index';
+}
+
+export interface IndexConstituent {
+  symbol: string;
+  name: string;
+  industry: string;
+  close: number | null;
+  change: number | null;
+  pct: number | null;
+}
+
+/** /api/stocks/index/{key}: NSE's overview (NSE indices only) and constituents (about 30 NSE indices). */
+export interface IndexAnalysis {
+  key: string;
+  symbol: string;
+  name: string;
+  exchange: 'NSE' | 'BSE';
+  overview: Record<'last' | 'variation' | 'percentChange' | 'open' | 'high' | 'low' | 'previousClose' | 'yearHigh' | 'yearLow'
+    | 'pe' | 'pb' | 'dy' | 'advances' | 'declines' | 'unchanged' | 'perChange30d' | 'perChange365d'
+    | 'oneWeekAgoVal' | 'oneMonthAgoVal' | 'oneYearAgoVal', number | null> | null;
+  constituents: {
+    asOf: string | null;
+    rows: IndexConstituent[];
+    advances: number;
+    declines: number;
+    unchanged: number;
+    industries: Array<{ industry: string; count: number; avgPct: number }>;
+  } | null;
 }
 
 export interface SearchResponse {
@@ -67,6 +99,10 @@ export class StockService {
 
   getSymbols(): Observable<{ symbols: string[] }> {
     return this.http.get<{ symbols: string[] }>(`${this.apiUrl}/symbols`);
+  }
+
+  getIndexAnalysis(key: string): Observable<IndexAnalysis> {
+    return this.http.get<IndexAnalysis>(`${this.apiUrl}/index/${encodeURIComponent(key)}`);
   }
 
   searchSymbols(query: string, limit: number = 10): Observable<SearchResponse> {

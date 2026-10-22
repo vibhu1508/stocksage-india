@@ -1,0 +1,120 @@
+<section class="ix-card" aria-labelledby="ix-title">
+  <div class="ix-head">
+    <h2 id="ix-title">Index Overview</h2>
+    @if (data.constituents?.asOf) {
+    <p class="ix-basis">Constituent moves as of the {{ data.constituents!.asOf | date:'d MMM' }} close</p>
+    }
+  </div>
+
+  @if (indexReturns.length) {
+  <div class="ix-returns">
+    @for (r of indexReturns; track r.label) {
+    <div class="ix-return">
+      <span class="ix-k">{{ r.label }}</span>
+      <span class="ix-v" [class.up]="r.pct >= 0" [class.down]="r.pct < 0">{{ r.pct >= 0 ? '+' : '' }}{{ r.pct | number:'1.2-2' }}%</span>
+    </div>
+    }
+  </div>
+  }
+
+  @if (indexBreadth; as b) {
+  <div class="ix-breadth">
+    <div class="ix-breadth-labels">
+      <span class="up">{{ b.up }} rising</span>
+      @if (b.flat) { <span class="muted">{{ b.flat }} unchanged</span> }
+      <span class="down">{{ b.down }} falling</span>
+    </div>
+    <div class="ix-breadth-bar" role="img" [attr.aria-label]="b.up + ' rising, ' + b.flat + ' unchanged, ' + b.down + ' falling'">
+      <span class="up" [style.width.%]="b.up / b.total * 100"></span>
+      <span class="flat" [style.width.%]="b.flat / b.total * 100"></span>
+      <span class="down" [style.width.%]="b.down / b.total * 100"></span>
+    </div>
+  </div>
+  }
+
+  @if (indexStats.length) {
+  <div class="ix-stats">
+    @for (s of indexStats; track s.label) {
+    <div class="ix-stat"><span class="ix-k">{{ s.label }}</span><span class="ix-v">{{ s.value }}</span></div>
+    }
+  </div>
+  }
+</section>
+
+@if (data.constituents; as c) {
+<section class="ix-card">
+  <div class="ix-movers">
+    <div class="ix-block">
+      <h3>Top gainers</h3>
+      @for (r of topGainers; track r.symbol) {
+      <a class="ix-mover" [routerLink]="['/stocks', r.symbol]">
+        <app-company-logo [symbol]="r.symbol" [size]="28"></app-company-logo>
+        <span class="ix-name"><strong>{{ r.symbol }}</strong><small>{{ r.name }}</small></span>
+        <span class="ix-pct up">+{{ r.pct | number:'1.2-2' }}%</span>
+      </a>
+      } @empty { <p class="ix-note">No member rose.</p> }
+    </div>
+    <div class="ix-block">
+      <h3>Top losers</h3>
+      @for (r of topLosers; track r.symbol) {
+      <a class="ix-mover" [routerLink]="['/stocks', r.symbol]">
+        <app-company-logo [symbol]="r.symbol" [size]="28"></app-company-logo>
+        <span class="ix-name"><strong>{{ r.symbol }}</strong><small>{{ r.name }}</small></span>
+        <span class="ix-pct down">{{ r.pct | number:'1.2-2' }}%</span>
+      </a>
+      } @empty { <p class="ix-note">No member fell.</p> }
+    </div>
+  </div>
+
+  @if (c.industries.length > 1) {
+  <div class="ix-block ix-industries">
+    <h3>By industry</h3>
+    <ul>
+      @for (i of c.industries; track i.industry) {
+      <li>
+        <span class="ix-ind-name">{{ i.industry }} <small>({{ i.count }})</small></span>
+        <span class="ix-ind-bar" aria-hidden="true">
+          <span [class.up]="i.avgPct >= 0" [class.down]="i.avgPct < 0" [style.width.%]="(i.avgPct >= 0 ? i.avgPct : -i.avgPct) / industryScale * 50"></span>
+        </span>
+        <span class="ix-pct" [class.up]="i.avgPct >= 0" [class.down]="i.avgPct < 0">{{ i.avgPct >= 0 ? '+' : '' }}{{ i.avgPct | number:'1.2-2' }}%</span>
+      </li>
+      }
+    </ul>
+    <p class="ix-note">Average day move of the members in each industry.</p>
+  </div>
+  }
+
+  <div class="ix-block">
+    <h3>Constituents ({{ c.rows.length }})</h3>
+    <table class="ix-table">
+      <thead><tr><th>Company</th><th>Industry</th><th>Close</th><th>Change</th></tr></thead>
+      <tbody>
+        @for (r of visibleConstituents; track r.symbol) {
+        <tr>
+          <td>
+            <a class="ix-company" [routerLink]="['/stocks', r.symbol]">
+              <app-company-logo [symbol]="r.symbol" [size]="24"></app-company-logo>
+              <span class="ix-name"><strong>{{ r.symbol }}</strong><small>{{ r.name }}</small></span>
+            </a>
+          </td>
+          <td class="muted">{{ r.industry }}</td>
+          <td>{{ r.close == null ? '--' : (r.close | number:'1.2-2') }}</td>
+          <td class="ix-pct" [class.up]="(r.pct ?? 0) > 0" [class.down]="(r.pct ?? 0) < 0">
+            {{ r.pct == null ? '--' : ((r.pct > 0 ? '+' : '') + (r.pct | number:'1.2-2') + '%') }}
+          </td>
+        </tr>
+        }
+      </tbody>
+    </table>
+    @if (c.rows.length > 10) {
+    <button type="button" class="ix-more" (click)="showAllConstituents = !showAllConstituents">
+      {{ showAllConstituents ? 'Show top 10' : 'Show all ' + c.rows.length }}
+    </button>
+    }
+  </div>
+</section>
+} @else {
+<section class="ix-card">
+  <p class="chart-state">{{ data.exchange === 'BSE' ? 'Constituent lists for BSE indices are not available yet.' : 'NSE does not publish a constituent list for this index.' }}</p>
+</section>
+}

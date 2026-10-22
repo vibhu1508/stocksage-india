@@ -7,7 +7,7 @@
   </div>
 
   @if (loading) {
-  <div class="state-card">Loading stock details...</div>
+  <div class="state-card">{{ isIndex ? 'Loading index details...' : 'Loading stock details...' }}</div>
   }
 
   @if (!loading && error) {
@@ -21,7 +21,13 @@
       <div class="hero-text">
         <h1>{{ displayName }}</h1>
         <div class="hero-sub">
-          <span class="symbol-pill">{{ symbol }}</span>
+          <span class="symbol-pill">{{ symbolLabel }}</span>
+          @if (isIndex) {
+          <span class="exchange-pill">INDEX · {{ indexData?.exchange }}</span>
+          }
+          @if (isBseOnly) {
+          <span class="exchange-pill" title="Listed on BSE only">BSE</span>
+          }
           @if (industryLabel) {
           <span class="meta industry" [title]="industryPath">
             <lucide-icon name="building-2" [size]="16" aria-hidden="true"></lucide-icon>
@@ -42,6 +48,7 @@
     </div>
   </section>
 
+  @if (!isIndex) {
   <section class="quick-add-card">
     <div class="quick-add-head">
       <h2>Add To Portfolio</h2>
@@ -67,6 +74,7 @@
     <p class="chart-state success">{{ quickAddSuccess }}</p>
     }
   </section>
+  }
 
   <section class="chart-card">
     <div class="chart-header">
@@ -229,6 +237,11 @@
   </section>
   }
 
+  @if (isIndex && indexData) {
+  <app-index-overview [data]="indexData"></app-index-overview>
+  }
+
+  @if (!isIndex) {
   <section class="chart-card">
     <div class="chart-header">
       <h2>Market Depth</h2>
@@ -296,7 +309,9 @@
     </div>
     }
   </section>
+  }
 
+  @if (!isIndex) {
   <section class="perf-card">
     <div class="perf-head">
       <h2>Absolute Returns</h2>
@@ -326,8 +341,14 @@
       }
     </div>
     }
-  </section>
 
+    @if (!performanceLoading && performanceCards.length === 0) {
+    <p class="chart-state">NSE doesn't publish a returns comparison for this stock.</p>
+    }
+  </section>
+  }
+
+  @if (!isIndex) {
   <section class="stats-grid">
     @for (s of stats; track s.label) {
     <article class="stat-card">
@@ -336,7 +357,9 @@
     </article>
     }
   </section>
+  }
 
+  @if (!isIndex) {
   <section class="ann-card">
     <div class="ann-head">
       <h2>Corporate Announcements</h2>
@@ -348,7 +371,7 @@
     }
 
     @if (!announcementsLoading && announcements.length === 0) {
-    <p class="chart-state">No announcements found.</p>
+    <p class="chart-state">{{ isBseOnly ? 'Announcements come from NSE, so they are not available for BSE-only companies yet.' : 'No announcements found.' }}</p>
     }
 
     @if (announcements.length > 0) {
@@ -365,5 +388,6 @@
     </div>
     }
   </section>
+  }
   }
 </div>

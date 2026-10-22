@@ -17,6 +17,8 @@ from database import get_db
 from routers.auth import get_current_user
 from models import User, Strategy, Position
 from utils.market_utils import get_latest_market_date, IST
+from routers import dhan_market as dm
+from services.instruments import get_instruments
 import httpx
 import asyncio
 
@@ -227,8 +229,39 @@ async def get_symbol_live_data(symbol: str, current_user: User = Depends(get_cur
         else:
             return {"last": 0, "indexName": target_name}
     else:
-        url = f"https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getSymbolData&marketType=N&series=EQ&symbol={symbol_upper}"
+        entry = (await get_instruments()).get(symbol_upper)
+        if entry and not entry["nse"] and entry["bse"]:
+            return await _bse_quote_in_nse_shape(entry)
+        # SME stocks trade in series SM/ST; NSE 404s if asked for EQ.
+        series = (entry["nse"]["series"] if entry and entry["nse"] else "") or "EQ"
+        symbol = entry["symbol"] if entry else symbol_upper
+        url = f"https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getSymbolData&marketType=N&series={series}&symbol={symbol}"
         return await nse_session.get_data(url)
+
+
+async def _bse_quote_in_nse_shape(entry: dict) -> dict:
+    """A BSE-only company's quote from Dhan, shaped like NSE's getSymbolData so every reader works
+    unchanged. NSE's industry classification doesn't exist for these, so secInfo is empty."""
+    sid = entry["bse"]["sid"]
+    resp = await dm._cached_dhan_post("/marketfeed/quote", {"BSE_EQ": [int(sid)]}, "quote")
+    q = ((resp.get("data") or {}).get("data") or {}).get("BSE_EQ", {}).get(sid) or {}
+    last, change = q.get("last_price"), q.get("net_change")
+    prev = round(last - change, 2) if last is not None and change is not None else None
+    ohlc = q.get("ohlc") or {}
+    return {"equityResponse": [{
+        "exchange": "BSE",
+        "metaData": {
+            "companyName": entry["name"], "symbol": entry["symbol"], "isinCode": entry["isin"],
+            "open": ohlc.get("open"), "dayHigh": ohlc.get("high"), "dayLow": ohlc.get("low"),
+            "previousClose": prev, "closePrice": last, "change": change,
+            "pChange": round(change / prev * 100, 2) if prev else None,
+        },
+        "tradeInfo": {"lastPrice": last, "totalTradedVolume": q.get("volume"), "averagePrice": q.get("average_price")},
+        "priceInfo": {"yearHigh": q.get("52_week_high") or None, "yearLow": q.get("52_week_low") or None},
+        "orderBook": {"lastPrice": last},
+        "secInfo": {},
+        "lastUpdateTime": q.get("last_trade_time"),
+    }]}
 
 
 @router.get("/yearwise-data/{symbol}")

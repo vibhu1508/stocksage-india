@@ -1,0 +1,224 @@
+// Index page sections: overview, breadth, movers, industries, constituents. Theme tokens throughout.
+:host { display: contents; }  // the cards sit in the stock page's own column and spacing
+
+.ix-card {
+  display: grid;
+  gap: 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.9rem;
+  padding: 1.1rem 1.2rem;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+
+.ix-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.ix-head h2 { margin: 0; font-size: 1.15rem; }
+.ix-basis, .ix-note { margin: 0; font-size: 0.78rem; color: hsl(var(--muted-foreground)); }
+.ix-k { font-size: 0.78rem; color: hsl(var(--muted-foreground)); }
+.ix-v { font-weight: 800; font-variant-numeric: tabular-nums; }
+.up { color: #16a34a; }
+.down { color: #dc2626; }
+.muted { color: hsl(var(--muted-foreground)); }
+
+.ix-returns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.ix-return {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.7rem;
+  background: hsl(var(--background));
+}
+
+.ix-return .ix-v { font-size: 1.35rem; }
+
+.ix-breadth-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.ix-breadth-bar {
+  display: flex;
+  height: 0.7rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+}
+
+.ix-breadth-bar .up { background: #16a34a; }
+.ix-breadth-bar .flat { background: hsl(var(--muted-foreground) / 0.5); }
+.ix-breadth-bar .down { background: #dc2626; }
+
+.ix-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 0.6rem;
+}
+
+.ix-stat {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.6rem;
+}
+
+.ix-movers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.ix-block {
+  padding: 0.9rem 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  background: hsl(var(--background));
+}
+
+.ix-block h3 {
+  margin: 0 0 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.ix-mover, .ix-company {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.ix-mover {
+  padding: 0.4rem 0.3rem;
+  border-radius: 0.5rem;
+}
+
+.ix-mover:hover { background: hsl(var(--muted)); }
+
+.ix-name {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.ix-name small {
+  overflow: hidden;
+  font-size: 0.74rem;
+  color: hsl(var(--muted-foreground));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ix-pct { font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+
+.ix-industries ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ix-industries li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) minmax(4rem, 1fr) 5.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.88rem;
+}
+
+.ix-ind-name small { color: hsl(var(--muted-foreground)); }
+
+// Diverging bar around a centre line, like the moving-average bars.
+.ix-ind-bar {
+  position: relative;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+}
+
+.ix-ind-bar::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -0.15rem;
+  bottom: -0.15rem;
+  width: 2px;
+  background: hsl(var(--muted-foreground) / 0.6);
+}
+
+.ix-ind-bar span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+}
+
+.ix-ind-bar span.up { left: 50%; background: #16a34a; }
+.ix-ind-bar span.down { right: 50%; background: #dc2626; }
+
+.ix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.ix-table th {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid hsl(var(--border));
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: left;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.ix-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.ix-table th:nth-child(n + 3), .ix-table td:nth-child(n + 3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ix-more {
+  margin-top: 0.7rem;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .ix-movers, .ix-returns { grid-template-columns: minmax(0, 1fr); }
+  .ix-industries li { grid-template-columns: 1fr auto; }
+  .ix-ind-bar { grid-column: 1 / -1; grid-row: 2; }
+  .ix-table th:nth-child(2), .ix-table td:nth-child(2) { display: none; }
+}
+

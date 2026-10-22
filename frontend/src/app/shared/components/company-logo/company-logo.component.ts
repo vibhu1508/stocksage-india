@@ -46,7 +46,7 @@ export class CompanyLogoComponent implements OnChanges, OnDestroy {
   constructor(private logos: CompanyLogoService) {}
 
   get initial(): string {
-    return (this.symbol.replace(/^BSE:/, '').trim()[0] || '?').toUpperCase();
+    return (this.symbol.replace(/^(BSE|INDEX):/, '').trim()[0] || '?').toUpperCase();
   }
 
   ngOnChanges(): void {
@@ -61,7 +61,8 @@ export class CompanyLogoComponent implements OnChanges, OnDestroy {
   }
 
   onError(): void {
-    if (this.url) this.logos.markMissing(this.url);
+    const retry = !!this.url && this.logos.markMissing(this.symbol, this.url);
     this.url = null;
+    if (retry) this.ngOnChanges();
   }
 }

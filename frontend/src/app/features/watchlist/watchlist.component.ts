@@ -35,6 +35,7 @@ import {
 } from '../../core/services/dhan-live-chart.service';
 import { MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
+import { ExchangeBadgesComponent } from '../../shared/components/exchange-badges/exchange-badges.component';
 
 const toCandle = (c: StreamCandle): CandlestickData => ({
   time: c[0] as UTCTimestamp, open: c[1], high: c[2], low: c[3], close: c[4],
@@ -46,7 +47,7 @@ type FocusPanel = 'chart' | 'depth';
 @Component({
   selector: 'app-watchlist',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, CompanyLogoComponent],
+  imports: [CommonModule, FormsModule, RouterLink, CompanyLogoComponent, ExchangeBadgesComponent],
   templateUrl: './watchlist.component.html',
   styleUrl: './watchlist.component.scss',
 })
@@ -531,6 +532,10 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     if (msg.op === 'snapshot') {
+      if (msg.candles.length === 0) {
+        this.setTimeframe('D');  // no trades in the last week: daily candles still show the history
+        return;
+      }
       this.applyCandles(msg.candles.map(toCandle), false);
       this.showRecentBars();
       this.liveChartLoading = false;

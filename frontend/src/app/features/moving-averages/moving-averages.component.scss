@@ -159,6 +159,8 @@
 }
 
 .suggestions li span {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   color: hsl(var(--muted-foreground));
   text-overflow: ellipsis;
