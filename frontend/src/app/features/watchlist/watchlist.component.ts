@@ -25,15 +25,18 @@ import {
 
 import { PortfolioService } from '../../core/services/portfolio.service';
 import { StockService, SymbolSearchResult } from '../../core/services/stock.service';
-import { MarketService } from '../../core/services/market.service';
 import { ThemeService } from '../../core/services/theme.service';
 import {
   ChartTimeframe,
   DhanChartRequest,
-  DhanChartTickResponse,
   DhanDepthLevel,
   DhanLiveChartService,
 } from '../../core/services/dhan-live-chart.service';
+import { MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
+
+const toCandle = (c: StreamCandle): CandlestickData => ({
+  time: c[0] as UTCTimestamp, open: c[1], high: c[2], low: c[3], close: c[4],
+});
 
 type ChartDisplayType = 'candlestick' | 'line' | 'bar' | 'area' | 'baseline';
 type FocusPanel = 'chart' | 'depth';
@@ -86,16 +89,12 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
   private liveCandles: CandlestickData[] = [];
   private resolvedTimeframe: ChartTimeframe = '5';
   private resizeObserver: ResizeObserver | null = null;
-  private tickStreamSub: Subscription | null = null;
-  private tickTimer: ReturnType<typeof setInterval> | null = null;
-  private reconnectFailures = 0;
+  private liveSub: Subscription | null = null;
+  private chartLoadSub: Subscription | null = null;
   private addSearchTimer: ReturnType<typeof setTimeout> | null = null;
   private themeSub?: Subscription;
   private isDarkTheme = false;
   private readonly watchlistStorageKey = 'stocksage.watchlist.symbols';
-  private lastSessionStatusAt = 0;
-  private lastSessionIsOpen: boolean | null = null;
-  private readonly sessionStatusTtlMs = 60_000;
   private readonly candleCache = new Map<string, {
     candles: CandlestickData[];
     resolvedTimeframe: ChartTimeframe;
@@ -116,7 +115,7 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
     private stockService: StockService,
     private portfolioService: PortfolioService,
     private dhanLiveChartService: DhanLiveChartService,
-    private marketService: MarketService,
+    private marketStream: MarketStreamService,
     private themeService: ThemeService,
   ) {}
 
@@ -160,12 +159,7 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.themeSub?.unsubscribe();
-    this.tickStreamSub?.unsubscribe();
-    this.tickStreamSub = null;
-    if (this.tickTimer) {
-      clearInterval(this.tickTimer);
-      this.tickTimer = null;
-    }
+    this.stopLiveUpdates();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     if (this.chartApi) {
@@ -474,26 +468,26 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private loadChart(): void {
     this.stopLiveUpdates();
-    this.liveChartLoading = true;
     this.liveChartError = '';
-    this.liveTransportStatus = this.liveTimeframe === 'D' ? 'idle' : 'connecting';
-
-    const cacheKey = this.getChartCacheKey(this.selectedSymbol, this.liveTimeframe);
-    const cached = this.candleCache.get(cacheKey);
-    const now = Date.now();
-    if (cached && (now - cached.updatedAt) <= this.getCacheTtlMs(cached.resolvedTimeframe)) {
-      this.resolvedTimeframe = cached.resolvedTimeframe;
-      const visible = cached.resolvedTimeframe === 'D' ? this.filterDailyCandles(cached.candles) : cached.candles;
-      this.applyCandles(visible);
-      this.liveChartSource = cached.source;
-      this.liveChartLoading = false;
-      if (this.resolvedTimeframe !== 'D') {
-        this.startLiveUpdates();
-      }
+    if (this.liveTimeframe !== 'D') {
+      this.watchLive();
       return;
     }
 
-    this.dhanLiveChartService.getBootstrap(this.getChartRequest()).subscribe({
+    // Daily candles come from REST history; intraday is streamed (watchLive).
+    this.liveChartLoading = true;
+    this.liveTransportStatus = 'idle';
+    this.resolvedTimeframe = 'D';
+    const cacheKey = this.getChartCacheKey(this.selectedSymbol, 'D');
+    const cached = this.candleCache.get(cacheKey);
+    if (cached && (Date.now() - cached.updatedAt) <= this.getCacheTtlMs('D')) {
+      this.applyCandles(this.filterDailyCandles(cached.candles));
+      this.liveChartSource = cached.source;
+      this.liveChartLoading = false;
+      return;
+    }
+
+    this.chartLoadSub = this.dhanLiveChartService.getBootstrap(this.getChartRequest()).subscribe({
       next: (res) => {
         const candles = (Array.isArray(res?.candles) ? res.candles : [])
           .map((c) => ({
@@ -505,302 +499,92 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
           }))
           .filter((c) => Number.isFinite(Number(c.time)) && Number.isFinite(c.open) && Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.close));
 
-        this.resolvedTimeframe = String(res?.resolvedTimeframe || this.liveTimeframe) as ChartTimeframe;
-        const visibleCandles = this.resolvedTimeframe === 'D' ? this.filterDailyCandles(candles) : candles;
-        this.applyCandles(visibleCandles);
+        this.applyCandles(this.filterDailyCandles(candles));
         this.liveChartSource = String(res?.source || 'live') === 'cache' ? 'cache' : 'live';
-        this.candleCache.set(cacheKey, {
-          candles,
-          resolvedTimeframe: this.resolvedTimeframe,
-          updatedAt: Date.now(),
-          source: this.liveChartSource,
-        });
+        this.candleCache.set(cacheKey, { candles, resolvedTimeframe: 'D', updatedAt: Date.now(), source: this.liveChartSource });
         this.liveChartLoading = false;
-
-        if (this.resolvedTimeframe !== 'D') {
-          this.startLiveUpdates();
-        }
       },
       error: (err: HttpErrorResponse) => {
         this.liveChartLoading = false;
-        this.liveTransportStatus = 'idle';
         this.liveChartError = err?.error?.detail || 'Chart data unavailable.';
       },
     });
   }
 
-  private applyCandles(candles: CandlestickData[]): void {
+  /** Intraday: a snapshot of about a week of candles, then live deltas (backend/market/service.py). */
+  private watchLive(): void {
+    this.liveChartLoading = true;
+    this.liveTransportStatus = 'connecting';
+    this.resolvedTimeframe = this.liveTimeframe;
+    this.liveSub = this.marketStream
+      .watch({ symbol: this.selectedSymbol, tf: this.liveTimeframe as MarketStreamRequest['tf'] })
+      .subscribe((msg) => this.onStreamMessage(msg));
+  }
+
+  private onStreamMessage(msg: MarketStreamMessage): void {
+    if (msg.op === 'error') {
+      this.liveChartLoading = false;
+      this.liveTransportStatus = 'idle';
+      this.liveChartError = msg.detail;
+      return;
+    }
+    if (msg.op === 'snapshot') {
+      this.applyCandles(msg.candles.map(toCandle), false);
+      this.showRecentBars();
+      this.liveChartLoading = false;
+      this.liveChartSource = 'live';
+      this.liveChartError = '';
+      this.liveTransportStatus = msg.market === 'open' ? 'ws' : 'closed';
+      return;
+    }
+
+    // A delta only touches the forming bar: update it in place instead of redrawing the series.
+    const candle = toCandle(msg.candle);
+    const last = this.liveCandles[this.liveCandles.length - 1];
+    if (last && Number(last.time) > Number(candle.time)) return;
+    if (last && Number(last.time) === Number(candle.time)) {
+      this.liveCandles[this.liveCandles.length - 1] = candle;
+    } else {
+      this.liveCandles.push(candle);
+    }
+    this.mainSeries?.update(this.toSeriesPoint(candle) as any);
+    this.lastVisibleCandle = candle;
+    this.liveCandleCount = this.liveCandles.length;
+    this.liveLastPrice = Number(candle.close);
+    this.liveTransportStatus = 'ws';
+  }
+
+  /** Open on the latest ~120 bars rather than squeezing a week of history into view. */
+  private showRecentBars(): void {
+    const n = this.liveCandles.length;
+    if (n > 0) this.chartApi?.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 120), to: n + 2 });
+  }
+
+  private toSeriesPoint(c: CandlestickData): CandlestickData | BarData<UTCTimestamp> | LineData<UTCTimestamp> {
+    if (this.chartType === 'candlestick' || this.chartType === 'bar') {
+      return { time: c.time as UTCTimestamp, open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) };
+    }
+    return { time: c.time as UTCTimestamp, value: Number(c.close) };
+  }
+
+  private applyCandles(candles: CandlestickData[], fit = true): void {
     this.liveCandles = candles;
     this.lastVisibleCandle = candles.length ? candles[candles.length - 1] : null;
     if (this.hoveredCandle) {
       const hoveredUnix = Number(this.hoveredCandle.time);
       this.hoveredCandle = candles.find((c) => Number(c.time) === hoveredUnix) || null;
     }
-
-    if (this.mainSeries) {
-      if (this.chartType === 'candlestick') {
-        this.mainSeries.setData(candles as any);
-      } else if (this.chartType === 'bar') {
-        const bars: Array<BarData<UTCTimestamp>> = candles.map((c) => ({
-          time: c.time as UTCTimestamp,
-          open: Number(c.open),
-          high: Number(c.high),
-          low: Number(c.low),
-          close: Number(c.close),
-        }));
-        this.mainSeries.setData(bars as any);
-      } else {
-        const line: Array<LineData<UTCTimestamp>> = candles.map((c) => ({
-          time: c.time as UTCTimestamp,
-          value: Number(c.close),
-        }));
-        this.mainSeries.setData(line as any);
-      }
-    }
-
+    this.mainSeries?.setData(candles.map((c) => this.toSeriesPoint(c)) as any);
     this.liveCandleCount = candles.length;
     this.liveLastPrice = candles.length ? Number(candles[candles.length - 1].close) : 0;
-    this.chartApi?.timeScale().fitContent();
-  }
-
-  private startLiveUpdates(): void {
-    if (this.resolvedTimeframe === 'D') {
-      this.liveTransportStatus = 'idle';
-      return;
-    }
-
-    const now = Date.now();
-    if (this.lastSessionIsOpen !== null && (now - this.lastSessionStatusAt) < this.sessionStatusTtlMs) {
-      if (!this.lastSessionIsOpen) {
-        this.liveTransportStatus = 'closed';
-        this.liveChartError = 'Market is closed. Live updates resume during market hours.';
-        return;
-      }
-      this.startLiveTickStreamNow();
-      return;
-    }
-
-    this.marketService.getSessionStatus().subscribe({
-      next: (session) => {
-        this.lastSessionIsOpen = !!session?.is_open;
-        this.lastSessionStatusAt = Date.now();
-
-        if (!this.lastSessionIsOpen) {
-          this.liveTransportStatus = 'closed';
-          this.liveChartError = 'Market is closed. Live updates resume during market hours.';
-          return;
-        }
-
-        this.startLiveTickStreamNow();
-      },
-      error: () => {
-        this.startLiveTickStreamNow();
-      },
-    });
-  }
-
-  private startLiveTickStreamNow(): void {
-    const req: DhanChartRequest = {
-      ...this.getChartRequest(),
-      timeframe: this.resolvedTimeframe,
-    };
-
-    this.tickStreamSub?.unsubscribe();
-    this.tickStreamSub = this.dhanLiveChartService.streamTicks(req).subscribe({
-      next: (tick) => {
-        this.reconnectFailures = 0;
-        this.liveTransportStatus = 'ws';
-        this.liveChartError = '';
-        this.applyTick(tick);
-      },
-      error: () => {
-        this.liveTransportStatus = 'polling';
-        this.startTickPolling();
-      },
-      complete: () => {
-        if (!this.tickTimer) this.startTickPolling();
-      },
-    });
-  }
-
-  private startTickPolling(): void {
-    if (this.tickTimer) {
-      clearInterval(this.tickTimer);
-      this.tickTimer = null;
-    }
-
-    const req: DhanChartRequest = {
-      ...this.getChartRequest(),
-      timeframe: this.resolvedTimeframe,
-    };
-
-    this.tickTimer = setInterval(() => {
-      if (!this.isMarketOpenNow()) {
-        this.stopLiveUpdates();
-        this.liveTransportStatus = 'closed';
-        this.liveChartError = 'Market is closed. Live updates resume during market hours.';
-        return;
-      }
-
-      this.dhanLiveChartService.getLatestTick(req).subscribe({
-        next: (tick) => {
-          this.liveTransportStatus = 'polling';
-          this.liveChartError = '';
-          this.reconnectFailures = 0;
-          this.applyTick(tick);
-        },
-        error: () => {
-          this.reconnectFailures += 1;
-          if (this.reconnectFailures >= 3) {
-            this.liveChartError = 'Live updates delayed. Showing last known data.';
-          }
-          if (this.reconnectFailures >= 6) {
-            this.loadChart();
-          }
-        },
-      });
-    }, 2500);
+    if (fit) this.chartApi?.timeScale().fitContent();
   }
 
   private stopLiveUpdates(): void {
-    this.tickStreamSub?.unsubscribe();
-    this.tickStreamSub = null;
-
-    if (this.tickTimer) {
-      clearInterval(this.tickTimer);
-      this.tickTimer = null;
-    }
-  }
-
-  private applyTick(tick: DhanChartTickResponse): void {
-    try {
-      const normalizedTs = this.normalizeTickTimestamp(Number(tick.timestamp));
-      if (!Number.isFinite(normalizedTs) || normalizedTs <= 0) {
-        return;
-      }
-
-      if (!this.isTickTimestampUsable(normalizedTs)) {
-        return;
-      }
-
-      const normalizedTick: DhanChartTickResponse = {
-        ...tick,
-        timestamp: normalizedTs,
-      };
-
-      const merged = this.mergeTick(this.liveCandles, normalizedTick);
-      this.applyCandles(merged);
-      this.liveLastPrice = merged.length > 0 ? Number(merged[merged.length - 1].close) : 0;
-      this.liveChartSource = 'live';
-
-      const cacheKey = this.getChartCacheKey(this.selectedSymbol, this.liveTimeframe);
-      const existing = this.candleCache.get(cacheKey);
-      this.candleCache.set(cacheKey, {
-        candles: merged,
-        resolvedTimeframe: this.resolvedTimeframe,
-        updatedAt: Date.now(),
-        source: 'live',
-      });
-    } catch {
-      this.liveChartError = 'Chart update delayed. Reloading latest candles.';
-      this.loadChart();
-    }
-  }
-
-  private normalizeTickTimestamp(rawTs: number): number {
-    if (!Number.isFinite(rawTs) || rawTs <= 0) {
-      return 0;
-    }
-    return rawTs > 1_000_000_000_000 ? Math.floor(rawTs / 1000) : Math.floor(rawTs);
-  }
-
-  private isTickTimestampUsable(tsSec: number): boolean {
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (tsSec > nowSec + 120) {
-      return false;
-    }
-
-    const intervalMinutes = Number(this.resolvedTimeframe || this.liveTimeframe);
-    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
-      return true;
-    }
-
-    if (this.liveCandles.length === 0) {
-      return true;
-    }
-
-    const intervalSec = intervalMinutes * 60;
-    const lastCandleTime = Number(this.liveCandles[this.liveCandles.length - 1].time);
-
-    if (tsSec < (lastCandleTime - intervalSec * 20)) {
-      return false;
-    }
-
-    return true;
-  }
-
-  private mergeTick(candles: CandlestickData[], tick: DhanChartTickResponse): CandlestickData[] {
-    const interval = Number(this.resolvedTimeframe);
-    if (!Number.isFinite(interval) || interval <= 0) return candles;
-
-    const step = interval * 60;
-    const ts = Number(tick.timestamp);
-    const price = Number(tick.price);
-    if (!Number.isFinite(ts) || !Number.isFinite(price) || price <= 0) return candles;
-
-    const bucket = Math.floor(ts / step) * step;
-    const next = [...candles];
-    const last = next[next.length - 1];
-
-    if (!last) {
-      return [
-        {
-          time: bucket as UTCTimestamp,
-          open: price,
-          high: price,
-          low: price,
-          close: price,
-        },
-      ];
-    }
-
-    if (last && Number(last.time) === bucket) {
-      next[next.length - 1] = {
-        time: bucket as UTCTimestamp,
-        open: Number(last.open),
-        high: Math.max(Number(last.high), price),
-        low: Math.min(Number(last.low), price),
-        close: price,
-      };
-      return next;
-    }
-
-    const lastTime = Number(last.time);
-    if (bucket < lastTime) {
-      // Keep data sorted for lightweight-charts by updating an existing candle if present.
-      const existingIndex = next.findIndex((c) => Number(c.time) === bucket);
-      if (existingIndex >= 0) {
-        const existing = next[existingIndex];
-        next[existingIndex] = {
-          time: bucket as UTCTimestamp,
-          open: Number(existing.open),
-          high: Math.max(Number(existing.high), price),
-          low: Math.min(Number(existing.low), price),
-          close: price,
-        };
-      }
-      return next;
-    }
-
-    next.push({
-      time: bucket as UTCTimestamp,
-      open: price,
-      high: price,
-      low: price,
-      close: price,
-    });
-
-    return next;
+    this.liveSub?.unsubscribe();
+    this.liveSub = null;
+    this.chartLoadSub?.unsubscribe();
+    this.chartLoadSub = null;
   }
 
   private loadMarketDepth(limit: 20 | 200): void {
@@ -880,23 +664,6 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
   symbolBadge(symbol: string): string {
     const normalized = this.normalizeWatchSymbol(symbol);
     return normalized ? normalized.charAt(0) : '?';
-  }
-
-  private isMarketOpenNow(): boolean {
-    const now = new Date();
-    const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-    const istMinutesRaw = utcMinutes + 330;
-    const day = now.getUTCDay();
-
-    const adjustedDay = istMinutesRaw >= 1440 ? (day + 1) % 7 : day;
-    const adjustedMinutes = istMinutesRaw >= 1440 ? istMinutesRaw - 1440 : istMinutesRaw;
-
-    const isWeekday = adjustedDay >= 1 && adjustedDay <= 5;
-    if (!isWeekday) return false;
-
-    const marketOpenMin = 9 * 60 + 15;
-    const marketCloseMin = 15 * 60 + 30;
-    return adjustedMinutes >= marketOpenMin && adjustedMinutes <= marketCloseMin;
   }
 
   private getChartCacheKey(symbol: string, timeframe: ChartTimeframe): string {

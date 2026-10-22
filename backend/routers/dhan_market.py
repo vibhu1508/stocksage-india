@@ -4,6 +4,7 @@ Dhan Market Data Router - centralized proxy endpoints for Dhan v2 APIs.
 The design is cache-first and shared across users so backend fetches are reused.
 """
 
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Literal, Optional, Union
 import asyncio
@@ -14,6 +15,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import secrets
 import struct
 import tempfile
 import time
@@ -28,10 +30,12 @@ from routers.auth import authenticate_websocket, get_current_user
 from models import User
 from utils.market_utils import IST, get_latest_market_date, is_market_holiday
 from services.redis_store import (
+    _key as redis_key,
     cache_get_json,
     cache_set_json,
     close_pubsub,
     create_pubsub,
+    get_redis_client,
     is_rate_limited,
     ping_redis,
     publish_json,
@@ -193,6 +197,30 @@ def _cache_key(prefix: str, endpoint: str, payload: dict) -> str:
     return f"dhan:{prefix}:{digest}"
 
 
+# Dhan's per-account limits (docs v2): quote APIs 1/s, option chain 1 per 3 s, data APIs 5/s.
+# Going over returns 805 "further requests may result in the user being blocked", so every
+# call waits for its class's slot instead of failing.
+# shortcut: in-process gate, correct for a single API worker; move it to Redis before running >1 worker.
+DHAN_MIN_GAP_SECONDS = (("/marketfeed/", 1.05), ("/optionchain", 3.05), ("/charts/", 0.21))
+_dhan_gate_locks: Dict[str, asyncio.Lock] = {}
+_dhan_gate_last: Dict[str, float] = {}
+
+
+@asynccontextmanager
+async def _dhan_slot(endpoint: str):
+    gate = next(((prefix, gap) for prefix, gap in DHAN_MIN_GAP_SECONDS if endpoint.startswith(prefix)), None)
+    if gate is None:
+        yield
+        return
+    prefix, gap = gate
+    async with _dhan_gate_locks.setdefault(prefix, asyncio.Lock()):
+        wait = _dhan_gate_last.get(prefix, 0.0) + gap - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _dhan_gate_last[prefix] = time.monotonic()
+        yield
+
+
 async def _cached_dhan_post(endpoint: str, payload: dict, bucket: str) -> dict:
     ttl = max(1, _cache_ttls().get(bucket, 3))
     key = _cache_key(bucket, endpoint, payload)
@@ -201,11 +229,17 @@ async def _cached_dhan_post(endpoint: str, payload: dict, bucket: str) -> dict:
     if cached is not None:
         return {"source": "cache", "data": cached}
 
-    global_limit_key = f"dhan:rl:{bucket}"
-    if await is_rate_limited(global_limit_key, RATE_LIMIT_PER_MINUTE, 60):
-        raise HTTPException(status_code=429, detail="Rate limit reached for market data. Please retry shortly.")
+    async with _dhan_slot(endpoint):
+        # Another caller may have fetched the same request while this one waited for the slot.
+        cached = await cache_get_json(key)
+        if cached is not None:
+            return {"source": "cache", "data": cached}
 
-    live = await _dhan_post(endpoint, payload)
+        global_limit_key = f"dhan:rl:{bucket}"
+        if await is_rate_limited(global_limit_key, RATE_LIMIT_PER_MINUTE, 60):
+            raise HTTPException(status_code=429, detail="Rate limit reached for market data. Please retry shortly.")
+
+        live = await _dhan_post(endpoint, payload)
     await cache_set_json(key, live, ttl)
     await publish_json(
         f"{STREAM_CHANNEL_PREFIX}:{bucket}",
@@ -1906,6 +1940,18 @@ async def warm_market_cache(
 
     warmed = sum(1 for r in results if r.get("ok"))
     return {"warmed": warmed, "total": len(results), "results": results}
+
+
+@router.post("/stream-ticket")
+async def market_stream_ticket(current_user: User = Depends(get_current_user)):
+    """One-time, 60-second ticket for the market socket (market/service.py), so the login
+    token never appears in a socket URL or an access log."""
+    redis = get_redis_client()
+    if redis is None:
+        raise HTTPException(status_code=503, detail="Live market data is unavailable right now.")
+    ticket = secrets.token_urlsafe(24)
+    await redis.set(redis_key(f"ticket:{ticket}"), current_user.id, ex=60)
+    return {"ticket": ticket}
 
 
 @router.post("/stream/publish")

@@ -2,7 +2,10 @@
 Portfolio Router - user-specific holdings management
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional, Literal, Any, cast
@@ -12,9 +15,12 @@ import time
 from database import get_db
 from models import PortfolioHolding, User
 from routers.auth import authenticate_ws_user, extract_ws_token, get_current_user
-from routers import strategy_builder as strategy_builder_router
+from routers import dhan_market, strategy_builder as strategy_builder_router
+from market import service as market_service
+from services.redis_store import get_redis_client
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _LIVE_PRICE_CACHE_TTL_SEC = 2.0
 _LIVE_PRICE_CACHE: dict[str, tuple[float, float]] = {}
@@ -39,59 +45,48 @@ def _cache_set_live_price(cache_key: str, value: float) -> None:
     _LIVE_PRICE_CACHE[cache_key] = (value, time.time())
 
 
+_LTP_KEYS = ("lastPrice", "last", "ltp", "lastTradedPrice", "close")
+
+
+def _positive(value: Any) -> Optional[float]:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def _find_key(payload: Any, key: str) -> Optional[float]:
+    """First positive value stored under `key`, searched depth-first through dicts and lists."""
+    if isinstance(payload, dict):
+        if key in payload and not isinstance(payload[key], (dict, list)):
+            found = _positive(payload[key])
+            if found is not None:
+                return found
+        children = payload.values()
+    elif isinstance(payload, list):
+        children = payload
+    else:
+        return None
+    for child in children:
+        found = _find_key(child, key)
+        if found is not None:
+            return found
+    return None
+
+
 def _extract_ltp(payload: Any) -> Optional[float]:
-    """Extract LTP robustly from NSE response variants."""
-    if payload is None:
-        return None
+    """Last traded price from an NSE response: only a value under a last-price key counts.
 
-    if isinstance(payload, (int, float)):
-        value = float(payload)
-        return value if value > 0 else None
-
-    if isinstance(payload, str):
-        try:
-            value = float(payload)
-            return value if value > 0 else None
-        except Exception:
-            return None
-
-    if isinstance(payload, list):
-        for item in payload:
-            extracted = _extract_ltp(item)
-            if extracted is not None:
-                return extracted
-        return None
-
-    if not isinstance(payload, dict):
-        return None
-
-    preferred_keys = [
-        "lastPrice",
-        "last",
-        "ltp",
-        "lastTradedPrice",
-        "close",
-    ]
-
-    for key in preferred_keys:
-        if key in payload:
-            extracted = _extract_ltp(payload.get(key))
-            if extracted is not None:
-                return extracted
-
-    nested_keys = ["priceInfo", "metadata", "nearestFuture", "CE", "PE"]
-    for key in nested_keys:
-        if key in payload:
-            extracted = _extract_ltp(payload.get(key))
-            if extracted is not None:
-                return extracted
-
-    # Fallback: scan all values once.
-    for value in payload.values():
-        extracted = _extract_ltp(value)
-        if extracted is not None:
-            return extracted
-
+    It used to fall back to the first positive number anywhere, which for RELIANCE picked
+    the 52-week high (₹1,611.80) out of `priceInfo` and froze portfolio P&L.
+    """
+    if not isinstance(payload, (dict, list)):
+        return _positive(payload)
+    for key in _LTP_KEYS:
+        found = _find_key(payload, key)
+        if found is not None:
+            return found
     return None
 
 
@@ -144,9 +139,38 @@ def _find_option_ltp_from_chain(
     return None
 
 
+async def _feed_ltp(symbol: str) -> Optional[float]:
+    """Price from the live Dhan feed (market/service.py via Redis), the same source as the
+    charts. Asks the feed to cover the symbol when it hasn't yet; None means use NSE."""
+    redis = get_redis_client()
+    if redis is None:
+        return None
+    try:
+        ident = await dhan_market._resolve_chart_identity(symbol, None, None, None)
+    except HTTPException:
+        return None
+    quote = await market_service.feed_quote(redis, ident)
+    if quote is None:
+        await market_service.request_feed(redis, ident)
+        return None
+    if not await market_service.feed_alive(redis) and await market_service.market_state() == "open":
+        return None  # the feed itself is down during market hours; don't present a frozen price as live
+    return quote["price"]
+
+
 async def _resolve_equity_ltp(symbol: str) -> Optional[float]:
-    payload = await strategy_builder_router.get_symbol_live_data(symbol)
-    return _extract_ltp(payload)
+    live = await _feed_ltp(symbol)
+    if live is not None:
+        return live
+    # NSE fallback is a scrape; cache it so 100 holdings don't mean 100 calls a second.
+    cache_key = f"nse|{symbol}"
+    cached = _cache_get_live_price(cache_key)
+    if cached is not None:
+        return cached
+    ltp = _extract_ltp(await strategy_builder_router.get_symbol_live_data(symbol))
+    if ltp is not None:
+        _cache_set_live_price(cache_key, ltp)
+    return ltp
 
 
 async def _resolve_future_ltp(symbol: str, expiry: Optional[str]) -> Optional[float]:
@@ -190,6 +214,8 @@ async def _resolve_option_ltp(
 async def _resolve_holding_ltp(model: Any) -> Optional[float]:
     symbol = (model.symbol or "").strip().upper()
     instrument_type = (model.instrument_type or "EQUITY").strip().upper()
+    if instrument_type not in ("FUTURE", "OPTION"):
+        return await _resolve_equity_ltp(symbol)  # feed read from Redis, no extra cache needed
 
     cache_key_parts = [
         symbol,
@@ -505,29 +531,46 @@ async def holdings_live_ws(websocket: WebSocket, db: Session = Depends(get_db)):
     await websocket.send_json({
         "event": "subscribed",
         "stream": "portfolio_live",
-        "interval_sec": 2,
+        "interval_sec": 1,
     })
 
+    async def wait_for_disconnect() -> None:
+        # Unchanged prices aren't sent, so a send can't be relied on to notice a closed tab.
+        try:
+            while (await websocket.receive())["type"] != "websocket.disconnect":
+                pass
+        except Exception:
+            pass
+
+    closed = asyncio.create_task(wait_for_disconnect())
     failures = 0
+    last_prices = None
     try:
-        while True:
+        while not closed.done():
             try:
                 payload = await _build_holdings_live_payload(db, current_user)
-                await websocket.send_json({
-                    "event": "portfolio_live_snapshot",
-                    "data": payload,
-                })
+                # Push only when a price moved (or holdings changed); prices come from the feed in Redis.
+                prices = [(h["id"], h["live_price"]) for h in payload["holdings"]]
+                if prices != last_prices:
+                    # jsonable_encoder: holdings carry datetimes, which plain send_json can't serialise.
+                    await websocket.send_json({"event": "portfolio_live_snapshot", "data": jsonable_encoder(payload)})
+                    last_prices = prices
                 failures = 0
+            except WebSocketDisconnect:
+                raise
             except Exception:
+                logger.exception("portfolio live snapshot failed for user %s", current_user.id)
                 failures += 1
                 await websocket.send_json({
                     "event": "stream_warning",
                     "detail": "Unable to build live portfolio snapshot",
                     "failures": failures,
                 })
-            await asyncio.sleep(2)
+            await asyncio.wait({closed}, timeout=1)
     except WebSocketDisconnect:
         return
+    finally:
+        closed.cancel()
 
 
 @router.post("/holdings")

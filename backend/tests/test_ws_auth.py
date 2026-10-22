@@ -102,6 +102,36 @@ def test_chat_and_transcribe_rate_limited():
         chat.is_rate_limited = real
 
 
+def test_portfolio_socket_streams_price_changes():
+    from models import PortfolioHolding
+    from routers import portfolio
+
+    token = _session_token()
+    db = TestSession()
+    user_id = auth.verify_token(token)["sub"]
+    db.add(PortfolioHolding(user_id=int(user_id), symbol="RELIANCE", instrument_type="EQUITY", qty=5, avg_price=1288.0, action="BUY"))
+    db.commit()
+    db.close()
+
+    prices = iter([1188.0, 1188.0, 1187.5])
+
+    async def fake_ltp(_symbol):
+        return next(prices, 1187.5)
+
+    real, portfolio._resolve_equity_ltp = portfolio._resolve_equity_ltp, fake_ltp
+    try:
+        with client.websocket_connect(f"/api/portfolio/holdings/live/ws?token={token}") as ws:
+            assert ws.receive_json()["event"] == "subscribed"
+            first = ws.receive_json()  # used to be a stream_warning: datetimes broke send_json
+            assert first["event"] == "portfolio_live_snapshot"
+            assert first["data"]["holdings"][0]["live_price"] == 1188.0
+            second = ws.receive_json()  # the unchanged 1188.0 tick is skipped, the move is pushed
+            assert second["data"]["holdings"][0]["live_price"] == 1187.5
+            assert second["data"]["holdings"][0]["pnl"] == -502.5  # (1187.5 - 1288) x 5
+    finally:
+        portfolio._resolve_equity_ltp = real
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

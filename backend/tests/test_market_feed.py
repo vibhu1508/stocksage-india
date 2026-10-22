@@ -2,7 +2,9 @@
 
 import struct
 
-from market.candles import CandleBuilder
+from datetime import datetime
+
+from market.candles import IST, CandleBuilder, aggregate, bucket_start
 from market.feed import iter_packets, parse_packet, subscribe_frames
 
 
@@ -53,6 +55,33 @@ def test_candles_ohlcv_and_rollover():
     assert b.update(640, 50.0, 1600) is None and b.current[3] == 102.0  # late tick ignored
     b.update(661, 103.0, 1200)                            # volume reset (e.g. new session) never goes negative
     assert b.current[5] >= 100
+
+
+def _ist(hh, mm):
+    return int(datetime(2026, 10, 22, hh, mm, tzinfo=IST).timestamp())
+
+
+def test_buckets_anchor_at_0915_like_dhan():
+    # Dhan's 60m bars open 09:15, 10:15...; 25m bars 09:15, 09:40, 10:05... (checked against REST 22 Oct)
+    assert bucket_start(_ist(10, 14) + 59, 60) == _ist(9, 15)
+    assert bucket_start(_ist(10, 15), 60) == _ist(10, 15)
+    assert bucket_start(_ist(10, 4), 25) == _ist(9, 40)
+    assert bucket_start(_ist(13, 37), 5) == _ist(13, 35)
+    assert bucket_start(_ist(13, 37) + 42, 1) == _ist(13, 37)
+
+
+def test_aggregate_rolls_up_ohlcv_without_the_auction_minute():
+    auction = [_ist(9, 15), 20, 21, 19, 20, 999]  # pre-open auction bar: Dhan's 5m+ bars exclude it
+    m1 = [auction, [_ist(9, 16), 11, 15, 10, 14, 50], [_ist(9, 17), 14, 16, 9, 12, 25], [_ist(9, 20), 14, 14, 8, 9, 7]]
+    assert aggregate(m1, 5) == [[_ist(9, 15), 11, 16, 9, 12, 75], [_ist(9, 20), 14, 14, 8, 9, 7]]
+    assert aggregate(m1, 1) == m1  # 1m keeps it, like Dhan's 1m history
+
+
+def test_builder_resumes_seeded_minute():
+    b = CandleBuilder(current=[600, 100.0, 105.0, 99.0, 104.0, 900])
+    b.update(630, 106.0, 50_000)  # first tick only sets the volume baseline
+    b.update(640, 98.0, 50_040)
+    assert b.current == [600, 100.0, 106.0, 98.0, 98.0, 940]
 
 
 if __name__ == "__main__":

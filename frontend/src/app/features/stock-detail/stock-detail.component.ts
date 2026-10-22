@@ -26,16 +26,19 @@ import { LucideAngularModule } from 'lucide-angular';
 
 import { StrategyService, YearwiseDataPoint } from '../../core/services/strategy.service';
 import { AnnouncementService, NSEAnnouncement } from '../../core/services/announcement.service';
-import { MarketService } from '../../core/services/market.service';
 import { ThemeService } from '../../core/services/theme.service';
 import { PortfolioService } from '../../core/services/portfolio.service';
 import {
   ChartTimeframe,
   DhanChartRequest,
-  DhanChartTickResponse,
   DhanDepthLevel,
   DhanLiveChartService,
 } from '../../core/services/dhan-live-chart.service';
+import { MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
+
+const toCandle = (c: StreamCandle): CandlestickData => ({
+  time: c[0] as UTCTimestamp, open: c[1], high: c[2], low: c[3], close: c[4],
+});
 
 type ChartDisplayType = 'candlestick' | 'line' | 'bar' | 'area' | 'baseline';
 
@@ -107,15 +110,11 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   private mainSeries: ISeriesApi<any> | null = null;
   private liveCandles: CandlestickData[] = [];
   private resizeObserver: ResizeObserver | null = null;
-  private tickTimer: ReturnType<typeof setInterval> | null = null;
-  private tickStreamSub: Subscription | null = null;
-  private tickFailureCount = 0;
+  private liveSub: Subscription | null = null;
+  private chartLoadSub: Subscription | null = null;
   private themeSub?: Subscription;
   private isDarkTheme = false;
   private readonly candleCache = new Map<string, { candles: CandlestickData[]; resolvedTimeframe: ChartTimeframe; lastPrice: number; updatedAt: Date }>();
-  private lastSessionStatusAt = 0;
-  private lastSessionIsOpen: boolean | null = null;
-  private readonly sessionStatusTtlMs = 60_000;
   private readonly chartSymbolMap: Record<string, { securityId: string; exchangeSegment: string; instrument: string }> = {
     NIFTY: { securityId: '13', exchangeSegment: 'IDX_I', instrument: 'INDEX' },
     BANKNIFTY: { securityId: '25', exchangeSegment: 'IDX_I', instrument: 'INDEX' },
@@ -161,7 +160,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     private route: ActivatedRoute,
     private strategyService: StrategyService,
     private announcementService: AnnouncementService,
-    private marketService: MarketService,
+    private marketStream: MarketStreamService,
     private themeService: ThemeService,
     private dhanLiveChartService: DhanLiveChartService,
     private portfolioService: PortfolioService,
@@ -226,7 +225,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.routeSub?.unsubscribe();
     this.themeSub?.unsubscribe();
-    this.stopTickTimer();
+    this.stopLiveUpdates();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     if (this.chartApi) {
@@ -312,7 +311,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     }
 
     // Historical view is static — shut down live ticks before loading.
-    this.stopTickTimer();
+    this.stopLiveUpdates();
     this.historyLoading = true;
     this.liveChartLoading = true;
     this.liveChartError = '';
@@ -835,57 +834,6 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     this.liveChartUpdatedAt = new Date();
   }
 
-  private mergeTickIntoCandles(candles: CandlestickData[], tick: DhanChartTickResponse): CandlestickData[] {
-    const intervalMinutes = Number(this.liveResolvedTimeframe || this.liveTimeframe);
-    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
-      return candles;
-    }
-
-    const bucketSize = intervalMinutes * 60;
-    const bucketStart = Math.floor(Number(tick.timestamp) / bucketSize) * bucketSize;
-    const price = Number(tick.price);
-    if (!Number.isFinite(price) || price <= 0) {
-      return candles;
-    }
-
-    const next = [...candles];
-    const last = next[next.length - 1];
-    if (last && Number(last.time) === bucketStart) {
-      next[next.length - 1] = {
-        time: bucketStart as UTCTimestamp,
-        open: Number(last.open),
-        high: Math.max(Number(last.high), price),
-        low: Math.min(Number(last.low), price),
-        close: price,
-      };
-      return next;
-    }
-
-    if (last && bucketStart < Number(last.time)) {
-      const existingIndex = next.findIndex((c) => Number(c.time) === bucketStart);
-      if (existingIndex >= 0) {
-        const existing = next[existingIndex];
-        next[existingIndex] = {
-          time: bucketStart as UTCTimestamp,
-          open: Number(existing.open),
-          high: Math.max(Number(existing.high), price),
-          low: Math.min(Number(existing.low), price),
-          close: price,
-        };
-      }
-      return next;
-    }
-
-    next.push({
-      time: bucketStart as UTCTimestamp,
-      open: price,
-      high: price,
-      low: price,
-      close: price,
-    });
-    return next;
-  }
-
   private loadMarketDepth(limit: 20 | 200): void {
     this.marketDepthLoading = true;
     this.marketDepthError = '';
@@ -966,267 +914,111 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   private reloadLiveChart(): void {
     if (!this.symbol || !this.mainSeries) return;
 
-    this.stopTickTimer();
-    this.tickFailureCount = 0;
-    this.liveChartLoading = true;
+    this.stopLiveUpdates();
     this.liveChartError = '';
-    this.liveTransportStatus = this.liveTimeframe === 'D' ? 'idle' : 'connecting';
-
-    const cacheKey = this.getChartCacheKey(this.symbol, this.liveTimeframe);
-    const cached = this.candleCache.get(cacheKey);
-    if (cached && cached.candles.length > 0) {
-      const visibleCandles = cached.resolvedTimeframe === 'D' ? this.filterDailyCandles(cached.candles) : cached.candles;
-      this.applyCandlesToChart(visibleCandles, cached.resolvedTimeframe, true);
-      this.liveChartLoading = false;
-      this.liveTransportStatus = cached.resolvedTimeframe === 'D' ? 'idle' : 'connecting';
-      this.startTickTimer(2000);
+    if (this.liveTimeframe !== 'D') {
+      this.watchLive();
       return;
     }
 
-    this.dhanLiveChartService.getBootstrap(this.getLiveChartRequest()).subscribe({
+    // Daily candles come from REST history; intraday is streamed (watchLive).
+    this.liveChartLoading = true;
+    this.liveTransportStatus = 'idle';
+    const cacheKey = this.getChartCacheKey(this.symbol, 'D');
+    const cached = this.candleCache.get(cacheKey);
+    if (cached && cached.candles.length > 0) {
+      this.applyCandlesToChart(this.filterDailyCandles(cached.candles), 'D', true);
+      this.liveChartLoading = false;
+      return;
+    }
+
+    this.chartLoadSub = this.dhanLiveChartService.getBootstrap(this.getLiveChartRequest()).subscribe({
       next: (res) => {
         const candles = this.normalizeCandles(res.candles || []);
-
-        // Backend served an earlier session because the latest one was empty.
-        if (res.isFallbackSession && res.sessionDate) {
-          this.sessionNotice = `Market closed · showing last session (${res.sessionDate})`;
-        }
-
-        const resolved = String(res?.resolvedTimeframe || this.liveTimeframe) as ChartTimeframe;
-        const safeResolved = ['1', '5', '15', '25', '60', 'D'].includes(resolved) ? resolved : this.liveTimeframe;
-
         this.candleCache.set(cacheKey, {
           candles,
-          resolvedTimeframe: safeResolved,
+          resolvedTimeframe: 'D',
           lastPrice: candles.length > 0 ? candles[candles.length - 1].close : 0,
           updatedAt: new Date(),
         });
-
-        const visibleCandles = safeResolved === 'D' ? this.filterDailyCandles(candles) : candles;
-        this.applyCandlesToChart(visibleCandles, safeResolved, true);
+        this.applyCandlesToChart(this.filterDailyCandles(candles), 'D', true);
         this.liveChartLoading = false;
-        if (safeResolved === 'D') {
-          this.liveChartError = '';
-          this.liveTransportStatus = 'idle';
-          return;
-        }
-        this.startTickTimer(2000);
       },
       error: (err: HttpErrorResponse) => {
         this.liveChartLoading = false;
         this.liveChartError = this.resolveChartErrorMessage(err);
-        this.liveTransportStatus = 'idle';
       },
     });
   }
 
-  private startTickTimer(intervalMs: number): void {
-    this.stopTickTimer();
-
-    if (this.liveResolvedTimeframe === 'D') {
-      this.liveTransportStatus = 'idle';
-      return;
-    }
-
-    const now = Date.now();
-    if (this.lastSessionIsOpen !== null && (now - this.lastSessionStatusAt) < this.sessionStatusTtlMs) {
-      if (!this.lastSessionIsOpen) {
-        this.markMarketClosed();
-        return;
-      }
-      this.startTickStream(intervalMs);
-      return;
-    }
-
-    this.marketService.getSessionStatus().subscribe({
-      next: (session) => {
-        this.lastSessionIsOpen = !!session?.is_open;
-        this.lastSessionStatusAt = Date.now();
-
-        if (!this.lastSessionIsOpen) {
-          this.markMarketClosed();
-          return;
-        }
-
-        this.startTickStream(intervalMs);
-      },
-      error: () => {
-        this.liveChartError = 'Live updates are unavailable right now.';
-        this.liveTransportStatus = 'polling';
-      },
-    });
-  }
-
-  /**
-   * A closed market is a normal state, not a failure. The chart still shows the
-   * last session's candles, so this reports a neutral notice rather than an error.
-   */
-  private markMarketClosed(): void {
-    this.liveChartError = '';
-    this.liveTransportStatus = 'closed';
-    this.sessionNotice = this.sessionNotice
-      || 'Market closed · showing the last completed session';
-  }
-
-  private startTickStream(fallbackIntervalMs: number): void {
-    const tickReq: DhanChartRequest = {
-      ...this.getLiveChartRequest(),
-      timeframe: this.liveResolvedTimeframe,
-    };
-
-    this.tickStreamSub?.unsubscribe();
+  /** Intraday: a snapshot of about a week of candles, then live deltas (backend/market/service.py). */
+  private watchLive(): void {
+    this.liveChartLoading = true;
     this.liveTransportStatus = 'connecting';
-    this.tickStreamSub = this.dhanLiveChartService.streamTicks(tickReq).subscribe({
-      next: (tick) => {
-        this.tickFailureCount = 0;
-        this.liveChartError = '';
-        this.liveTransportStatus = 'ws';
-        this.applyTick(tick);
-      },
-      error: () => {
-        this.liveChartError = 'Live stream disconnected, falling back to polling.';
-        this.liveTransportStatus = 'polling';
-        this.startTickInterval(Math.max(2000, fallbackIntervalMs));
-      },
-      complete: () => {
-        if (!this.tickTimer) {
-          this.startTickInterval(Math.max(2000, fallbackIntervalMs));
-        }
-      },
-    });
+    const req = this.getLiveChartRequest();
+    this.liveSub = this.marketStream
+      .watch({
+        symbol: req.symbol,
+        tf: this.liveTimeframe as MarketStreamRequest['tf'],
+        securityId: req.securityId,
+        exchangeSegment: req.exchangeSegment,
+        instrument: req.instrument,
+      })
+      .subscribe((msg) => this.onStreamMessage(msg));
   }
 
-  private startTickInterval(intervalMs: number): void {
-    this.liveTransportStatus = 'polling';
-    this.tickTimer = setInterval(() => {
-          if (!this.isMarketOpenNow()) {
-            this.stopTickTimer();
-            this.markMarketClosed();
-            return;
-          }
-
-          const tickReq: DhanChartRequest = {
-            ...this.getLiveChartRequest(),
-            timeframe: this.liveResolvedTimeframe,
-          };
-
-          this.dhanLiveChartService.getLatestTick(tickReq).subscribe({
-            next: (tick) => {
-              this.tickFailureCount = 0;
-              this.liveChartError = '';
-              this.liveTransportStatus = 'polling';
-              this.applyTick(tick);
-            },
-            error: (_err: HttpErrorResponse) => {
-              this.tickFailureCount += 1;
-              // Avoid noisy transient provider errors in UI; only show a soft delay signal.
-              if (this.tickFailureCount >= 3) {
-                this.liveChartError = 'Live updates delayed, showing last known chart data.';
-              }
-
-              if (this.tickFailureCount >= 6) {
-                this.stopTickTimer();
-                setTimeout(() => this.reloadLiveChart(), 15000);
-                return;
-              }
-
-              if (this.tickFailureCount >= 3) {
-                this.startTickTimer(5000);
-              }
-            },
-          });
-        }, intervalMs);
-  }
-
-  private stopTickTimer(): void {
-    this.tickStreamSub?.unsubscribe();
-    this.tickStreamSub = null;
-
-    if (!this.tickTimer) return;
-    clearInterval(this.tickTimer);
-    this.tickTimer = null;
-  }
-
-  private isMarketOpenNow(): boolean {
-    // NSE cash market (IST): Monday-Friday, 09:15 to 15:30.
-    const now = new Date();
-    const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
-    const istMinutesRaw = utcMinutes + 330;
-    const day = now.getUTCDay();
-
-    const adjustedDay = istMinutesRaw >= 1440 ? (day + 1) % 7 : day;
-    const adjustedMinutes = istMinutesRaw >= 1440 ? istMinutesRaw - 1440 : istMinutesRaw;
-
-    const isWeekday = adjustedDay >= 1 && adjustedDay <= 5;
-    if (!isWeekday) return false;
-
-    const marketOpenMin = 9 * 60 + 15;
-    const marketCloseMin = 15 * 60 + 30;
-    return adjustedMinutes >= marketOpenMin && adjustedMinutes <= marketCloseMin;
-  }
-
-  private applyTick(tick: DhanChartTickResponse): void {
-    if (!this.mainSeries) return;
-
-    const normalizedTs = this.normalizeTickTimestamp(Number(tick.timestamp));
-    if (!Number.isFinite(normalizedTs) || normalizedTs <= 0) {
+  private onStreamMessage(msg: MarketStreamMessage): void {
+    if (msg.op === 'error') {
+      this.liveChartLoading = false;
+      this.liveTransportStatus = 'idle';
+      this.liveChartError = msg.detail;
+      return;
+    }
+    if (msg.op === 'snapshot') {
+      this.applyCandlesToChart(msg.candles.map(toCandle), this.liveTimeframe, false);
+      this.showRecentBars();
+      this.liveChartLoading = false;
+      this.liveTransportStatus = msg.market === 'open' ? 'ws' : 'closed';
+      this.sessionNotice = msg.market === 'open' ? '' : 'Market closed · showing the latest sessions';
+      if (msg.last) this.liveChartUpdatedAt = new Date(msg.last.ts * 1000);
       return;
     }
 
-    if (!this.isTickTimestampUsable(normalizedTs)) {
-      return;
+    // A delta only touches the forming bar: update it in place instead of redrawing the series.
+    const candle = toCandle(msg.candle);
+    const last = this.liveCandles[this.liveCandles.length - 1];
+    if (last && Number(last.time) > Number(candle.time)) return;
+    if (last && Number(last.time) === Number(candle.time)) {
+      this.liveCandles[this.liveCandles.length - 1] = candle;
+    } else {
+      this.liveCandles.push(candle);
     }
-
-    const normalizedTick: DhanChartTickResponse = {
-      ...tick,
-      timestamp: normalizedTs,
-    };
-
-    const merged = this.mergeTickIntoCandles(this.liveCandles, normalizedTick);
-    this.applyCandlesToChart(merged, this.liveResolvedTimeframe, false);
-    this.liveLastPrice = merged.length > 0 ? Number(merged[merged.length - 1].close) : 0;
-    this.liveChartUpdatedAt = new Date(normalizedTs * 1000);
-
-    const cacheKey = this.getChartCacheKey(this.symbol, this.liveTimeframe);
-    const cached = this.candleCache.get(cacheKey);
-    if (cached) {
-      cached.candles = merged;
-      cached.lastPrice = this.liveLastPrice;
-      cached.updatedAt = new Date();
-      this.candleCache.set(cacheKey, cached);
-    }
+    this.mainSeries?.update(this.toSeriesPoint(candle) as any);
+    this.lastVisibleCandle = candle;
+    this.liveCandleCount = this.liveCandles.length;
+    this.liveLastPrice = Number(candle.close);
+    this.liveChartUpdatedAt = new Date(msg.last.ts * 1000);
+    this.liveTransportStatus = 'ws';
   }
 
-  private normalizeTickTimestamp(rawTs: number): number {
-    if (!Number.isFinite(rawTs) || rawTs <= 0) {
-      return 0;
-    }
-    return rawTs > 1_000_000_000_000 ? Math.floor(rawTs / 1000) : Math.floor(rawTs);
+  /** Open on the latest ~120 bars rather than squeezing a week of history into view. */
+  private showRecentBars(): void {
+    const n = this.liveCandles.length;
+    if (n > 0) this.chartApi?.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 120), to: n + 2 });
   }
 
-  private isTickTimestampUsable(tsSec: number): boolean {
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (tsSec > nowSec + 120) {
-      return false;
+  private toSeriesPoint(c: CandlestickData): CandlestickData | BarData<UTCTimestamp> | LineData<UTCTimestamp> {
+    if (this.chartType === 'candlestick' || this.chartType === 'bar') {
+      return { time: c.time as UTCTimestamp, open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) };
     }
+    return { time: c.time as UTCTimestamp, value: Number(c.close) };
+  }
 
-    const intervalMinutes = Number(this.liveResolvedTimeframe || this.liveTimeframe);
-    if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) {
-      return true;
-    }
-
-    if (this.liveCandles.length === 0) {
-      return true;
-    }
-
-    const intervalSec = intervalMinutes * 60;
-    const lastCandleTime = Number(this.liveCandles[this.liveCandles.length - 1].time);
-
-    if (tsSec < (lastCandleTime - intervalSec * 20)) {
-      return false;
-    }
-
-    return true;
+  private stopLiveUpdates(): void {
+    this.liveSub?.unsubscribe();
+    this.liveSub = null;
+    this.chartLoadSub?.unsubscribe();
+    this.chartLoadSub = null;
   }
 
   private toUnixFromChartTime(time: Time): number {

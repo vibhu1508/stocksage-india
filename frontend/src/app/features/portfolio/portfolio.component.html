@@ -18,11 +18,11 @@
       </div>
       <div class="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
         <p class="text-xs uppercase text-muted-foreground font-semibold">Current Value</p>
-        <p class="text-xl font-bold">₹{{ totalCurrentValue | number:'1.2-2' }}</p>
+        <p class="text-xl font-bold rounded-md" [class.flash-up]="flash['total'] === 'up'" [class.flash-down]="flash['total'] === 'down'">₹{{ totalCurrentValue | number:'1.2-2' }} @if (flash['total']) {<span class="flash-arrow" aria-hidden="true">{{ flash['total'] === 'up' ? '▲' : '▼' }}</span>}</p>
       </div>
       <div class="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
         <p class="text-xs uppercase text-muted-foreground font-semibold">Live P/L</p>
-        <p class="text-xl font-bold" [class.text-emerald-500]="totalPnl >= 0" [class.text-red-500]="totalPnl < 0">
+        <p class="text-xl font-bold rounded-md" [class.text-emerald-500]="totalPnl >= 0" [class.text-red-500]="totalPnl < 0" [class.flash-up]="flash['total'] === 'up'" [class.flash-down]="flash['total'] === 'down'">
           {{ totalPnl >= 0 ? '+' : '' }}₹{{ totalPnl | number:'1.2-2' }}
           <span class="text-sm">({{ totalPnl >= 0 ? '+' : '' }}{{ totalPnlPct | number:'1.2-2' }}%)</span>
         </p>
@@ -247,8 +247,8 @@
             </td>
             <td class="py-2">₹{{ m.avgPrice | number:'1.2-2' }}</td>
             <td class="py-2">₹{{ m.invested | number:'1.2-2' }}</td>
-            <td class="py-2">₹{{ m.currentValue | number:'1.2-2' }}</td>
-            <td class="py-2" [class.text-emerald-500]="m.pnl >= 0" [class.text-red-500]="m.pnl < 0">
+            <td class="py-2" [class.flash-up]="flash['m:' + m.key] === 'up'" [class.flash-down]="flash['m:' + m.key] === 'down'">₹{{ m.currentValue | number:'1.2-2' }} @if (flash['m:' + m.key]) {<span class="flash-arrow" aria-hidden="true">{{ flash['m:' + m.key] === 'up' ? '▲' : '▼' }}</span>}</td>
+            <td class="py-2" [class.text-emerald-500]="m.pnl >= 0" [class.text-red-500]="m.pnl < 0" [class.flash-up]="flash['m:' + m.key] === 'up'" [class.flash-down]="flash['m:' + m.key] === 'down'">
               {{ m.pnl >= 0 ? '+' : '' }}₹{{ m.pnl | number:'1.2-2' }}
               <span class="text-xs">({{ m.pnl >= 0 ? '+' : '' }}{{ m.pnlPct | number:'1.2-2' }}%)</span>
             </td>
@@ -299,14 +299,14 @@
             </td>
             <td class="py-2">₹{{ holding.avg_price | number:'1.2-2' }}</td>
             <td class="py-2">₹{{ holding.invested | number:'1.2-2' }}</td>
-            <td class="py-2">
+            <td class="py-2" [class.flash-up]="flash['h:' + holding.id] === 'up'" [class.flash-down]="flash['h:' + holding.id] === 'down'">
               @if (holding.live_available && holding.live_price !== null) {
-              ₹{{ holding.live_price | number:'1.2-2' }}
+              ₹{{ holding.live_price | number:'1.2-2' }} @if (flash['h:' + holding.id]) {<span class="flash-arrow" aria-hidden="true">{{ flash['h:' + holding.id] === 'up' ? '▲' : '▼' }}</span>}
               } @else {
               <span class="text-muted-foreground">--</span>
               }
             </td>
-            <td class="py-2" [class.text-emerald-500]="(holding.pnl || 0) >= 0" [class.text-red-500]="(holding.pnl || 0) < 0">
+            <td class="py-2" [class.text-emerald-500]="(holding.pnl || 0) >= 0" [class.text-red-500]="(holding.pnl || 0) < 0" [class.flash-up]="flash['h:' + holding.id] === 'up'" [class.flash-down]="flash['h:' + holding.id] === 'down'">
               @if (holding.live_available && holding.pnl !== null) {
               {{ (holding.pnl || 0) >= 0 ? '+' : '' }}₹{{ holding.pnl | number:'1.2-2' }}
               <span class="text-xs">({{ (holding.pnl || 0) >= 0 ? '+' : '' }}{{ holding.pnl_pct | number:'1.2-2' }}%)</span>
