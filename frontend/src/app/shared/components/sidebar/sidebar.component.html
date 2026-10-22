@@ -9,7 +9,9 @@
 }
 
 <!-- Sidebar Application Shell -->
-<aside class="fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-background transition-all duration-300 lg:static"
+<!-- Fixed to the full screen height on every size, so the account stays at the bottom while the
+     page scrolls. On desktop a spacer of the same width keeps the content beside it, not under it. -->
+<aside class="fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-background transition-all duration-300"
        [class.w-[260px]]="!collapsed" [class.w-[72px]]="collapsed"
        [class.-translate-x-full]="!mobileOpen" [class.translate-x-0]="mobileOpen" [class.lg:translate-x-0]="true">
 
@@ -62,12 +64,22 @@
     @if (authService.currentUser$ | async; as user) {
     <a
       routerLink="/profile"
-      class="flex items-center gap-3 rounded-md px-3 py-2.5 hover:bg-muted transition-colors cursor-pointer"
-      [class.justify-center]="collapsed"
-      [title]="collapsed ? 'Profile Settings' : ''"
+      class="flex items-center gap-3 rounded-md py-2.5 hover:bg-muted transition-colors cursor-pointer"
+      [class.px-3]="!collapsed" [class.justify-center]="collapsed"
+      [title]="collapsed ? (user.name || 'Profile') : ''"
+      [attr.aria-label]="collapsed ? 'Profile: ' + (user.name || '') : null"
       (click)="closeMobile()"
     >
-      <img [src]="user.picture || 'assets/default-avatar.png'" alt="User" class="w-8 h-8 rounded-full shadow-sm ring-1 ring-border" />
+      @if (user.picture && !avatarFailed) {
+      <!-- no-referrer: Google's photo host can refuse requests that carry another site's referrer.
+           .avatar: see the stylesheet; the base img rule squashed it to 0 px in the collapsed bar. -->
+      <img [src]="user.picture" alt="" referrerpolicy="no-referrer" (error)="avatarFailed = true"
+           class="avatar w-9 h-9 shrink-0 rounded-full object-cover shadow-sm ring-1 ring-border" />
+      } @else {
+      <span class="flex w-9 h-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground ring-1 ring-border" aria-hidden="true">
+        <lucide-icon name="user-round" [size]="20"></lucide-icon>
+      </span>
+      }
       @if (!collapsed) {
       <div class="flex flex-col flex-1 overflow-hidden">
         <span class="text-sm font-semibold leading-none truncate text-foreground">{{ user.name }}</span>
@@ -78,3 +90,5 @@
     }
   </div>
 </aside>
+
+<div class="hidden shrink-0 transition-all duration-300 lg:block" [class.w-[260px]]="!collapsed" [class.w-[72px]]="collapsed" aria-hidden="true"></div>

@@ -10,13 +10,14 @@ import {
 } from '../../core/services/fo.service';
 import { LucideAngularModule } from 'lucide-angular';
 import { SearchableSelectComponent } from '../../shared/components/searchable-select/searchable-select.component';
+import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 
 type Tab = 'momentum' | 'nifty' | 'futures' | 'options';
 
 @Component({
   selector: 'app-fo-analysis',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule, SearchableSelectComponent],
+  imports: [CommonModule, FormsModule, LucideAngularModule, SearchableSelectComponent, CompanyLogoComponent],
   templateUrl: './fo-analysis.component.html',
   styleUrl: './fo-analysis.component.scss'
 })

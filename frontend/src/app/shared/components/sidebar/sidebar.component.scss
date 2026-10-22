@@ -1,1 +1,13 @@
 /* Overwritten by Tailwind Utility Classes */
+
+// The host is the layout's flex item: on desktop it holds the spacer that reserves the sidebar's width.
+:host {
+  display: block;
+  flex-shrink: 0;
+}
+
+// Tailwind's base rule gives every img max-width: 100%. In the collapsed bar the profile link's
+// content box is narrower than the avatar, so the photo shrank to a 0 px wide line.
+.avatar {
+  max-width: none;
+}

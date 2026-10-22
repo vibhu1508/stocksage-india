@@ -22,6 +22,7 @@ import { LucideAngularModule } from 'lucide-angular';
 export class SidebarComponent {
   collapsed = false;
   mobileOpen = false;
+  avatarFailed = false;
 
   @Output() collapsedChange = new EventEmitter<boolean>();
 
