@@ -2,12 +2,45 @@
 Market Data Router - Live SENSEX & NIFTY data proxy
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 import httpx
+import time
 from datetime import datetime, timezone, timedelta
+from models import User
+from routers.auth import require_admin
+from services.nse_mcp import SERVERS as NSE_MCP_SERVERS, McpSession
 from utils.market_utils import is_market_holiday
 
 router = APIRouter()
+
+
+@router.get("/nse-mcp/probe")
+async def nse_mcp_probe(_: User = Depends(require_admin)):
+    """Admin check, run from wherever the backend is hosted: do NSE's MCP servers answer
+    here, next to the NSE website API this app scrapes today (which Render gets 403 on)?"""
+    report: dict = {}
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        for name, url in NSE_MCP_SERVERS.items():
+            started = time.perf_counter()
+            try:
+                session = McpSession(url, client)
+                info = await session.initialize()
+                tools = await session.list_tools()
+                report[name] = {"ok": True, "server": info.get("serverInfo"), "tools": len(tools)}
+                if name == "cmmkt":
+                    report[name]["data_status"] = await session.call_tool("cm_get_data_status")
+            except Exception as exc:
+                report[name] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
+            report[name]["ms"] = round((time.perf_counter() - started) * 1000)
+
+        started = time.perf_counter()
+        try:
+            resp = await client.get("https://www.nseindia.com/api/marketStatus", headers=BROWSER_HEADERS)
+            report["nse_website"] = {"ok": resp.status_code == 200, "status": resp.status_code}
+        except Exception as exc:
+            report["nse_website"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
+        report["nse_website"]["ms"] = round((time.perf_counter() - started) * 1000)
+    return report
 
 # IST = UTC + 5:30
 IST_OFFSET = timedelta(hours=5, minutes=30)

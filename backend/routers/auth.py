@@ -192,8 +192,19 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
-    
+
     return user
+
+
+# Comma-separated emails treated as admins without a DB flag, so admin access survives the
+# free Postgres being recreated (it expires every 30 days on Render's free plan).
+ADMIN_EMAILS = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+
+
+async def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    if not (current_user.is_admin or (current_user.email or "").lower() in ADMIN_EMAILS):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admins only")
+    return current_user
 
 
 @router.get("/google/login")

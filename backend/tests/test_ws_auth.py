@@ -83,6 +83,12 @@ def test_dhan_rest_requires_login():
     assert r.status_code == 200
 
 
+def test_nse_mcp_probe_is_admin_only():
+    assert client.get("/api/market/nse-mcp/probe").status_code == 401
+    r = client.get("/api/market/nse-mcp/probe", headers={"Authorization": f"Bearer {_session_token()}"})
+    assert r.status_code == 403  # signed in but not an admin; ADMIN_EMAILS is unset in tests
+
+
 def test_chat_and_transcribe_rate_limited():
     from routers import chat
 
