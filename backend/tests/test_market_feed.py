@@ -84,6 +84,18 @@ def test_builder_resumes_seeded_minute():
     assert b.current == [600, 100.0, 106.0, 98.0, 98.0, 940]
 
 
+def test_quote_message_day_change():
+    import os
+    os.environ.setdefault("SECRET_KEY", "test-only-secret")
+    from market.service import quote_message
+
+    # Redis hands back strings; prev close 1209 is NSE's official close for RELIANCE on 21 Oct.
+    msg = quote_message("Q:RELIANCE", {"price": "1189.4", "ts": "1792659000", "prev_close": "1209", "high": "1208"})
+    assert (msg["change"], msg["pct"], msg["high"]) == (-19.6, -1.62, 1208.0)
+    # Before the previous close is fetched, the price still streams without a made-up change.
+    assert quote_message("Q:X", {"price": "10", "ts": "1"})["change"] is None
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

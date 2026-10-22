@@ -46,6 +46,7 @@ INSTRUMENTS = "market:instruments"
 SUBSCRIBE_CHANNEL = "market:subscribe"
 FEED_SEEN = "market:feed_seen"  # last time ingest received any packet
 FEED_ALIVE_SECONDS = 30
+QUOTE_MIN_GAP_SECONDS = 0.25
 
 
 class FatalFeedError(RuntimeError):
@@ -91,6 +92,25 @@ async def feed_quote(redis, ident: dict) -> Optional[dict]:
     return {"price": float(quote["price"]), "ts": int(quote["ts"])}
 
 
+def _today() -> str:
+    return datetime.now(IST).date().isoformat()
+
+
+def quote_message(key: str, q: dict) -> dict:
+    """Wire shape of a live quote: last price with day change against the previous close."""
+    price, prev = float(q["price"]), q.get("prev_close")
+    prev = float(prev) if prev not in (None, "") else None
+    change = round(price - prev, 2) if prev else None
+    msg = {
+        "op": "quote", "key": key, "price": price, "ts": int(float(q["ts"])), "prev_close": prev,
+        "change": change, "pct": round(change / prev * 100, 2) if prev else None,
+    }
+    for field in ("open", "high", "low", "volume"):
+        if q.get(field) not in (None, ""):
+            msg[field] = float(q[field])
+    return msg
+
+
 def _history_candles(data: dict) -> list[list]:
     """Dhan intraday arrays -> [[t, o, h, l, c, v], ...], keeping volume."""
     cols = [data.get(k) or [] for k in ("timestamp", "open", "high", "low", "close", "volume")]
@@ -134,6 +154,8 @@ class Ingest:
         self.instruments: dict[str, str] = {}  # security id -> exchange segment
         self.builders: dict[str, CandleBuilder] = {}
         self.seq: dict[str, int] = defaultdict(int)
+        self.prev_close: dict[str, float] = {}  # for day change; Dhan's quote packets don't carry it
+        self.prev_close_pending: set[str] = set()
         self.ws = None
 
     async def add(self, sid: str, segment: str) -> None:
@@ -144,6 +166,11 @@ class Ingest:
         this_minute = int(time.time()) // 60 * 60
         # Resume the in-progress minute from seeded history so it isn't restarted.
         self.builders[sid] = CandleBuilder(current=m1[-1] if m1 and m1[-1][0] == this_minute else None)
+        stored = await self.redis.hmget(rkey(f"quote:{sid}"), "prev_close", "prev_close_date")
+        if stored[0] and stored[1] == _today():
+            self.prev_close[sid] = float(stored[0])
+        else:
+            self.prev_close_pending.add(sid)
         if self.ws is not None:
             try:
                 for frame in subscribe_frames([(segment, sid)]):
@@ -160,6 +187,34 @@ class Ingest:
                 req = json.loads(m["data"])
                 await self.add(str(req["sid"]), str(req["segment"]))
 
+    async def prev_close_loop(self) -> None:
+        """Previous close from Dhan's OHLC API (`ohlc.close`, the official close), batched up to
+        1,000 instruments per call and fetched once per instrument per day."""
+        day = _today()
+        while True:
+            await asyncio.sleep(2)
+            if _today() != day:  # a new session: every instrument has a new previous close
+                day = _today()
+                self.prev_close_pending.update(self.instruments)
+            if not self.prev_close_pending:
+                continue
+            payload: dict[str, list[int]] = defaultdict(list)
+            for sid in list(self.prev_close_pending)[:1000]:
+                payload[self.instruments[sid]].append(int(sid))
+            try:
+                resp = await dm._cached_dhan_post("/marketfeed/ohlc", dict(payload), "quote")
+            except HTTPException as exc:
+                logger.warning("previous close fetch failed: %s; retrying", exc.detail)
+                await asyncio.sleep(10)
+                continue
+            for rows in ((resp.get("data") or {}).get("data") or {}).values():
+                for sid, row in rows.items():
+                    close = (row.get("ohlc") or {}).get("close")
+                    if close:
+                        self.prev_close[sid] = float(close)
+                        self.prev_close_pending.discard(sid)
+                        await self.redis.hset(rkey(f"quote:{sid}"), mapping={"prev_close": close, "prev_close_date": day})
+
     async def on_tick(self, tick: dict, t_recv: float) -> None:
         if tick["type"] == "disconnect":
             if tick["reason"] in FATAL_DISCONNECT:
@@ -172,23 +227,28 @@ class Ingest:
         if builder is None:
             return
         self.seq[sid] += 1
+        quote = {"price": tick["ltp"], "ts": tick["ltt"], "seq": self.seq[sid]}
+        if tick["type"] == "quote":
+            quote.update({k: tick[k] for k in ("open", "high", "low", "volume")})
+        m1 = None
         async with self.redis.pipeline(transaction=False) as pipe:
             # The last price is always valid (an illiquid stock's last trade may be minutes old)...
-            pipe.hset(rkey(f"quote:{sid}"), mapping={"price": tick["ltp"], "ts": tick["ltt"], "seq": self.seq[sid]})
+            pipe.hset(rkey(f"quote:{sid}"), mapping=quote)
             # ...but only a fresh trade belongs in a candle; an old one would overwrite history.
             if tick["ltt"] >= t_recv - STALE_TICK_SECONDS:
                 builder.update(tick["ltt"], tick["ltp"], tick.get("volume"))
                 m1 = builder.current
                 pipe.hset(_m1_key(sid), str(m1[0]), json.dumps(m1))
-                pipe.publish(rkey(f"tick:{sid}"), json.dumps({
-                    "sid": sid, "seq": self.seq[sid], "m1": m1, "price": tick["ltp"], "ts": tick["ltt"], "t_recv": t_recv,
-                }))
+            pipe.publish(rkey(f"tick:{sid}"), json.dumps({
+                **quote, "sid": sid, "m1": m1, "prev_close": self.prev_close.get(sid), "t_recv": t_recv,
+            }))
             await pipe.execute()
 
     async def run(self) -> None:
         for sid, segment in (await self.redis.hgetall(rkey(INSTRUMENTS))).items():
             await self.add(sid, segment)
         listener = asyncio.create_task(self.listen_for_subscriptions())
+        prev_closes = asyncio.create_task(self.prev_close_loop())
         backoff = 1.0
         try:
             while True:
@@ -226,6 +286,7 @@ class Ingest:
                     self.ws = None
         finally:
             listener.cancel()
+            prev_closes.cancel()
 
 
 class Gateway:
@@ -233,8 +294,10 @@ class Gateway:
 
     def __init__(self, redis):
         self.redis = redis
-        self.watchers: dict[tuple[str, int], dict] = defaultdict(dict)  # (sid, minutes) -> {socket: client key}
+        # (sid, minutes) -> {socket: client key}; minutes 0 is a live-quote watcher (price + day change)
+        self.watchers: dict[tuple[str, int], dict] = defaultdict(dict)
         self.recent: dict[str, dict[int, list]] = {}  # sid -> recent 1m candles, to roll up the current bar
+        self.quote_sent: dict[str, float] = {}  # sid -> last live-quote broadcast time
 
     async def handler(self, ws) -> None:
         ticket = parse_qs(urlsplit(ws.request.path).query).get("ticket", [""])[0]
@@ -251,6 +314,8 @@ class Gateway:
                 op = req.get("op")
                 if op == "sub":
                     await self.subscribe(ws, req, watching)
+                elif op == "quote":
+                    await self.subscribe_quote(ws, req, watching)
                 elif op == "unsub":
                     key = str(req.get("key", ""))
                     for slot in [s for s in watching if self.watchers[s].get(ws) == key]:
@@ -296,6 +361,24 @@ class Gateway:
         self.watchers[(sid, minutes)][ws] = key
         watching.add((sid, minutes))
 
+    async def subscribe_quote(self, ws, req: dict, watching: set) -> None:
+        """Live price and day change for one instrument (dashboard indices, stock header, movers)."""
+        key = str(req.get("key") or "")
+        try:
+            ident = await dm._resolve_chart_identity(
+                str(req.get("symbol", "")), req.get("securityId"), req.get("exchangeSegment"), req.get("instrument")
+            )
+        except HTTPException:
+            await ws.send(json.dumps({"op": "error", "key": key, "detail": "Live price is unavailable for this symbol."}))
+            return
+        sid = str(ident["securityId"])
+        await request_feed(self.redis, ident)
+        current = await self.redis.hgetall(rkey(f"quote:{sid}"))
+        if current.get("price") and current.get("ts"):
+            await ws.send(json.dumps(quote_message(key, current)))
+        self.watchers[(sid, 0)][ws] = key
+        watching.add((sid, 0))
+
     async def fanout(self) -> None:
         pubsub = self.redis.pubsub()
         await pubsub.psubscribe(rkey("tick:*"))
@@ -303,23 +386,34 @@ class Gateway:
             if m.get("type") != "pmessage":
                 continue
             tick = json.loads(m["data"])
-            sid, m1 = tick["sid"], tick["m1"]
-            recent = self.recent.setdefault(sid, {})
-            recent[m1[0]] = m1
-            if len(recent) > 300:
-                for t in [t for t in recent if t < m1[0] - 7200]:
-                    del recent[t]
+            sid, m1 = tick["sid"], tick["m1"]  # m1 is None for a quote too old to belong in a candle
+            if m1:
+                recent = self.recent.setdefault(sid, {})
+                recent[m1[0]] = m1
+                if len(recent) > 300:
+                    for t in [t for t in recent if t < m1[0] - 7200]:
+                        del recent[t]
             for (wsid, minutes), clients in list(self.watchers.items()):
-                if wsid != sid or not clients:
+                if wsid != sid or not clients or (minutes and not m1):
+                    continue
+                by_key: dict[str, list] = defaultdict(list)
+                for client, key in clients.items():
+                    by_key[key].append(client)
+                if minutes == 0:
+                    # Indices tick ~10/s; 4/s is still live to the eye and keeps price flashes readable.
+                    # shortcut: drops in-between ticks without a trailing flush; fine while the next tick
+                    # follows within a second, revisit if a slow symbol shows a stale last value.
+                    if time.time() - self.quote_sent.get(sid, 0.0) < QUOTE_MIN_GAP_SECONDS:
+                        continue
+                    self.quote_sent[sid] = time.time()
+                    for key, conns in by_key.items():
+                        websockets.broadcast(conns, json.dumps(quote_message(key, tick)))
                     continue
                 if minutes == 1:
                     candle = m1
                 else:
                     start = bucket_start(m1[0], minutes)
                     candle = aggregate(sorted(c for t, c in recent.items() if start <= t < start + minutes * 60), minutes)[0]
-                by_key: dict[str, list] = defaultdict(list)
-                for client, key in clients.items():
-                    by_key[key].append(client)
                 for key, conns in by_key.items():
                     websockets.broadcast(conns, json.dumps({
                         "op": "delta", "key": key, "seq": tick["seq"], "candle": candle,

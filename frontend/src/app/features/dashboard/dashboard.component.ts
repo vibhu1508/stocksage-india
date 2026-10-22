@@ -6,11 +6,13 @@ import { Subscription } from 'rxjs';
 import { AuthService, User } from '../../core/services/auth.service';
 import { MarketService, MarketData, StockMover } from '../../core/services/market.service';
 import { LucideAngularModule } from 'lucide-angular';
+import { LiveQuote, MarketStreamService } from '../../core/services/market-stream.service';
+import { FlashDirective } from '../../shared/directives/flash.directive';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, LucideAngularModule],
+  imports: [CommonModule, RouterLink, LucideAngularModule, FlashDirective],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   animations: [
@@ -40,6 +42,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   loserIndex = 0;
   private gainerTimer?: any;
   private loserTimer?: any;
+  private moversTimer?: any;
+
+  // Live quotes from the Dhan feed (market service): indices and the movers on screen.
+  liveNifty: LiveQuote | null = null;
+  liveSensex: LiveQuote | null = null;
+  private readonly liveMovers = new Map<string, LiveQuote>();
+  private readonly moverSubs = new Map<string, Subscription>();
+  private readonly liveSubs = new Subscription();
 
   quickActions = [
     { label: 'Watchlist', description: 'Track symbols with chart and market depth', icon: 'bar-chart-2', route: '/stocks' },
@@ -51,7 +61,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   constructor(
     private authService: AuthService,
-    private marketService: MarketService
+    private marketService: MarketService,
+    private marketStream: MarketStreamService
   ) { }
 
   ngOnInit(): void {
@@ -66,28 +77,69 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.marketLoading = false;
     });
 
+    this.liveSubs.add(this.marketStream.watchQuote('NIFTY').subscribe(q => (this.liveNifty = q)));
+    this.liveSubs.add(this.marketStream.watchQuote('SENSEX').subscribe(q => (this.liveSensex = q)));
+
+    this.gainerTimer = setInterval(() => {
+      if (this.topGainers.length) this.gainerIndex = (this.gainerIndex + 1) % this.topGainers.length;
+    }, 3000);
+    this.loserTimer = setInterval(() => {
+      if (this.topLosers.length) this.loserIndex = (this.loserIndex + 1) % this.topLosers.length;
+    }, 3000);
+    this.loadMovers();
+    // The ranking is an NSE snapshot (refreshed each minute); prices on screen stream live.
+    this.moversTimer = setInterval(() => this.loadMovers(), 60_000);
+  }
+
+  private loadMovers(): void {
     this.marketService.getTopGainers().subscribe(data => {
       this.topGainers = data.gainers || [];
-      if (this.topGainers.length > 0) {
-        this.gainerTimer = setInterval(() => {
-          this.gainerIndex = (this.gainerIndex + 1) % this.topGainers.length;
-        }, 3000);
-      }
+      this.gainerIndex = Math.min(this.gainerIndex, Math.max(0, this.topGainers.length - 1));
+      this.watchMovers();
     });
     this.marketService.getTopLosers().subscribe(data => {
       this.topLosers = data.losers || [];
-      if (this.topLosers.length > 0) {
-        this.loserTimer = setInterval(() => {
-          this.loserIndex = (this.loserIndex + 1) % this.topLosers.length;
-        }, 3000);
-      }
+      this.loserIndex = Math.min(this.loserIndex, Math.max(0, this.topLosers.length - 1));
+      this.watchMovers();
     });
+  }
+
+  /** Keep one live quote per mover on screen; drop the ones that left the lists. */
+  private watchMovers(): void {
+    const wanted = new Set([...this.topGainers, ...this.topLosers].map(m => m.symbol));
+    for (const [symbol, sub] of this.moverSubs) {
+      if (!wanted.has(symbol)) {
+        sub.unsubscribe();
+        this.moverSubs.delete(symbol);
+        this.liveMovers.delete(symbol);
+      }
+    }
+    for (const symbol of wanted) {
+      if (!this.moverSubs.has(symbol)) {
+        this.moverSubs.set(symbol, this.marketStream.watchQuote(symbol).subscribe(q => this.liveMovers.set(symbol, q)));
+      }
+    }
+  }
+
+  moverPrice(m: StockMover): number {
+    return this.liveMovers.get(m.symbol)?.price ?? m.price;
+  }
+
+  moverPct(m: StockMover): number {
+    return this.liveMovers.get(m.symbol)?.pct ?? m.pct_change;
+  }
+
+  moverChange(m: StockMover): number {
+    return this.liveMovers.get(m.symbol)?.change ?? m.change;
   }
 
   ngOnDestroy(): void {
     this.marketSub?.unsubscribe();
     if (this.gainerTimer) clearInterval(this.gainerTimer);
     if (this.loserTimer) clearInterval(this.loserTimer);
+    if (this.moversTimer) clearInterval(this.moversTimer);
+    this.liveSubs.unsubscribe();
+    this.moverSubs.forEach(sub => sub.unsubscribe());
   }
 
   private setGreeting(): void {
@@ -116,11 +168,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   get niftyValue(): string {
+    if (this.liveNifty) return this.marketService.formatIndian(this.liveNifty.price);
     if (!this.marketData?.nifty) return '--';
     return this.marketService.formatIndian(this.marketData.nifty.value);
   }
 
   get niftyChange(): string {
+    if (this.liveNifty?.pct != null) return (this.liveNifty.pct >= 0 ? '+' : '') + this.liveNifty.pct.toFixed(2) + '%';
     if (!this.marketData?.nifty) return '';
     const pct = this.marketData.nifty.pct_change;
     const num = parseFloat(pct);
@@ -128,16 +182,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   get niftyPositive(): boolean {
+    if (this.liveNifty?.pct != null) return this.liveNifty.pct >= 0;
     if (!this.marketData?.nifty) return true;
     return parseFloat(this.marketData.nifty.pct_change) >= 0;
   }
 
   get sensexValue(): string {
+    if (this.liveSensex) return this.marketService.formatIndian(this.liveSensex.price);
     if (!this.marketData?.sensex) return '--';
     return this.marketService.formatIndian(this.marketData.sensex.value);
   }
 
   get sensexChange(): string {
+    if (this.liveSensex?.pct != null) return (this.liveSensex.pct >= 0 ? '+' : '') + this.liveSensex.pct.toFixed(2) + '%';
     if (!this.marketData?.sensex) return '';
     const pct = this.marketData.sensex.pct_change;
     const num = parseFloat(pct);
@@ -145,6 +202,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   get sensexPositive(): boolean {
+    if (this.liveSensex?.pct != null) return this.liveSensex.pct >= 0;
     if (!this.marketData?.sensex) return true;
     return parseFloat(this.marketData.sensex.pct_change) >= 0;
   }
@@ -166,7 +224,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
         iconClass: this.marketStatus === 'Open' ? 'text-green-500' : this.marketStatus === 'Closed' ? 'text-red-500' : 'text-yellow-500',
         change: null as string | null,
         route: null as string | null,
-        changePositive: true
+        changePositive: true,
+        raw: null as number | null
       },
       {
         label: 'NIFTY 50',
@@ -175,7 +234,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
         iconClass: this.niftyPositive ? 'text-green-500' : 'text-red-500',
         change: this.niftyChange || null,
         route: null as string | null,
-        changePositive: this.niftyPositive
+        changePositive: this.niftyPositive,
+        raw: this.liveNifty?.price ?? null
       },
       {
         label: 'SENSEX',
@@ -184,7 +244,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
         iconClass: this.sensexPositive ? 'text-green-500' : 'text-red-500',
         change: this.sensexChange || null,
         route: null as string | null,
-        changePositive: this.sensexPositive
+        changePositive: this.sensexPositive,
+        raw: this.liveSensex?.price ?? null
       },
       {
         label: 'My Portfolio',
@@ -193,7 +254,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
         iconClass: 'text-primary',
         change: 'Manage Holdings' as string | null,
         route: '/portfolio',
-        changePositive: true
+        changePositive: true,
+        raw: null as number | null
       }
     ];
   }

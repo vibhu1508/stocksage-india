@@ -493,3 +493,50 @@ input {
 .mat-mdc-raised-button {
   border-radius: $radius-md !important;
 }
+// Live price flash (FlashDirective): green ▲ on a rise, red ▼ on a fall, fading out.
+// The arrow carries the direction too, so it never relies on colour alone.
+.flash-up,
+.flash-down {
+  border-radius: 4px;
+}
+
+.flash-up {
+  animation: flash-up 0.9s ease-out;
+}
+
+.flash-down {
+  animation: flash-down 0.9s ease-out;
+}
+
+.flash-up::after,
+.flash-down::after {
+  margin-left: 4px;
+  font-size: 0.7em;
+}
+
+.flash-up::after {
+  content: '▲';
+  color: #10b981;
+}
+
+.flash-down::after {
+  content: '▼';
+  color: #ef4444;
+}
+
+@keyframes flash-up {
+  from { background-color: rgba(16, 185, 129, 0.35); }
+  to { background-color: transparent; }
+}
+
+@keyframes flash-down {
+  from { background-color: rgba(239, 68, 68, 0.35); }
+  to { background-color: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flash-up,
+  .flash-down {
+    animation: none;
+  }
+}

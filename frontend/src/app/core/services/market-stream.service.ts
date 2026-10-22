@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, Subject, firstValueFrom } from 'rxjs';
+import { Observable, Subject, filter, firstValueFrom } from 'rxjs';
 
 /** [open time (UTC epoch s), open, high, low, close, volume] */
 export type StreamCandle = [number, number, number, number, number, number];
@@ -9,6 +9,21 @@ export type MarketStreamMessage =
   | { op: 'snapshot'; key: string; symbol: string; tf: string; candles: StreamCandle[]; last: { price: number; ts: number } | null; market: 'open' | 'closed' }
   | { op: 'delta'; key: string; seq: number; candle: StreamCandle; last: { price: number; ts: number } }
   | { op: 'error'; key: string; detail: string };
+
+/** Last price with day change against the official previous close (backend quote_message). */
+export interface LiveQuote {
+  op: 'quote';
+  key: string;
+  price: number;
+  ts: number;
+  prev_close: number | null;
+  change: number | null;
+  pct: number | null;
+  open?: number;
+  high?: number;
+  low?: number;
+  volume?: number;
+}
 
 export interface MarketStreamRequest {
   symbol: string;
@@ -31,22 +46,37 @@ export class MarketStreamService {
   private socket: WebSocket | null = null;
   private connecting: Promise<WebSocket> | null = null;
   private retryMs = 1000;
-  private readonly streams = new Map<string, { req: MarketStreamRequest; out: Subject<MarketStreamMessage>; refs: number }>();
+  private readonly streams = new Map<string, { sub: Record<string, unknown>; out: Subject<MarketStreamMessage | LiveQuote>; refs: number }>();
 
   constructor(private http: HttpClient) {}
 
+  /** Candles for a chart: a snapshot, then deltas for the forming bar. */
   watch(req: MarketStreamRequest): Observable<MarketStreamMessage> {
     const key = `${req.symbol.trim().toUpperCase()}:${req.tf}`;
-    return new Observable<MarketStreamMessage>((observer) => {
+    return this.open(key, { op: 'sub', key, ...req }).pipe(
+      filter((m): m is MarketStreamMessage => m.op !== 'quote'),
+    );
+  }
+
+  /** Live price and day change for any symbol or index (e.g. 'NIFTY', 'SENSEX', 'RELIANCE'). */
+  watchQuote(symbol: string, ids: Omit<MarketStreamRequest, 'symbol' | 'tf'> = {}): Observable<LiveQuote> {
+    const key = `Q:${symbol.trim().toUpperCase()}`;
+    return this.open(key, { op: 'quote', key, symbol, ...ids }).pipe(
+      filter((m): m is LiveQuote => m.op === 'quote'),
+    );
+  }
+
+  private open(key: string, subMsg: Record<string, unknown>): Observable<MarketStreamMessage | LiveQuote> {
+    return new Observable<MarketStreamMessage | LiveQuote>((observer) => {
       let stream = this.streams.get(key);
       if (!stream) {
-        stream = { req, out: new Subject<MarketStreamMessage>(), refs: 0 };
+        stream = { sub: subMsg, out: new Subject<MarketStreamMessage | LiveQuote>(), refs: 0 };
         this.streams.set(key, stream);
       }
       stream.refs += 1;
       const sub = stream.out.subscribe(observer);
       // Always (re)subscribe so this watcher gets its own snapshot, even if the key is shared.
-      void this.send({ op: 'sub', key, ...req });
+      void this.send(subMsg);
 
       return () => {
         sub.unsubscribe();
@@ -92,7 +122,7 @@ export class MarketStreamService {
 
   private route(raw: string): void {
     try {
-      const msg = JSON.parse(raw) as MarketStreamMessage;
+      const msg = JSON.parse(raw) as MarketStreamMessage | LiveQuote;
       this.streams.get(msg.key)?.out.next(msg);
     } catch {
       // ignore malformed frames
@@ -110,7 +140,7 @@ export class MarketStreamService {
     this.retryMs = Math.min(this.retryMs * 2, 30_000);
     setTimeout(() => {
       if (this.streams.size === 0 || this.socket || this.connecting) return;
-      for (const [key, s] of this.streams) void this.send({ op: 'sub', key, ...s.req });
+      for (const s of this.streams.values()) void this.send(s.sub);
     }, delay);
   }
 }

@@ -5,12 +5,13 @@ import { Router, RouterLink } from '@angular/router';
 import { PortfolioService, PortfolioHolding, SymbolSuggestion } from '../../core/services/portfolio.service';
 import { MarketService } from '../../core/services/market.service';
 import { LucideAngularModule } from 'lucide-angular';
+import { FlashDirective } from '../../shared/directives/flash.directive';
 import { Subject, Subscription, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
 
 @Component({
   selector: 'app-portfolio',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, FlashDirective],
   templateUrl: './portfolio.component.html',
   styleUrl: './portfolio.component.scss'
 })
@@ -41,9 +42,6 @@ export class PortfolioComponent implements OnInit, OnDestroy {
   symbolSearchType: 'derivatives' | 'equity' | 'etf' = 'equity';
 
   private symbolSearch$ = new Subject<string>();
-  /** Cells currently flashing after a price move, keyed 'h:<id>', 'm:<key>' or 'total'. */
-  flash: Record<string, 'up' | 'down'> = {};
-  private readonly flashTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private liveRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private liveWsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private liveMarketCheckTimer: ReturnType<typeof setInterval> | null = null;
@@ -192,7 +190,6 @@ export class PortfolioComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.stopLiveStream();
-    this.flashTimers.forEach((t) => clearTimeout(t));
     if (this.liveRefreshTimer) {
       clearInterval(this.liveRefreshTimer);
       this.liveRefreshTimer = null;
@@ -305,31 +302,12 @@ export class PortfolioComponent implements OnInit, OnDestroy {
     return adjustedMinutes >= marketOpenMin && adjustedMinutes <= marketCloseMin;
   }
 
-  /** Flash a cell green (▲) when its value rises and red (▼) when it falls, like a trading terminal. */
-  private markMove(key: string, prev: number | null | undefined, next: number | null | undefined): void {
-    if (prev == null || next == null || prev === next) return;
-    clearTimeout(this.flashTimers.get(key));
-    delete this.flash[key];
-    const direction = next > prev ? 'up' : 'down';
-    // Re-add on the next frame so back-to-back moves restart the animation.
-    requestAnimationFrame(() => (this.flash[key] = direction));
-    this.flashTimers.set(key, setTimeout(() => delete this.flash[key], 900));
-  }
-
   private applyLiveSnapshot(data: any): void {
-    const prevPrices = new Map(this.holdings.map((h) => [h.id, h.live_price]));
-    const prevMerged = new Map(this.mergedHoldings.map((m) => [m.key, m.currentValue]));
-    const prevTotal = this.holdings.length ? this.totalCurrentValue : null;
-
     this.holdings = data.holdings || [];
     this.totalInvested = Number(data.total_invested || 0);
     this.totalCurrentValue = Number(data.total_current_value || 0);
     this.totalPnl = Number(data.total_pnl || 0);
     this.totalPnlPct = Number(data.total_pnl_pct || 0);
-
-    for (const h of this.holdings) this.markMove(`h:${h.id}`, prevPrices.get(h.id), h.live_price);
-    for (const m of this.mergedHoldings) this.markMove(`m:${m.key}`, prevMerged.get(m.key), m.currentValue);
-    this.markMove('total', prevTotal, this.totalCurrentValue);
     this.liveCount = Number(data.live_count || 0);
     this.lastLiveAsOf = Number(data.as_of || 0);
     this.liveStatus = this.liveCount === 0

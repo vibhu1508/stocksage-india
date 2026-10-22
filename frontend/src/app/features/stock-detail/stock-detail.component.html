@@ -23,8 +23,8 @@
     </div>
     <div class="price-wrap">
       <p class="label">Last Price</p>
-      <p class="price">{{ lastPrice | number:'1.2-2' }}</p>
-      <p [class]="isPositive ? 'delta up' : 'delta down'">
+      <p class="price" [appFlash]="lastPrice">{{ lastPrice | number:'1.2-2' }}</p>
+      <p [class]="isPositive ? 'delta up' : 'delta down'" [appFlash]="priceChange">
         {{ isPositive ? '+' : '' }}{{ priceChange | number:'1.2-2' }}
         ({{ isPositive ? '+' : '' }}{{ pctChange | number:'1.2-2' }}%)
       </p>
@@ -258,7 +258,7 @@
     @for (s of stats; track s.label) {
     <article class="stat-card">
       <p class="k">{{ s.label }}</p>
-      <p class="v">{{ s.value }}</p>
+      <p class="v" [appFlash]="s.raw">{{ s.value }}</p>
     </article>
     }
   </section>

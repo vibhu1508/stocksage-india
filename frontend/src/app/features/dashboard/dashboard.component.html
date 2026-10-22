@@ -23,7 +23,7 @@
         <lucide-icon [name]="stat.icon" [size]="18" [class]="stat.iconClass"></lucide-icon>
       </div>
       <div class="flex flex-col">
-        <div class="text-2xl font-bold">{{ stat.value }}</div>
+        <div class="text-2xl font-bold self-start" [appFlash]="stat.raw">{{ stat.value }}</div>
         @if (stat.change) {
         <p class="text-xs pt-1 font-medium" [class.text-green-500]="stat.changePositive" [class.text-red-500]="!stat.changePositive">
            {{ stat.changePositive ? '▲' : '▼' }} {{ stat.change }}
@@ -58,11 +58,11 @@
       <div class="flex justify-between items-center" @slideUp>
         <div class="flex flex-col gap-1">
           <a class="text-xl md:text-2xl font-bold text-foreground hover:text-primary transition-colors" [routerLink]="['/stocks', g!.symbol]">{{ g!.symbol }}</a>
-          <span class="text-sm font-medium text-muted-foreground">₹{{ g!.price | number:'1.2-2' }}</span>
+          <span class="text-sm font-medium text-muted-foreground self-start" [appFlash]="moverPrice(g!)">₹{{ moverPrice(g!) | number:'1.2-2' }}</span>
         </div>
         <div class="flex flex-col items-end gap-1">
-          <span class="text-lg font-bold text-green-500">+{{ g!.pct_change | number:'1.2-2' }}%</span>
-          <span class="text-xs font-semibold text-green-500/70">(+{{ g!.change | number:'1.2-2' }})</span>
+          <span class="text-lg font-bold" [class.text-green-500]="moverPct(g!) >= 0" [class.text-red-500]="moverPct(g!) < 0">{{ moverPct(g!) >= 0 ? '+' : '' }}{{ moverPct(g!) | number:'1.2-2' }}%</span>
+          <span class="text-xs font-semibold opacity-70" [class.text-green-500]="moverChange(g!) >= 0" [class.text-red-500]="moverChange(g!) < 0">({{ moverChange(g!) >= 0 ? '+' : '' }}{{ moverChange(g!) | number:'1.2-2' }})</span>
         </div>
       </div>
       }
@@ -91,11 +91,11 @@
       <div class="flex justify-between items-center" @slideUp>
         <div class="flex flex-col gap-1">
           <a class="text-xl md:text-2xl font-bold text-foreground hover:text-primary transition-colors" [routerLink]="['/stocks', l!.symbol]">{{ l!.symbol }}</a>
-          <span class="text-sm font-medium text-muted-foreground">₹{{ l!.price | number:'1.2-2' }}</span>
+          <span class="text-sm font-medium text-muted-foreground self-start" [appFlash]="moverPrice(l!)">₹{{ moverPrice(l!) | number:'1.2-2' }}</span>
         </div>
         <div class="flex flex-col items-end gap-1">
-          <span class="text-lg font-bold text-red-500">{{ l!.pct_change | number:'1.2-2' }}%</span>
-          <span class="text-xs font-semibold text-red-500/70">({{ l!.change | number:'1.2-2' }})</span>
+          <span class="text-lg font-bold" [class.text-green-500]="moverPct(l!) >= 0" [class.text-red-500]="moverPct(l!) < 0">{{ moverPct(l!) >= 0 ? '+' : '' }}{{ moverPct(l!) | number:'1.2-2' }}%</span>
+          <span class="text-xs font-semibold opacity-70" [class.text-green-500]="moverChange(l!) >= 0" [class.text-red-500]="moverChange(l!) < 0">({{ moverChange(l!) >= 0 ? '+' : '' }}{{ moverChange(l!) | number:'1.2-2' }})</span>
         </div>
       </div>
       }

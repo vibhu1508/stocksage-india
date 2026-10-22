@@ -34,7 +34,8 @@ import {
   DhanDepthLevel,
   DhanLiveChartService,
 } from '../../core/services/dhan-live-chart.service';
-import { MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
+import { LiveQuote, MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
+import { FlashDirective } from '../../shared/directives/flash.directive';
 
 const toCandle = (c: StreamCandle): CandlestickData => ({
   time: c[0] as UTCTimestamp, open: c[1], high: c[2], low: c[3], close: c[4],
@@ -45,7 +46,7 @@ type ChartDisplayType = 'candlestick' | 'line' | 'bar' | 'area' | 'baseline';
 @Component({
   selector: 'app-stock-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, FlashDirective],
   templateUrl: './stock-detail.component.html',
   styleUrl: './stock-detail.component.scss',
 })
@@ -112,6 +113,9 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   private resizeObserver: ResizeObserver | null = null;
   private liveSub: Subscription | null = null;
   private chartLoadSub: Subscription | null = null;
+  /** Live last price and day change from the Dhan feed; drives the header and the day stats. */
+  liveQuote: LiveQuote | null = null;
+  private quoteSub: Subscription | null = null;
   private themeSub?: Subscription;
   private isDarkTheme = false;
   private readonly candleCache = new Map<string, { candles: CandlestickData[]; resolvedTimeframe: ChartTimeframe; lastPrice: number; updatedAt: Date }>();
@@ -181,6 +185,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       }
 
       this.symbol = nextSymbol;
+      this.watchQuote();
       this.loading = true;
       this.error = '';
       this.quote = null;
@@ -224,6 +229,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.routeSub?.unsubscribe();
+    this.quoteSub?.unsubscribe();
     this.themeSub?.unsubscribe();
     this.stopLiveUpdates();
     this.resizeObserver?.disconnect();
@@ -427,7 +433,17 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.quote?.info?.companyName || this.quote?.metadata?.companyName || this.symbol;
   }
 
+  private watchQuote(): void {
+    this.quoteSub?.unsubscribe();
+    this.liveQuote = null;
+    const { securityId, exchangeSegment, instrument } = this.getLiveChartRequest();
+    this.quoteSub = this.marketStream
+      .watchQuote(this.symbol, { securityId, exchangeSegment, instrument })
+      .subscribe((q) => (this.liveQuote = q));
+  }
+
   get lastPrice(): number {
+    if (this.liveQuote) return this.liveQuote.price;
     if (Number.isFinite(this.liveLastPrice) && this.liveLastPrice > 0) {
       return Number(this.liveLastPrice);
     }
@@ -442,6 +458,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   get prevClose(): number {
+    if (this.liveQuote?.prev_close) return this.liveQuote.prev_close;
     return Number(
       this.quote?.priceInfo?.previousClose
       ?? this.quote?.previousClose
@@ -480,10 +497,17 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   get quoteTime(): string {
+    if (this.liveQuote) {
+      return new Date(this.liveQuote.ts * 1000).toLocaleString('en-IN', {
+        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false, timeZone: 'Asia/Kolkata',
+      });
+    }
     return this.quote?.metadata?.lastUpdateTime || this.quote?.timestamp || '--';
   }
 
-  get stats(): Array<{ label: string; value: string | number }> {
+  get stats(): Array<{ label: string; value: string | number; raw?: number | null }> {
+    const live = this.liveQuote;
     const trade = this.quote?.tradeInfo || {};
     const price = this.quote?.priceInfo || {};
     const security = this.quote?.securityInfo || {};
@@ -494,19 +518,19 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     const momentum10 = this.calculateLastMomentumValue(candles, 10);
 
     return [
-      { label: 'Open', value: this.formatNumber(trade.open || this.quote?.open) },
-      { label: 'High', value: this.formatNumber(trade.intraDayHighLow?.max || this.quote?.high) },
-      { label: 'Low', value: this.formatNumber(trade.intraDayHighLow?.min || this.quote?.low) },
+      { label: 'Open', value: this.formatNumber(live?.open ?? (trade.open || this.quote?.open)) },
+      { label: 'High', value: this.formatNumber(live?.high ?? (trade.intraDayHighLow?.max || this.quote?.high)), raw: live?.high },
+      { label: 'Low', value: this.formatNumber(live?.low ?? (trade.intraDayHighLow?.min || this.quote?.low)), raw: live?.low },
       { label: 'Prev Close', value: this.formatNumber(price.previousClose || this.quote?.previousClose) },
       { label: 'VWAP', value: this.formatNumber(trade.averagePrice) },
-      { label: 'Traded Volume', value: this.formatIndianNumber(trade.totalTradedVolume) },
+      { label: 'Traded Volume', value: this.formatIndianNumber(live?.volume ?? trade.totalTradedVolume), raw: live?.volume },
       { label: 'Traded Value', value: this.formatIndianNumber(trade.totalTradedValue) },
       { label: '52W High', value: this.formatNumber(price.weekHighLow?.max) },
       { label: '52W Low', value: this.formatNumber(price.weekHighLow?.min) },
-      { label: 'MA 50', value: this.formatNumber(ma50) },
-      { label: 'MA 100', value: this.formatNumber(ma100) },
-      { label: 'MA 200', value: this.formatNumber(ma200) },
-      { label: 'Momentum (10)', value: this.formatSignedNumber(momentum10) },
+      { label: 'MA 50', value: this.formatNumber(ma50), raw: ma50 },
+      { label: 'MA 100', value: this.formatNumber(ma100), raw: ma100 },
+      { label: 'MA 200', value: this.formatNumber(ma200), raw: ma200 },
+      { label: 'Momentum (10)', value: this.formatSignedNumber(momentum10), raw: momentum10 },
       { label: 'Face Value', value: this.formatNumber(security.faceValue || trade.faceValue) },
       { label: 'P/E', value: this.formatNumber(security.pdSymbolPe || security.pdSectorPe) },
       { label: 'Industry', value: security.basicIndustry || security.industryInfo || '--' },
@@ -780,7 +804,15 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   private getIndicatorSourceCandles(): CandlestickData[] {
     const dailyCache = this.candleCache.get(this.getChartCacheKey(this.symbol, 'D'));
     if (dailyCache && Array.isArray(dailyCache.candles) && dailyCache.candles.length > 0) {
-      return dailyCache.candles;
+      const daily = dailyCache.candles;
+      const last = daily[daily.length - 1];
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      const lastDay = new Date(Number(last.time) * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      // Today's daily bar closes at the live price, so MAs and momentum move with the market.
+      if (this.liveQuote && lastDay === today) {
+        return [...daily.slice(0, -1), { ...last, close: this.liveQuote.price }];
+      }
+      return daily;
     }
     return this.liveCandles;
   }
