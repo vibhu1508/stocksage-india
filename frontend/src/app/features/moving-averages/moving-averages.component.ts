@@ -1,11 +1,12 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
+import { Subject, catchError, debounceTime, distinctUntilChanged, firstValueFrom, map, of, switchMap, takeUntil } from 'rxjs';
 import { LucideAngularModule } from 'lucide-angular';
 
 import { DhanChartCandle, DhanLiveChartService } from '../../core/services/dhan-live-chart.service';
+import { StockService, SymbolSearchResult } from '../../core/services/stock.service';
 
 interface MAScreenerRow {
   symbol: string;
@@ -25,18 +26,85 @@ interface MAScreenerRow {
   templateUrl: './moving-averages.component.html',
   styleUrl: './moving-averages.component.scss',
 })
-export class MovingAveragesComponent implements OnInit {
-  symbolsText = 'RELIANCE, TCS, INFY, HDFCBANK, AXISBANK';
+export class MovingAveragesComponent implements OnInit, OnDestroy {
+  readonly maxSymbols = 30;
+  symbols: string[] = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'AXISBANK'];
+  searchText = '';
+  suggestions: SymbolSearchResult[] = [];
+  activeIndex = 0;
   loading = false;
   error = '';
   query = '';
   signalFilter: 'all' | 'bullish' | 'bearish' | 'mixed' | 'na' = 'all';
   rows: MAScreenerRow[] = [];
 
-  constructor(private dhanLiveChartService: DhanLiveChartService) {}
+  private searchSubject = new Subject<string>();
+  private destroy$ = new Subject<void>();
+
+  constructor(
+    private dhanLiveChartService: DhanLiveChartService,
+    private stockService: StockService,
+  ) {}
 
   ngOnInit(): void {
+    this.searchSubject
+      .pipe(
+        debounceTime(200),
+        distinctUntilChanged(),
+        // switchMap drops replies to older keystrokes, so suggestions never lag the input.
+        switchMap((q) => q
+          ? this.stockService.searchSymbols(q, 10).pipe(map((res) => res?.results ?? []), catchError(() => of([])))
+          : of([])),
+        takeUntil(this.destroy$),
+      )
+      .subscribe((results) => {
+        this.suggestions = results.filter((r) => !this.symbols.includes(r.symbol));
+        this.activeIndex = 0;
+      });
     this.runScan();
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  onSearchInput(): void {
+    this.searchSubject.next(this.searchText.trim().toUpperCase());
+  }
+
+  onSearchKeydown(event: KeyboardEvent): void {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      if (!this.suggestions.length) return;
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      this.activeIndex = (this.activeIndex + step + this.suggestions.length) % this.suggestions.length;
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const pick = this.suggestions[this.activeIndex];
+      if (pick) this.addSymbol(pick.symbol);
+    } else if (event.key === 'Backspace' && !this.searchText && this.symbols.length) {
+      this.symbols = this.symbols.slice(0, -1);
+    } else if (event.key === 'Escape') {
+      this.closeSuggestions();
+    }
+  }
+
+  addSymbol(symbol: string): void {
+    if (!this.symbols.includes(symbol) && this.symbols.length < this.maxSymbols) {
+      this.symbols = [...this.symbols, symbol];
+    }
+    this.searchText = '';
+    this.closeSuggestions();
+  }
+
+  removeSymbol(symbol: string): void {
+    this.symbols = this.symbols.filter((s) => s !== symbol);
+  }
+
+  closeSuggestions(): void {
+    this.suggestions = [];
+    this.searchSubject.next('');  // so typing the same text again searches again
   }
 
   get filteredRows(): MAScreenerRow[] {
@@ -66,17 +134,12 @@ export class MovingAveragesComponent implements OnInit {
     this.loading = true;
     this.error = '';
 
-    const symbols = Array.from(new Set(
-      this.symbolsText
-        .split(',')
-        .map((s) => s.trim().toUpperCase())
-        .filter((s) => !!s)
-    )).slice(0, 30);
+    const symbols = this.symbols;
 
     if (symbols.length === 0) {
       this.rows = [];
       this.loading = false;
-      this.error = 'Enter at least one symbol.';
+      this.error = 'Add at least one stock.';
       return;
     }
 

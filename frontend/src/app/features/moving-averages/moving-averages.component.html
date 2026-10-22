@@ -5,10 +5,53 @@
   </header>
 
   <div class="ma-controls">
-    <label>
-      Symbols (comma separated)
-      <textarea [(ngModel)]="symbolsText" rows="2" placeholder="RELIANCE, TCS, INFY"></textarea>
-    </label>
+    <div class="symbol-picker">
+      <span class="picker-label" id="ma-symbols-label">Add stocks to scan <span class="picker-count">{{ symbols.length }}/{{ maxSymbols }}</span></span>
+      <div class="chip-box" (click)="searchInput.focus()">
+        <lucide-icon name="search" [size]="18" class="picker-icon" aria-hidden="true"></lucide-icon>
+        @for (symbol of symbols; track symbol) {
+        <span class="chip">
+          {{ symbol }}
+          <button type="button" (click)="removeSymbol(symbol)" [attr.aria-label]="'Remove ' + symbol">&times;</button>
+        </span>
+        }
+        <input
+          #searchInput
+          type="text"
+          role="combobox"
+          autocomplete="off"
+          aria-labelledby="ma-symbols-label"
+          aria-autocomplete="list"
+          aria-controls="ma-suggestions"
+          [attr.aria-expanded]="suggestions.length > 0"
+          [attr.aria-activedescendant]="suggestions.length ? 'ma-option-' + activeIndex : null"
+          [(ngModel)]="searchText"
+          (input)="onSearchInput()"
+          (keydown)="onSearchKeydown($event)"
+          (blur)="closeSuggestions()"
+          [disabled]="symbols.length >= maxSymbols"
+          [placeholder]="symbols.length >= maxSymbols ? 'Limit reached: remove a stock to add another' : 'Search by name or symbol, e.g. HDFC or Tata Motors'"
+        />
+      </div>
+      @if (suggestions.length) {
+      <ul class="suggestions" id="ma-suggestions" role="listbox">
+        @for (s of suggestions; track s.symbol; let i = $index) {
+        <!-- mousedown, not click: it fires before the input's blur closes the list -->
+        <li
+          role="option"
+          [id]="'ma-option-' + i"
+          [attr.aria-selected]="i === activeIndex"
+          [class.active]="i === activeIndex"
+          (mouseenter)="activeIndex = i"
+          (mousedown)="$event.preventDefault(); addSymbol(s.symbol)"
+        >
+          <strong>{{ s.symbol }}</strong>
+          <span>{{ s.name }}</span>
+        </li>
+        }
+      </ul>
+      }
+    </div>
 
     <div class="control-row">
       <button type="button" (click)="runScan()" [disabled]="loading">
@@ -18,7 +61,7 @@
       <input
         type="text"
         [(ngModel)]="query"
-        placeholder="Filter symbol"
+        placeholder="Filter results by symbol"
       />
 
       <select [(ngModel)]="signalFilter">

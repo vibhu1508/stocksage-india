@@ -23,16 +23,16 @@
   padding: 0.8rem;
 }
 
-.ma-controls label {
+.ma-controls .picker-label {
   display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.78rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+  color: hsl(var(--foreground));
+  font-size: 0.92rem;
   font-weight: 700;
-  color: hsl(var(--muted-foreground));
 }
 
-.ma-controls textarea,
 .ma-controls input,
 .ma-controls select {
   border: 1px solid hsl(var(--border));
@@ -40,6 +40,133 @@
   background: hsl(var(--background));
   color: hsl(var(--foreground));
   padding: 0.45rem 0.6rem;
+}
+
+.symbol-picker {
+  position: relative;
+}
+
+.picker-count {
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-size: 0.72rem;
+}
+
+// The main input on the page, so it reads as one: taller, brand-coloured border, search icon.
+.chip-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 3.5rem;
+  padding: 0.55rem 0.75rem;
+  border: 1.5px solid hsl(var(--primary) / 0.55);
+  border-radius: 0.7rem;
+  background: hsl(var(--background));
+  cursor: text;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.chip-box:hover {
+  border-color: hsl(var(--primary) / 0.8);
+}
+
+.chip-box:focus-within {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.2);
+}
+
+.picker-icon {
+  display: inline-flex;
+  color: hsl(var(--primary));
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.15rem 0.2rem 0.15rem 0.6rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.chip button {
+  display: grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chip button:hover,
+.chip button:focus-visible {
+  background: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.ma-controls .chip-box input {
+  flex: 1;
+  min-width: 14rem;
+  border: 0;
+  padding: 0.3rem 0.25rem;
+  background: transparent;
+  font-size: 1rem;
+  outline: none;
+}
+
+.ma-controls .chip-box input::placeholder {
+  color: hsl(var(--foreground) / 0.6);
+}
+
+.suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.55rem;
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
+}
+
+.suggestions li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.4rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.suggestions li span {
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestions li.active {
+  background: hsl(var(--muted));
 }
 
 .control-row {
