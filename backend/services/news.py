@@ -55,7 +55,7 @@ async def fetch_trusted_news(query: str, limit: int = 6) -> list[dict]:
     """Return up to `limit` recent news items (from trusted publishers only) for the query."""
     url = f"https://news.google.com/rss/search?q={quote(query)}&hl=en-IN&gl=IN&ceid=IN:en"
     try:
-        async with httpx.AsyncClient(timeout=10.0, verify=False, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             resp = await client.get(url, headers=_HEADERS)
         root = ElementTree.fromstring(resp.text)
     except Exception:

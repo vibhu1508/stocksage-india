@@ -233,17 +233,18 @@ class MarketSessionStatus {
 }
 
 class DhanChartService {
-  static Uri chartWebSocketUri({
+  static Future<Uri> chartWebSocketUri({
     required String symbol,
     required ChartTimeframe timeframe,
     String? securityId,
     String? exchangeSegment,
     String? instrument,
-  }) {
+  }) async {
     final base = Uri.parse(ApiConfig.baseUrl);
     final wsScheme = base.scheme == 'https' ? 'wss' : 'ws';
 
     final params = <String, String>{
+      'token': await ApiService.getToken() ?? '',
       'symbol': symbol.trim().toUpperCase(),
       'timeframe': timeframe.wire,
     };

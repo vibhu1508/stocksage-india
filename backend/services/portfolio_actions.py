@@ -6,27 +6,12 @@ Synchronous (SQLAlchemy) — call via asyncio.to_thread from the async agent.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from database import SessionLocal
 from models import PortfolioHolding
-from routers.auth import verify_token
 
 logger = logging.getLogger(__name__)
-
-
-def user_id_from_token(token: Optional[str]) -> Optional[int]:
-    """Decode the JWT from the chat WS query param → user id (or None)."""
-    if not token:
-        return None
-    payload = verify_token(token)
-    if not payload:
-        return None
-    sub = payload.get("sub")
-    try:
-        return int(sub) if sub is not None else None
-    except (TypeError, ValueError):
-        return None
 
 
 def get_user_holdings(user_id: int) -> List[Dict[str, Any]]:
@@ -50,6 +35,11 @@ def get_user_holdings(user_id: int) -> List[Dict[str, Any]]:
 
 
 def record_equity_holding(user_id: int, symbol: str, qty: int, avg_price: float) -> Dict[str, Any]:
+    try:
+        if not str(symbol or "").strip() or int(qty) <= 0 or float(avg_price) <= 0:
+            return {"ok": False, "error": "invalid holding"}
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "invalid holding"}
     db = SessionLocal()
     try:
         holding = PortfolioHolding(

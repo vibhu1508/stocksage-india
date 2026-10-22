@@ -1,9 +1,9 @@
 """
 StockSage AI assistant — chat WebSocket.
 
-`WS /api/chat/ws?token=<jwt>` runs the streaming agent loop. The token is used to
-identify the signed-in user for portfolio tools; read-only market tools work
-without it.
+`WS /api/chat/ws?token=<jwt>` runs the streaming agent loop. A valid, unrevoked
+session is required (it also identifies the user for portfolio tools); otherwise
+the socket sends an error and closes with 1008.
 
 Client → server: {"message": "<user text>"}
                  {"action": "confirm_holding", "holding": {symbol, quantity, avg_price}}
@@ -20,16 +20,27 @@ import logging
 import os
 import tempfile
 
-from fastapi import APIRouter, File, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
+from models import User
+from routers.auth import authenticate_websocket, get_current_user
 from services.agent import run_agent_stream, run_confirm_holding, run_cancel_holding
-from services.portfolio_actions import user_id_from_token
+from services.redis_store import is_rate_limited
 from services.transcribe import SttUnavailable, stt_status, transcribe_file
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ~5 minutes of opus/AAC voice; caps memory and STT quota per request.
+MAX_AUDIO_BYTES = 5 * 1024 * 1024
+MAX_MESSAGE_CHARS = 2000
+# Per user, enforced in Redis. shortcut: fails open when Redis is not configured; fine for the
+# invite-only pilot, must be a hard limit before public access.
+CHAT_TURNS_PER_MINUTE = int(os.getenv("CHAT_TURNS_PER_MINUTE", "15"))
+TRANSCRIBES_PER_MINUTE = int(os.getenv("TRANSCRIBES_PER_MINUTE", "10"))
+RATE_LIMITED_DETAIL = "You're sending requests too quickly. Please wait a minute and try again."
 
 
 @router.get("/voice-status")
@@ -39,9 +50,14 @@ async def voice_status():
 
 
 @router.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...)):
+async def transcribe(audio: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     """Speech-to-text for voice input (works in any browser — the browser records,
     we transcribe with Whisper). Returns {text, language}."""
+    if await is_rate_limited(f"stt:rl:{current_user.id}", TRANSCRIBES_PER_MINUTE, 60):
+        return JSONResponse(
+            status_code=429,
+            content={"text": "", "language": None, "error": "rate_limited", "detail": RATE_LIMITED_DETAIL},
+        )
     status = stt_status()
     if not status.get("available"):
         # Answer through FastAPI (503 WITH CORS headers) rather than letting an
@@ -56,9 +72,14 @@ async def transcribe(audio: UploadFile = File(...)):
             },
         )
 
-    data = await audio.read()
+    data = await audio.read(MAX_AUDIO_BYTES + 1)
     if not data:
         return {"text": "", "language": None}
+    if len(data) > MAX_AUDIO_BYTES:
+        return JSONResponse(
+            status_code=413,
+            content={"text": "", "language": None, "error": "audio_too_large", "detail": "Recording is too long."},
+        )
     suffix = os.path.splitext(audio.filename or "clip.webm")[1] or ".webm"
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
     try:
@@ -85,7 +106,12 @@ MAX_HISTORY_MESSAGES = 40
 @router.websocket("/ws")
 async def chat_ws(websocket: WebSocket):
     await websocket.accept()
-    user_id = user_id_from_token(websocket.query_params.get("token"))
+    user = authenticate_websocket(websocket)
+    if not user:
+        await websocket.send_json({"type": "error", "detail": "Please sign in to use StockSage AI."})
+        await websocket.close(code=1008)
+        return
+    user_id = user.id
     history: list[dict] = []
     # Remembers the holding awaiting confirmation, so a confirm click can't be spoofed
     # with different values than what the user was shown.
@@ -98,8 +124,14 @@ async def chat_ws(websocket: WebSocket):
 
             try:
                 if action == "confirm_holding":
-                    holding = pending_holding or data.get("holding") or {}
+                    # Only the holding the server proposed may be written, never one from the client.
+                    holding = pending_holding
                     pending_holding = None
+                    if not holding:
+                        await websocket.send_json(
+                            {"type": "error", "detail": "This request has expired. Please ask again."}
+                        )
+                        continue
                     async for event in run_confirm_holding(history, holding, user_id):
                         await websocket.send_json(event)
                 elif action == "cancel_holding":
@@ -107,8 +139,11 @@ async def chat_ws(websocket: WebSocket):
                     async for event in run_cancel_holding(history):
                         await websocket.send_json(event)
                 else:
-                    user_message = str(data.get("message", "")).strip()
+                    user_message = str(data.get("message", "")).strip()[:MAX_MESSAGE_CHARS]
                     if not user_message:
+                        continue
+                    if await is_rate_limited(f"chat:rl:{user_id}", CHAT_TURNS_PER_MINUTE, 60):
+                        await websocket.send_json({"type": "error", "detail": RATE_LIMITED_DETAIL})
                         continue
                     history.append({"role": "user", "content": user_message})
                     async for event in run_agent_stream(history, user_id):

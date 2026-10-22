@@ -2,7 +2,7 @@
 Authentication Router - Google OAuth and JWT token management
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, WebSocket
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from authlib.integrations.starlette_client import OAuth
@@ -13,14 +13,17 @@ import os
 import hashlib
 from math import floor
 
-from database import get_db
+from database import SessionLocal, get_db
 from models import User, UserSession
 from services.redis_store import is_token_revoked, revoke_token
 
 router = APIRouter()
 
 # Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+if not SECRET_KEY:
+    # A known fallback secret lets anyone forge session tokens, so refuse to start.
+    raise RuntimeError("SECRET_KEY is not set. Add it to backend/.env (local) or the host's env vars.")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 24 hours
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")
@@ -61,6 +64,64 @@ def verify_token(token: str):
         return payload
     except JWTError:
         return None
+
+
+def extract_ws_token(websocket: WebSocket) -> Optional[str]:
+    token = str(websocket.query_params.get("token", "")).strip()
+    if token:
+        return token
+
+    auth_header = str(websocket.headers.get("authorization", "")).strip()
+    if auth_header.lower().startswith("bearer "):
+        return auth_header[7:].strip()
+
+    return None
+
+
+def authenticate_ws_user(token: str, db: Session) -> Optional[User]:
+    """WebSocket counterpart of get_current_user: HTTP dependencies don't run on sockets."""
+    payload = verify_token(token)
+    if not payload:
+        return None
+
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    session = (
+        db.query(UserSession)
+        .filter(UserSession.token_hash == token_hash, UserSession.is_valid == True)
+        .first()
+    )
+    if not session:
+        return None
+
+    expires_at = session.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at <= _utc_now():
+        session.is_valid = False
+        db.commit()
+        return None
+
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user or not user.is_active:
+        return None
+
+    return user
+
+
+def authenticate_websocket(websocket: WebSocket) -> Optional[User]:
+    """Resolve the signed-in user for a socket, or None. For handlers without a db dependency."""
+    token = extract_ws_token(websocket)
+    if not token:
+        return None
+    db = SessionLocal()
+    try:
+        return authenticate_ws_user(token, db)
+    finally:
+        db.close()
 
 
 async def get_current_user(request: Request, db: Session = Depends(get_db)):

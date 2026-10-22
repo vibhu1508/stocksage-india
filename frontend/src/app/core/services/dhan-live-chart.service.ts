@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { AuthService } from './auth.service';
 
 export type ChartTimeframe = '1' | '5' | '15' | '25' | '60' | 'D';
 
@@ -84,7 +85,7 @@ export class DhanLiveChartService {
   private readonly apiUrl = `${import.meta.env.NG_APP_BACKEND}/api/market/dhan/chart`;
   private readonly backendUrl = `${import.meta.env.NG_APP_BACKEND}`;
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private auth: AuthService) {}
 
   getBootstrap(req: DhanChartRequest): Observable<DhanChartBootstrapResponse> {
     return this.http.get<DhanChartBootstrapResponse>(`${this.apiUrl}/bootstrap`, {
@@ -194,6 +195,7 @@ export class DhanLiveChartService {
     const wsProtocol = backend.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = new URL(`${wsProtocol}//${backend.host}/api/market/dhan/chart/ws`);
 
+    url.searchParams.set('token', this.auth.getToken() ?? '');
     url.searchParams.set('symbol', req.symbol.trim().toUpperCase());
     url.searchParams.set('timeframe', req.timeframe);
 

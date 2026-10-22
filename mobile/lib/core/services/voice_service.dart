@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../../config/api_config.dart';
+import 'api_service.dart';
 
 /// Voice I/O for the assistant.
 ///
@@ -128,6 +129,7 @@ class VoiceService extends ChangeNotifier {
 
   Future<String> _upload(File file) async {
     final req = http.MultipartRequest('POST', Uri.parse(ApiConfig.chatTranscribe));
+    req.headers['Authorization'] = 'Bearer ${await ApiService.getToken() ?? ''}';
     req.files.add(await http.MultipartFile.fromPath('audio', file.path, filename: 'clip.m4a'));
     final streamed = await req.send().timeout(const Duration(seconds: 60));
     if (streamed.statusCode != 200) return '';

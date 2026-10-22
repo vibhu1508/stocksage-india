@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
+import { AuthService } from './auth.service';
 
 /**
  * Voice I/O for the assistant.
@@ -23,6 +24,8 @@ export class VoiceService {
   private audioCtx?: AudioContext;
   private analyser?: AnalyserNode;
   private meterRaf?: number;
+
+  constructor(private auth: AuthService) {}
 
   get sttSupported(): boolean {
     return (
@@ -175,7 +178,11 @@ export class VoiceService {
   private async upload(blob: Blob): Promise<string> {
     const form = new FormData();
     form.append('audio', blob, 'clip.webm');
-    const resp = await fetch(`${this.backend}/api/chat/transcribe`, { method: 'POST', body: form });
+    const resp = await fetch(`${this.backend}/api/chat/transcribe`, {
+      method: 'POST',
+      body: form,
+      headers: { Authorization: `Bearer ${this.auth.getToken() ?? ''}` },
+    });
     if (!resp.ok) {
       // 503 = voice disabled on this server (e.g. not enough RAM for the model).
       let detail = '';

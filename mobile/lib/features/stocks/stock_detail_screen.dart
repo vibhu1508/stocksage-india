@@ -612,7 +612,7 @@ class _StockDetailScreenState extends State<StockDetailScreen> with SingleTicker
     }
 
     try {
-      final uri = DhanChartService.chartWebSocketUri(
+      final uri = await DhanChartService.chartWebSocketUri(
         symbol: _symbol,
         timeframe: _resolvedTimeframe,
         securityId: identity.securityId,

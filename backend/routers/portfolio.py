@@ -8,12 +8,10 @@ from sqlalchemy.orm import Session
 from typing import Optional, Literal, Any, cast
 import asyncio
 import time
-import hashlib
-from datetime import timezone
 
 from database import get_db
-from models import PortfolioHolding, User, UserSession
-from routers.auth import get_current_user, verify_token
+from models import PortfolioHolding, User
+from routers.auth import authenticate_ws_user, extract_ws_token, get_current_user
 from routers import strategy_builder as strategy_builder_router
 
 router = APIRouter()
@@ -317,56 +315,6 @@ async def _build_holdings_live_payload(db: Session, current_user: User) -> dict:
     }
 
 
-def _extract_ws_token(websocket: WebSocket) -> Optional[str]:
-    token = str(websocket.query_params.get("token", "")).strip()
-    if token:
-        return token
-
-    auth_header = str(websocket.headers.get("authorization", "")).strip()
-    if auth_header.lower().startswith("bearer "):
-        return auth_header[7:].strip()
-
-    return None
-
-
-def _authenticate_ws_user(token: str, db: Session) -> Optional[User]:
-    payload = verify_token(token)
-    if not payload:
-        return None
-
-    user_id = payload.get("sub")
-    if not user_id:
-        return None
-
-    token_hash = hashlib.sha256(token.encode()).hexdigest()
-    session = (
-        db.query(UserSession)
-        .filter(UserSession.token_hash == token_hash, UserSession.is_valid == True)
-        .first()
-    )
-    if not session:
-        return None
-
-    expires_at = session.expires_at
-    if expires_at and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at and expires_at <= time_now_utc():
-        session.is_valid = False
-        db.commit()
-        return None
-
-    user = db.query(User).filter(User.id == int(user_id)).first()
-    if not user or not user.is_active:
-        return None
-
-    return user
-
-
-def time_now_utc():
-    from datetime import datetime
-    return datetime.now(timezone.utc)
-
-
 def _get_lot_size(symbol: str) -> int:
     symbol_upper = symbol.upper().strip()
     if not symbol_upper:
@@ -542,13 +490,13 @@ async def get_holdings_live(
 async def holdings_live_ws(websocket: WebSocket, db: Session = Depends(get_db)):
     await websocket.accept()
 
-    token = _extract_ws_token(websocket)
+    token = extract_ws_token(websocket)
     if not token:
         await websocket.send_json({"event": "error", "detail": "Authentication token is required"})
         await websocket.close(code=1008)
         return
 
-    current_user = _authenticate_ws_user(token, db)
+    current_user = authenticate_ws_user(token, db)
     if not current_user:
         await websocket.send_json({"event": "error", "detail": "Unauthorized"})
         await websocket.close(code=1008)

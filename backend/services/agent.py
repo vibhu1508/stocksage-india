@@ -3,10 +3,10 @@ StockSage AI agent loop — two-model design.
 
 Router (llama-3.1-8b, native function-calling): reliably decides which tools to
 call and gathers real data. We discard its prose.
-Writer (sarvam-m): given the conversation + the gathered data, writes the final
-answer in the user's language (English / Hindi / Hinglish) with the guardrails
-(no financial advice) and the respectful "aap" tone. sarvam has the best Indian-
-language quality but can't call tools — so it never has to.
+Writer (NIM_MODEL, nemotron-super-49b by default): given the conversation + the
+gathered data, writes the final answer in the user's language (English / Hindi /
+Hinglish) with the guardrails (no financial advice) and the respectful "aap" tone.
+It never calls tools.
 """
 
 import json
@@ -256,6 +256,36 @@ async def _gather_tool_data(client, history: List[Dict], user_id=None) -> AsyncG
     yield {"_data": collected}
 
 
+WRITER_DATA_BUDGET = 6000
+
+
+def _writer_data(tool_data: List[Dict], budget: int = WRITER_DATA_BUDGET) -> str:
+    """Serialize tool results for the writer without ever cutting the JSON mid-structure.
+    Article text is shed first, so the numbers (prices, % changes, index trend) survive."""
+    data = json.loads(json.dumps(tool_data, default=str))
+    news_lists = [
+        r["result"].get(key) or []
+        for r in data if isinstance(r.get("result"), dict)
+        for key in ("news", "recent_news")
+    ]
+    for items in news_lists:
+        for item in items:
+            item.pop("link", None)  # long redirect URLs; the writer cites source + date
+    text = json.dumps(data)
+    if len(text) > budget:
+        for items in news_lists:
+            for item in items:
+                item.pop("snippet", None)
+        text = json.dumps(data)
+    if len(text) > budget:
+        for r in data:
+            res = r.get("result")
+            if isinstance(res, dict) and isinstance(res.get("content"), str):
+                res["content"] = res["content"][: max(500, budget // 2)] + "…"
+        text = json.dumps(data)
+    return text
+
+
 async def run_agent_stream(history: List[Dict], user_id=None) -> AsyncGenerator[Dict, None]:
     """Run one assistant turn. `history` is the running conversation (incl. the latest
     user message); the final assistant answer is appended in place. Yields WS events."""
@@ -292,7 +322,7 @@ async def run_agent_stream(history: List[Dict], user_id=None) -> AsyncGenerator[
             if writer_messages[i]["role"] == "user":
                 writer_messages[i]["content"] = (
                     f"{writer_messages[i]['content']}\n\n"
-                    f"[real live data fetched for this question]:\n{json.dumps(tool_data)[:3800]}\n"
+                    f"[real live data fetched for this question]:\n{_writer_data(tool_data)}\n"
                     "Use ONLY this real data for any figures."
                 )
                 break

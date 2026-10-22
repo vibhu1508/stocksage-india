@@ -62,6 +62,11 @@ export class AiChatService {
     this.push({ role: 'user', text: trimmed });
     this.push({ role: 'assistant', text: '', streaming: true, tool: null });
 
+    if (!this.auth.getToken()) {
+      this.finishWithError('Please sign in to use StockSage AI.');
+      return;
+    }
+
     try {
       const ws = await this.ensureSocket();
       ws.send(JSON.stringify({ message: trimmed }));

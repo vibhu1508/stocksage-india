@@ -10,6 +10,7 @@ import asyncio
 import csv
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -23,7 +24,7 @@ import websockets
 from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from routers.auth import get_current_user
+from routers.auth import authenticate_websocket, get_current_user
 from models import User
 from utils.market_utils import IST, get_latest_market_date, is_market_holiday
 from services.redis_store import (
@@ -37,6 +38,10 @@ from services.redis_store import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+# Route-level (not a handler parameter), so internal callers like agent_tools and
+# the chart socket can still call these handlers as plain functions.
+SIGNED_IN = [Depends(get_current_user)]
 
 DHAN_BASE_URL = "https://api.dhan.co/v2"
 RATE_LIMIT_PER_MINUTE = int(os.getenv("DHAN_RATE_LIMIT_PER_MINUTE", "60"))
@@ -288,6 +293,10 @@ ALLOWED_WARM_ENDPOINTS = {
     "options": {"/optionchain", "/optionchain/expirylist"},
     "history": {"/charts/historical", "/charts/intraday", "/charts/rollingoption"},
 }
+
+
+STREAM_BUCKETS = {"quote", "options", "history", "broadcast"}
+MAX_STREAM_CHANNELS = 20
 
 
 def _stream_channel(bucket: str) -> str:
@@ -1360,35 +1369,35 @@ async def _read_last_tick(identity: Dict[str, str], timeframe: str) -> Optional[
     return None
 
 
-@router.get("/status")
+@router.get("/status", dependencies=SIGNED_IN)
 async def dhan_status():
     configured = bool(os.getenv("DHAN_ACCESS_TOKEN")) and bool(os.getenv("DHAN_CLIENT_ID"))
     redis_ok = await ping_redis()
     return {"configured": configured, "redis_connected": redis_ok}
 
 
-@router.post("/quote/ltp")
+@router.post("/quote/ltp", dependencies=SIGNED_IN)
 async def dhan_ltp_quote(
     payload: SecuritiesRequest,
 ):
     return await _cached_dhan_post("/marketfeed/ltp", payload.securities, "quote")
 
 
-@router.post("/quote/ohlc")
+@router.post("/quote/ohlc", dependencies=SIGNED_IN)
 async def dhan_ohlc_quote(
     payload: SecuritiesRequest,
 ):
     return await _cached_dhan_post("/marketfeed/ohlc", payload.securities, "quote")
 
 
-@router.post("/quote/full")
+@router.post("/quote/full", dependencies=SIGNED_IN)
 async def dhan_full_quote(
     payload: SecuritiesRequest,
 ):
     return await _cached_dhan_post("/marketfeed/quote", payload.securities, "quote")
 
 
-@router.get("/quote/depth")
+@router.get("/quote/depth", dependencies=SIGNED_IN)
 async def dhan_market_depth(
     symbol: str = Query(...),
     limit: int = Query(20, ge=1, le=200),
@@ -1439,35 +1448,35 @@ async def dhan_market_depth(
     }
 
 
-@router.post("/historical/daily")
+@router.post("/historical/daily", dependencies=SIGNED_IN)
 async def dhan_historical_daily(
     payload: HistoricalDailyRequest,
 ):
     return await _cached_dhan_post("/charts/historical", payload.model_dump(), "history")
 
 
-@router.post("/historical/intraday")
+@router.post("/historical/intraday", dependencies=SIGNED_IN)
 async def dhan_historical_intraday(
     payload: HistoricalIntradayRequest,
 ):
     return await _cached_dhan_post("/charts/intraday", payload.model_dump(), "history")
 
 
-@router.post("/options/chain")
+@router.post("/options/chain", dependencies=SIGNED_IN)
 async def dhan_option_chain(
     payload: OptionChainRequest,
 ):
     return await _cached_dhan_post("/optionchain", payload.model_dump(), "options")
 
 
-@router.post("/options/expiry-list")
+@router.post("/options/expiry-list", dependencies=SIGNED_IN)
 async def dhan_expiry_list(
     payload: ExpiryListRequest,
 ):
     return await _cached_dhan_post("/optionchain/expirylist", payload.model_dump(), "options")
 
 
-@router.post("/options/expired-rolling")
+@router.post("/options/expired-rolling", dependencies=SIGNED_IN)
 async def dhan_expired_rolling_options(
     payload: ExpiredOptionsRequest,
 ):
@@ -1507,7 +1516,7 @@ async def _fetch_last_available_session(
     return [], None
 
 
-@router.get("/chart/bootstrap")
+@router.get("/chart/bootstrap", dependencies=SIGNED_IN)
 async def dhan_chart_bootstrap(
     symbol: str = Query(...),
     timeframe: str = Query("5"),
@@ -1587,7 +1596,7 @@ async def dhan_chart_bootstrap(
     }
 
 
-@router.get("/chart/history")
+@router.get("/chart/history", dependencies=SIGNED_IN)
 async def dhan_chart_history(
     symbol: str = Query(...),
     timeframe: str = Query("5"),
@@ -1669,7 +1678,7 @@ async def dhan_chart_history(
     }
 
 
-@router.get("/chart/latest")
+@router.get("/chart/latest", dependencies=SIGNED_IN)
 async def dhan_chart_latest(
     symbol: str = Query(...),
     timeframe: str = Query("5"),
@@ -1732,7 +1741,12 @@ async def dhan_chart_latest(
 async def dhan_chart_ws(websocket: WebSocket):
     await websocket.accept()
 
-    symbol = str(websocket.query_params.get("symbol", "")).strip().upper()
+    if not authenticate_websocket(websocket):
+        await websocket.send_json({"event": "error", "detail": "Unauthorized"})
+        await websocket.close(code=1008)
+        return
+
+    symbol =str(websocket.query_params.get("symbol", "")).strip().upper()
     timeframe = str(websocket.query_params.get("timeframe", "5")).strip().upper()
     security_id = websocket.query_params.get("securityId")
     exchange_segment = websocket.query_params.get("exchangeSegment")
@@ -1823,12 +1837,14 @@ async def dhan_chart_ws(websocket: WebSocket):
                 failures = 0
             except HTTPException as exc:
                 failures += 1
+                # Provider errors stay in the logs; the client only learns the data is delayed.
+                logger.warning("chart ws tick failed for %s/%s: %s", symbol, timeframe, exc.detail)
                 await websocket.send_json(
                     {
                         "event": "stream_warning",
                         "symbol": symbol,
                         "timeframe": timeframe,
-                        "detail": exc.detail,
+                        "detail": "Live data is delayed. Retrying.",
                         "failures": failures,
                     }
                 )
@@ -1923,12 +1939,16 @@ async def market_stream_ws(websocket: WebSocket):
     channels = []
     for raw in requested.split(","):
         name = raw.strip()
-        if not name:
-            continue
-        channels.append(_stream_channel(name))
+        if name in STREAM_BUCKETS or re.fullmatch(r"chart:[a-z0-9&_.-]{1,30}:[0-9a-z]{1,3}", name):
+            channels.append(_stream_channel(name))
 
-    channels = list(dict.fromkeys(channels))
+    channels = list(dict.fromkeys(channels))[:MAX_STREAM_CHANNELS]
     await websocket.accept()
+
+    if not authenticate_websocket(websocket):
+        await websocket.send_json({"error": "Unauthorized"})
+        await websocket.close(code=1008)
+        return
 
     if not channels:
         await websocket.send_json({"error": "No channels requested"})

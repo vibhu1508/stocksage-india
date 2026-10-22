@@ -86,8 +86,7 @@ app.add_middleware(
 
 # Session middleware for OAuth (required by Authlib)
 from starlette.middleware.sessions import SessionMiddleware
-secret_key = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
-app.add_middleware(SessionMiddleware, secret_key=secret_key)
+app.add_middleware(SessionMiddleware, secret_key=auth.SECRET_KEY)
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])

@@ -35,7 +35,7 @@ HEADERS = {
 # --- NSE Session Manager ---
 class NSESession:
     def __init__(self):
-        self.client = httpx.AsyncClient(headers=HEADERS, timeout=15.0, verify=False, follow_redirects=True)
+        self.client = httpx.AsyncClient(headers=HEADERS, timeout=15.0, follow_redirects=True)
         self.last_init = None
 
     async def ensure_session(self):

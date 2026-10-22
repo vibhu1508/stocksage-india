@@ -437,7 +437,7 @@ def _match_news(items: list, reference: Optional[str]):
 
 async def _elaborate_news(user_id: Optional[int], reference: Optional[str] = None) -> Dict[str, Any]:
     """Fetch the FULL text of one previously-listed news item and return it."""
-    items = _LAST_NEWS.get(user_id) or _LAST_NEWS.get(None) or []
+    items = _LAST_NEWS.get(user_id) or []
     if not items:
         return {"error": "no news has been shown yet", "hint": "fetch news first, then elaborate"}
     item = _match_news(items, reference)

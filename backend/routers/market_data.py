@@ -101,7 +101,7 @@ async def get_market_session_status():
             "timestamp": ist_now.isoformat(),
         }
 
-    async with httpx.AsyncClient(timeout=6.0, verify=False) as client:
+    async with httpx.AsyncClient(timeout=6.0) as client:
         market_status = await fetch_market_status(client)
 
     normalized = str(market_status or "").strip().lower()
@@ -130,7 +130,7 @@ async def get_live_market_data():
         "time_minutes": ist_now.hour * 60 + ist_now.minute,
     }
 
-    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         # Fetch real market status from NSE
         market_status = await fetch_market_status(client)
 
@@ -241,7 +241,7 @@ async def get_indices():
     ist_now = get_ist_now()
     results = []
 
-    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         market_status = await fetch_market_status(client)
 
         # ── BSE SENSEX ──
@@ -309,7 +309,7 @@ async def get_indices():
 async def get_top_stocks():
     """Get top 10 gainers from NSE"""
     try:
-        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 "https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getTopTenStock",
                 headers={
@@ -340,7 +340,7 @@ async def get_top_stocks():
 async def get_top_losers():
     """Get top 10 losers from NSE NIFTY"""
     try:
-        async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 "https://www.nseindia.com/api/live-analysis-variations?index=loosers",
                 headers={
