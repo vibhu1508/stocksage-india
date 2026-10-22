@@ -169,6 +169,66 @@
     }
   </section>
 
+  @if (technicals; as t) {
+  <section class="ta-card" aria-labelledby="ta-title">
+    <div class="ta-head">
+      <div>
+        <h2 id="ta-title">Trend &amp; Momentum</h2>
+        <p class="ta-basis">From daily closes · today uses the live price</p>
+      </div>
+      <span class="ta-signal" [class]="'ta-signal ' + (t.signal === 'N/A' ? 'na' : t.signal.toLowerCase())">
+        {{ t.signal === 'N/A' ? 'Not enough data' : t.signal }}
+      </span>
+    </div>
+    <p class="ta-summary">{{ t.summary }}</p>
+
+    <div class="ta-grid">
+      <div class="ta-block">
+        <h3>Price vs moving averages</h3>
+        <ul class="ta-averages">
+          @for (a of t.averages; track a.days) {
+          <li>
+            <span class="ta-label">{{ a.days }}-day average</span>
+            <span class="ta-value">{{ a.value == null ? '—' : (a.value | number:'1.2-2') }}</span>
+            <span class="ta-bar" aria-hidden="true">
+              <span class="ta-fill" [class.up]="(a.gapPct ?? 0) >= 0" [class.down]="(a.gapPct ?? 0) < 0" [style.width.%]="a.barPct"></span>
+            </span>
+            @if (a.gapPct == null) {
+            <span class="ta-gap muted">Needs {{ a.days }} sessions</span>
+            } @else {
+            <span class="ta-gap" [class.up]="a.gapPct >= 0" [class.down]="a.gapPct < 0">
+              {{ (a.gapPct >= 0 ? a.gapPct : -a.gapPct) | number:'1.1-1' }}% {{ a.gapPct >= 0 ? 'above' : 'below' }}
+            </span>
+            }
+          </li>
+          }
+        </ul>
+        <p class="ta-note">Bars show how far the price is above (green) or below (red) each average.</p>
+      </div>
+
+      <div class="ta-block">
+        <h3>Momentum · last 10 sessions</h3>
+        @if (t.momentum == null) {
+        <p class="ta-note">Needs at least 11 sessions of history.</p>
+        } @else {
+        <p class="ta-momentum" [class.up]="t.momentum >= 0" [class.down]="t.momentum < 0">
+          <span class="ta-mom-value">{{ t.momentum >= 0 ? '▲ +' : '▼ ' }}{{ t.momentum | number:'1.2-2' }}</span>
+          <span class="ta-mom-pct">({{ t.momentum >= 0 ? '+' : '' }}{{ t.momentumPct | number:'1.2-2' }}%)</span>
+        </p>
+        <svg class="ta-spark" [class.up]="t.momentum >= 0" [class.down]="t.momentum < 0" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
+          <path [attr.d]="t.sparkPath"></path>
+        </svg>
+        <p class="ta-note">Change in price over the last 10 trading sessions.</p>
+        }
+      </div>
+    </div>
+  </section>
+  } @else if (indicatorsLoading) {
+  <section class="ta-card">
+    <p class="chart-state">Loading trend and momentum…</p>
+  </section>
+  }
+
   <section class="chart-card">
     <div class="chart-header">
       <h2>Market Depth</h2>

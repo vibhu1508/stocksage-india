@@ -624,6 +624,186 @@
   font-weight: 700;
 }
 
+// Trend & Momentum panel. Theme tokens, so it needs no separate dark-mode rules.
+.ta-card {
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.9rem;
+  padding: 1.1rem 1.2rem;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+
+.ta-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ta-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.ta-basis {
+  margin: 0.2rem 0 0;
+  font-size: 0.78rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.ta-signal {
+  flex-shrink: 0;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 800;
+  border: 1px solid currentColor;
+}
+
+.ta-signal.bullish { color: #16a34a; background: rgb(22 163 74 / 0.12); }
+.ta-signal.bearish { color: #dc2626; background: rgb(220 38 38 / 0.12); }
+.ta-signal.mixed { color: #d97706; background: rgb(217 119 6 / 0.12); }
+.ta-signal.na { color: hsl(var(--muted-foreground)); background: hsl(var(--muted)); }
+
+.ta-summary {
+  margin: 0.8rem 0 1rem;
+  font-size: 0.98rem;
+  line-height: 1.5;
+}
+
+.ta-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.ta-block {
+  padding: 0.9rem 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  background: hsl(var(--background));
+}
+
+.ta-block h3 {
+  margin: 0 0 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.ta-averages {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ta-averages li {
+  display: grid;
+  grid-template-columns: 8.5rem 6.5rem minmax(4rem, 1fr) 7.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.92rem;
+}
+
+.ta-label { color: hsl(var(--muted-foreground)); }
+.ta-value { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.ta-gap { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.ta-gap.muted { font-weight: 500; color: hsl(var(--muted-foreground)); }
+
+// A diverging bar: centre line = the average; fill runs right when price is above, left when below.
+.ta-bar {
+  position: relative;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+}
+
+.ta-bar::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -0.2rem;
+  bottom: -0.2rem;
+  width: 2px;
+  background: hsl(var(--muted-foreground) / 0.6);
+}
+
+.ta-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+}
+
+.ta-fill.up { left: 50%; background: #16a34a; }
+.ta-fill.down { right: 50%; background: #dc2626; }
+
+.ta-gap.up, .ta-momentum.up { color: #16a34a; }
+.ta-gap.down, .ta-momentum.down { color: #dc2626; }
+
+.ta-momentum {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.ta-mom-value {
+  font-size: 1.6rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ta-mom-pct {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.ta-spark {
+  display: block;
+  width: 100%;
+  height: 3.2rem;
+  margin: 0.6rem 0 0.2rem;
+}
+
+.ta-spark path {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.ta-spark.up path { stroke: #16a34a; }
+.ta-spark.down path { stroke: #dc2626; }
+
+.ta-note {
+  margin: 0.7rem 0 0;
+  font-size: 0.78rem;
+  color: hsl(var(--muted-foreground));
+}
+
+@media (max-width: 900px) {
+  .ta-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 560px) {
+  .ta-head { flex-direction: column; }
+  .ta-averages li {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: 'label value' 'bar bar' 'gap gap';
+    row-gap: 0.35rem;
+  }
+  .ta-label { grid-area: label; }
+  .ta-value { grid-area: value; }
+  .ta-bar { grid-area: bar; }
+  .ta-gap { grid-area: gap; text-align: left; }
+}
+
 .ann-list {
   display: grid;
   gap: 0.65rem;

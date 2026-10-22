@@ -38,12 +38,23 @@ import {
 import { LiveQuote, MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
 import { FlashDirective } from '../../shared/directives/flash.directive';
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
+import { TrendSignal, momentum, movingAverage, trendSignal } from '../../core/utils/moving-averages';
 
 const toCandle = (c: StreamCandle): CandlestickData => ({
   time: c[0] as UTCTimestamp, open: c[1], high: c[2], low: c[3], close: c[4],
 });
 
 type ChartDisplayType = 'candlestick' | 'line' | 'bar' | 'area' | 'baseline';
+
+interface Technicals {
+  signal: TrendSignal;
+  summary: string;
+  /** gapPct: how far price is above (+) or below (-) the average; barPct: half-bar width, 0-50. */
+  averages: Array<{ days: number; value: number | null; gapPct: number | null; barPct: number }>;
+  momentum: number | null;
+  momentumPct: number | null;
+  sparkPath: string;
+}
 
 @Component({
   selector: 'app-stock-detail',
@@ -116,6 +127,8 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   private resizeObserver: ResizeObserver | null = null;
   private liveSub: Subscription | null = null;
   private chartLoadSub: Subscription | null = null;
+  private indicatorSub: Subscription | null = null;
+  indicatorsLoading = false;
   /** Live last price and day change from the Dhan feed; drives the header and the day stats. */
   liveQuote: LiveQuote | null = null;
   private quoteSub: Subscription | null = null;
@@ -222,6 +235,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.loadAnnouncements();
       this.loadYearwiseData();
       this.reloadLiveChart();
+      this.loadIndicatorCandles();
       this.loadMarketDepth(20);
     });
   }
@@ -235,6 +249,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     this.quoteSub?.unsubscribe();
     this.themeSub?.unsubscribe();
     this.stopLiveUpdates();
+    this.indicatorSub?.unsubscribe();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     if (this.chartApi) {
@@ -526,11 +541,6 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     const trade = this.quote?.tradeInfo || {};
     const price = this.quote?.priceInfo || {};
     const security = this.quote?.securityInfo || {};
-    const candles = this.getIndicatorSourceCandles();
-    const ma50 = this.calculateLastMAValue(candles, 50);
-    const ma100 = this.calculateLastMAValue(candles, 100);
-    const ma200 = this.calculateLastMAValue(candles, 200);
-    const momentum10 = this.calculateLastMomentumValue(candles, 10);
 
     return [
       { label: 'Open', value: this.formatNumber(live?.open ?? (trade.open || this.quote?.open)) },
@@ -542,10 +552,6 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       { label: 'Traded Value', value: this.formatIndianNumber(trade.totalTradedValue) },
       { label: '52W High', value: this.formatNumber(price.weekHighLow?.max) },
       { label: '52W Low', value: this.formatNumber(price.weekHighLow?.min) },
-      { label: 'MA 50', value: this.formatNumber(ma50), raw: ma50 },
-      { label: 'MA 100', value: this.formatNumber(ma100), raw: ma100 },
-      { label: 'MA 200', value: this.formatNumber(ma200), raw: ma200 },
-      { label: 'Momentum (10)', value: this.formatSignedNumber(momentum10), raw: momentum10 },
       { label: 'Face Value', value: this.formatNumber(security.faceValue || trade.faceValue) },
       { label: 'P/E', value: this.formatNumber(security.pdSymbolPe || security.pdSectorPe) },
       { label: 'Industry', value: security.basicIndustry || security.industryInfo || '--' },
@@ -816,39 +822,85 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  /** Trend and momentum from daily closes, the same maths as the screener. */
+  get technicals(): Technicals | null {
+    const closes = this.getIndicatorSourceCandles().map((c) => Number(c.close));
+    if (closes.length < 2) return null;
+    const close = closes[closes.length - 1];
+    const raw = [50, 100, 200].map((days) => {
+      const value = movingAverage(closes, days);
+      return { days, value, gapPct: value ? ((close - value) / value) * 100 : null };
+    });
+    const widest = Math.max(1, ...raw.map((a) => Math.abs(a.gapPct ?? 0)));
+    const averages = raw.map((a) => ({ ...a, barPct: a.gapPct == null ? 0 : (Math.abs(a.gapPct) / widest) * 50 }));
+    const signal = trendSignal(close, raw[0].value, raw[1].value, raw[2].value);
+    const mom = momentum(closes, 10);
+    return {
+      signal,
+      summary: this.trendSummary(signal, raw),
+      averages,
+      momentum: mom,
+      momentumPct: mom == null ? null : (mom / (close - mom)) * 100,
+      sparkPath: this.sparkPath(closes.slice(-11)),
+    };
+  }
+
+  private trendSummary(signal: TrendSignal, averages: Array<{ days: number; gapPct: number | null }>): string {
+    if (signal === 'Bullish') return 'Price is above its 50, 100 and 200-day averages, and they are stacked upward: a clear uptrend.';
+    if (signal === 'Bearish') return 'Price is below its 50, 100 and 200-day averages, and they are stacked downward: a clear downtrend.';
+    if (signal === 'N/A') return 'Fewer than 200 sessions of history, so the full trend check is not available yet.';
+    const days = (list: number[]) => list.join(' and ');
+    const above = averages.filter((a) => (a.gapPct ?? 0) >= 0).map((a) => a.days);
+    const below = averages.filter((a) => (a.gapPct ?? 0) < 0).map((a) => a.days);
+    if (!below.length) return 'Price is above all three averages, but they are not stacked in order yet, so the uptrend is not confirmed.';
+    if (!above.length) return 'Price is below all three averages, but they are not stacked in order yet, so the downtrend is not confirmed.';
+    return `Price is above its ${days(above)}-day and below its ${days(below)}-day average, so there is no clear trend.`;
+  }
+
+  /** SVG path for the last few closes in a 100 x 30 box. */
+  private sparkPath(closes: number[]): string {
+    const lo = Math.min(...closes);
+    const span = Math.max(...closes) - lo || 1;
+    return closes
+      .map((c, i) => `${i ? 'L' : 'M'}${((i / (closes.length - 1)) * 100).toFixed(1)},${(28 - ((c - lo) / span) * 26).toFixed(1)}`)
+      .join(' ');
+  }
+
+  /** Daily candles for the indicators, shared with the 1D chart through the candle cache. */
+  private loadIndicatorCandles(): void {
+    const symbol = this.symbol;
+    const cacheKey = this.getChartCacheKey(symbol, 'D');
+    this.indicatorSub?.unsubscribe();
+    if (this.candleCache.get(cacheKey)?.candles.length) return;
+    this.indicatorsLoading = true;
+    this.indicatorSub = this.dhanLiveChartService.getBootstrap({ ...this.getLiveChartRequest(), timeframe: 'D' }).subscribe({
+      next: (res) => {
+        if (symbol !== this.symbol) return;
+        const candles = this.normalizeCandles(res.candles || []);
+        this.candleCache.set(cacheKey, {
+          candles,
+          resolvedTimeframe: 'D',
+          lastPrice: candles.length > 0 ? candles[candles.length - 1].close : 0,
+          updatedAt: new Date(),
+        });
+        this.indicatorsLoading = false;
+      },
+      error: () => (this.indicatorsLoading = false),
+    });
+  }
+
+  /** Daily closes only (never intraday bars); today's bar closes at the live price. */
   private getIndicatorSourceCandles(): CandlestickData[] {
-    const dailyCache = this.candleCache.get(this.getChartCacheKey(this.symbol, 'D'));
-    if (dailyCache && Array.isArray(dailyCache.candles) && dailyCache.candles.length > 0) {
-      const daily = dailyCache.candles;
-      const last = daily[daily.length - 1];
-      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      const lastDay = new Date(Number(last.time) * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-      // Today's daily bar closes at the live price, so MAs and momentum move with the market.
-      if (this.liveQuote && lastDay === today) {
-        return [...daily.slice(0, -1), { ...last, close: this.liveQuote.price }];
-      }
-      return daily;
+    const daily = this.candleCache.get(this.getChartCacheKey(this.symbol, 'D'))?.candles ?? [];
+    if (!daily.length) return [];
+    const last = daily[daily.length - 1];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const lastDay = new Date(Number(last.time) * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    // Today's daily bar closes at the live price, so the averages and momentum move with the market.
+    if (this.liveQuote && lastDay === today) {
+      return [...daily.slice(0, -1), { ...last, close: this.liveQuote.price }];
     }
-    return this.liveCandles;
-  }
-
-  private calculateLastMAValue(candles: CandlestickData[], length: number): number | null {
-    if (!Array.isArray(candles) || candles.length < length) return null;
-    let sum = 0;
-    for (let i = candles.length - length; i < candles.length; i++) {
-      const close = Number(candles[i].close);
-      if (!Number.isFinite(close)) return null;
-      sum += close;
-    }
-    return sum / length;
-  }
-
-  private calculateLastMomentumValue(candles: CandlestickData[], length: number): number | null {
-    if (!Array.isArray(candles) || candles.length <= length) return null;
-    const latest = Number(candles[candles.length - 1].close);
-    const previous = Number(candles[candles.length - 1 - length].close);
-    if (!Number.isFinite(latest) || !Number.isFinite(previous)) return null;
-    return latest - previous;
+    return daily;
   }
 
   private applyCandlesToChart(candles: CandlestickData[], resolved: ChartTimeframe, fit = true): void {
@@ -1127,12 +1179,6 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     return n.toLocaleString('en-IN');
   }
 
-  private formatSignedNumber(value: unknown): string {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return '--';
-    const abs = Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
-    return `${n >= 0 ? '+' : '-'}${abs}`;
-  }
 
   private resolveChartErrorMessage(err: HttpErrorResponse): string {
     const detail = err?.error?.detail;

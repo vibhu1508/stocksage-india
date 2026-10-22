@@ -8,6 +8,7 @@ import { LucideAngularModule } from 'lucide-angular';
 import { DhanChartCandle, DhanLiveChartService } from '../../core/services/dhan-live-chart.service';
 import { StockService, SymbolSearchResult } from '../../core/services/stock.service';
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
+import { TrendSignal, momentum, movingAverage, trendSignal } from '../../core/utils/moving-averages';
 
 interface MAScreenerRow {
   symbol: string;
@@ -16,7 +17,7 @@ interface MAScreenerRow {
   ma100: number | null;
   ma200: number | null;
   momentum10: number | null;
-  signal: 'Bullish' | 'Bearish' | 'Mixed' | 'N/A';
+  signal: TrendSignal;
   error?: string;
 }
 
@@ -174,51 +175,12 @@ export class MovingAveragesComponent implements OnInit, OnDestroy {
   }
 
   private buildRow(symbol: string, candles: DhanChartCandle[]): MAScreenerRow {
-    const close = candles.length ? Number(candles[candles.length - 1].close) : null;
-    const ma50 = this.calculateMA(candles, 50);
-    const ma100 = this.calculateMA(candles, 100);
-    const ma200 = this.calculateMA(candles, 200);
-    const momentum10 = this.calculateMomentum(candles, 10);
-
-    let signal: MAScreenerRow['signal'] = 'N/A';
-    if (this.isFiniteNumber(close) && this.isFiniteNumber(ma50) && this.isFiniteNumber(ma100) && this.isFiniteNumber(ma200)) {
-      if (close > ma50 && ma50 > ma100 && ma100 > ma200) {
-        signal = 'Bullish';
-      } else if (close < ma50 && ma50 < ma100 && ma100 < ma200) {
-        signal = 'Bearish';
-      } else {
-        signal = 'Mixed';
-      }
-    }
-
-    return {
-      symbol,
-      close,
-      ma50,
-      ma100,
-      ma200,
-      momentum10,
-      signal,
-    };
-  }
-
-  private calculateMA(candles: DhanChartCandle[], length: number): number | null {
-    if (candles.length < length) return null;
-    let sum = 0;
-    for (let i = candles.length - length; i < candles.length; i++) {
-      const close = Number(candles[i].close);
-      if (!Number.isFinite(close)) return null;
-      sum += close;
-    }
-    return sum / length;
-  }
-
-  private calculateMomentum(candles: DhanChartCandle[], period: number): number | null {
-    if (candles.length <= period) return null;
-    const latest = Number(candles[candles.length - 1].close);
-    const prior = Number(candles[candles.length - 1 - period].close);
-    if (!Number.isFinite(latest) || !Number.isFinite(prior)) return null;
-    return latest - prior;
+    const closes = candles.map((c) => Number(c.close));
+    const close = closes.length ? closes[closes.length - 1] : null;
+    const ma50 = movingAverage(closes, 50);
+    const ma100 = movingAverage(closes, 100);
+    const ma200 = movingAverage(closes, 200);
+    return { symbol, close, ma50, ma100, ma200, momentum10: momentum(closes, 10), signal: trendSignal(close, ma50, ma100, ma200) };
   }
 
   private isFiniteNumber(value: unknown): value is number {
