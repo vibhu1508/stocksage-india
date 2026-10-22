@@ -18,7 +18,7 @@ import os
 import random
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 from urllib.parse import parse_qs, urlsplit
 
@@ -47,6 +47,7 @@ SUBSCRIBE_CHANNEL = "market:subscribe"
 FEED_SEEN = "market:feed_seen"  # last time ingest received any packet
 FEED_ALIVE_SECONDS = 30
 QUOTE_MIN_GAP_SECONDS = 0.25
+DAILY_INSTRUMENT = {"IDX_I": "INDEX", "NSE_EQ": "EQUITY", "BSE_EQ": "EQUITY"}  # Dhan daily-candle types
 
 
 class FatalFeedError(RuntimeError):
@@ -92,8 +93,17 @@ async def feed_quote(redis, ident: dict) -> Optional[dict]:
     return {"price": float(quote["price"]), "ts": int(quote["ts"])}
 
 
-def _today() -> str:
-    return datetime.now(IST).date().isoformat()
+def session_date(ltt: float) -> str:
+    """The trading session a quote belongs to: the IST date of its last trade, so nights,
+    weekends and holidays still count as the last session."""
+    return datetime.fromtimestamp(ltt, IST).date().isoformat()
+
+
+def prev_close_from_daily(data: dict, session: str) -> Optional[float]:
+    """Close of the last daily candle before `session`. Dhan's quote API and feed can't be
+    used after hours: both then report the session's own close, giving 0% for everything."""
+    before = [(t, c) for t, c in zip(data.get("timestamp") or [], data.get("close") or []) if c and session_date(t) < session]
+    return float(max(before)[1]) if before else None
 
 
 def quote_message(key: str, q: dict) -> dict:
@@ -155,7 +165,8 @@ class Ingest:
         self.builders: dict[str, CandleBuilder] = {}
         self.seq: dict[str, int] = defaultdict(int)
         self.prev_close: dict[str, float] = {}  # for day change; Dhan's quote packets don't carry it
-        self.prev_close_pending: set[str] = set()
+        self.prev_close_session: dict[str, str] = {}  # session date each prev close belongs to
+        self.prev_close_pending: dict[str, str] = {}  # security id -> session awaiting its prev close
         self.ws = None
 
     async def add(self, sid: str, segment: str) -> None:
@@ -166,11 +177,11 @@ class Ingest:
         this_minute = int(time.time()) // 60 * 60
         # Resume the in-progress minute from seeded history so it isn't restarted.
         self.builders[sid] = CandleBuilder(current=m1[-1] if m1 and m1[-1][0] == this_minute else None)
-        stored = await self.redis.hmget(rkey(f"quote:{sid}"), "prev_close", "prev_close_date")
-        if stored[0] and stored[1] == _today():
-            self.prev_close[sid] = float(stored[0])
-        else:
-            self.prev_close_pending.add(sid)
+        stored = await self.redis.hmget(rkey(f"quote:{sid}"), "prev_close", "prev_close_session")
+        if stored[0] and stored[1]:
+            self.prev_close[sid], self.prev_close_session[sid] = float(stored[0]), stored[1]
+        else:  # untagged values came from the quote API and may be the session's own close
+            await self.redis.hdel(rkey(f"quote:{sid}"), "prev_close", "prev_close_date")
         if self.ws is not None:
             try:
                 for frame in subscribe_frames([(segment, sid)]):
@@ -188,32 +199,38 @@ class Ingest:
                 await self.add(str(req["sid"]), str(req["segment"]))
 
     async def prev_close_loop(self) -> None:
-        """Previous close from Dhan's OHLC API (`ohlc.close`, the official close), batched up to
-        1,000 instruments per call and fetched once per instrument per day."""
-        day = _today()
+        """Previous close for each instrument's session from Dhan's daily candles, one call
+        per instrument per session (the /charts/ gate keeps it within Dhan's rate limit)."""
         while True:
             await asyncio.sleep(2)
-            if _today() != day:  # a new session: every instrument has a new previous close
-                day = _today()
-                self.prev_close_pending.update(self.instruments)
-            if not self.prev_close_pending:
-                continue
-            payload: dict[str, list[int]] = defaultdict(list)
-            for sid in list(self.prev_close_pending)[:1000]:
-                payload[self.instruments[sid]].append(int(sid))
-            try:
-                resp = await dm._cached_dhan_post("/marketfeed/ohlc", dict(payload), "quote")
-            except HTTPException as exc:
-                logger.warning("previous close fetch failed: %s; retrying", exc.detail)
-                await asyncio.sleep(10)
-                continue
-            for rows in ((resp.get("data") or {}).get("data") or {}).values():
-                for sid, row in rows.items():
-                    close = (row.get("ohlc") or {}).get("close")
-                    if close:
-                        self.prev_close[sid] = float(close)
-                        self.prev_close_pending.discard(sid)
-                        await self.redis.hset(rkey(f"quote:{sid}"), mapping={"prev_close": close, "prev_close_date": day})
+            for sid, session in list(self.prev_close_pending.items()):
+                segment = self.instruments.get(sid)
+                if segment not in DAILY_INSTRUMENT:
+                    # shortcut: no day change for F&O/currency/commodity (daily candles need the contract type); add when those stream live
+                    self.prev_close_session[sid] = self.prev_close_pending.pop(sid)  # don't re-queue on every tick
+                    continue
+                day = date.fromisoformat(session)
+                payload = {
+                    "securityId": sid, "exchangeSegment": segment, "instrument": DAILY_INSTRUMENT[segment],
+                    "expiryCode": 0, "oi": False,
+                    "fromDate": (day - timedelta(days=14)).isoformat(), "toDate": (day + timedelta(days=1)).isoformat(),
+                }
+                try:
+                    resp = await dm._cached_dhan_post("/charts/historical", payload, "history")
+                    await asyncio.sleep(1)  # Dhan answers 429 to back-to-back daily-candle calls at 5/s
+                except HTTPException as exc:
+                    logger.warning("previous close fetch failed for %s: %s; retrying", sid, exc.detail)
+                    await asyncio.sleep(10)
+                    break  # the instrument stays pending
+                if self.prev_close_pending.get(sid) != session:
+                    continue  # a newer session began while fetching
+                del self.prev_close_pending[sid]
+                self.prev_close_session[sid] = session
+                close = prev_close_from_daily(resp.get("data") or {}, session)
+                if close is None:  # e.g. listed this session
+                    continue
+                self.prev_close[sid] = close
+                await self.redis.hset(rkey(f"quote:{sid}"), mapping={"prev_close": close, "prev_close_session": session})
 
     async def on_tick(self, tick: dict, t_recv: float) -> None:
         if tick["type"] == "disconnect":
@@ -227,12 +244,19 @@ class Ingest:
         if builder is None:
             return
         self.seq[sid] += 1
+        session = session_date(tick["ltt"])
+        new_session = self.prev_close_session.get(sid) != session and self.prev_close_pending.get(sid) != session
+        if new_session:  # yesterday's prev close would give a wrong change until the new one arrives
+            self.prev_close.pop(sid, None)
+            self.prev_close_pending[sid] = session
         quote = {"price": tick["ltp"], "ts": tick["ltt"], "seq": self.seq[sid]}
         if tick["type"] == "quote":
             quote.update({k: tick[k] for k in ("open", "high", "low", "volume")})
         m1 = None
         async with self.redis.pipeline(transaction=False) as pipe:
             # The last price is always valid (an illiquid stock's last trade may be minutes old)...
+            if new_session:
+                pipe.hdel(rkey(f"quote:{sid}"), "prev_close")
             pipe.hset(rkey(f"quote:{sid}"), mapping=quote)
             # ...but only a fresh trade belongs in a candle; an old one would overwrite history.
             if tick["ltt"] >= t_recv - STALE_TICK_SECONDS:

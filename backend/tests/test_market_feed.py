@@ -2,7 +2,7 @@
 
 import struct
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from market.candles import IST, CandleBuilder, aggregate, bucket_start
 from market.feed import iter_packets, parse_packet, subscribe_frames
@@ -94,6 +94,25 @@ def test_quote_message_day_change():
     assert (msg["change"], msg["pct"], msg["high"]) == (-19.6, -1.62, 1208.0)
     # Before the previous close is fetched, the price still streams without a made-up change.
     assert quote_message("Q:X", {"price": "10", "ts": "1"})["change"] is None
+
+
+def test_prev_close_is_the_close_before_the_session():
+    import os
+    os.environ.setdefault("SECRET_KEY", "test-only-secret")
+    from market.service import prev_close_from_daily, session_date
+
+    # NIFTY daily candles (IST midnight) as Dhan returned them on 22 Oct; 20 Oct was a holiday.
+    day = lambda d: int(datetime(2026, 10, d, tzinfo=IST).timestamp())
+    daily = {"timestamp": [day(16), day(19), day(21)], "close": [23146.15, 22888.95, 22811.35]}
+    assert prev_close_from_daily(daily, "2026-10-22") == 22811.35
+    # Once Dhan adds the session's own candle it must be skipped, or the change reads 0%.
+    with_today = {"timestamp": daily["timestamp"] + [day(22)], "close": daily["close"] + [22687.65]}
+    assert prev_close_from_daily(with_today, "2026-10-22") == 22811.35
+    assert prev_close_from_daily({"timestamp": [day(22)], "close": [1.0]}, "2026-10-22") is None
+    assert prev_close_from_daily({}, "2026-10-22") is None
+    # The session is the IST date of the last trade: 00:30 IST is the next day, 23:59 IST is not.
+    assert session_date(datetime(2026, 10, 22, 19, 0, tzinfo=timezone.utc).timestamp()) == "2026-10-23"
+    assert session_date(datetime(2026, 10, 22, 18, 29, tzinfo=timezone.utc).timestamp()) == "2026-10-22"
 
 
 if __name__ == "__main__":
