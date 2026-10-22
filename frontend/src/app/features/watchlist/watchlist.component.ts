@@ -34,6 +34,7 @@ import {
   depthNote,
 } from '../../core/services/dhan-live-chart.service';
 import { MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
+import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 
 const toCandle = (c: StreamCandle): CandlestickData => ({
   time: c[0] as UTCTimestamp, open: c[1], high: c[2], low: c[3], close: c[4],
@@ -42,7 +43,6 @@ const toCandle = (c: StreamCandle): CandlestickData => ({
 type ChartDisplayType = 'candlestick' | 'line' | 'bar' | 'area' | 'baseline';
 type FocusPanel = 'chart' | 'depth';
 
-import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 @Component({
   selector: 'app-watchlist',
   standalone: true,
@@ -536,7 +536,7 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
       this.liveChartLoading = false;
       this.liveChartSource = 'live';
       this.liveChartError = '';
-      this.liveTransportStatus = msg.market === 'open' ? 'ws' : 'closed';
+      this.liveTransportStatus = msg.source === 'rest' ? 'polling' : msg.market === 'open' ? 'ws' : 'closed';
       return;
     }
 

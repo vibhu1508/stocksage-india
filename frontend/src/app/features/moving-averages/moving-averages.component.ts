@@ -7,6 +7,7 @@ import { LucideAngularModule } from 'lucide-angular';
 
 import { DhanChartCandle, DhanLiveChartService } from '../../core/services/dhan-live-chart.service';
 import { StockService, SymbolSearchResult } from '../../core/services/stock.service';
+import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 
 interface MAScreenerRow {
   symbol: string;
@@ -19,7 +20,6 @@ interface MAScreenerRow {
   error?: string;
 }
 
-import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 @Component({
   selector: 'app-moving-averages',
   standalone: true,

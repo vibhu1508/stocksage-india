@@ -37,6 +37,7 @@ import {
 } from '../../core/services/dhan-live-chart.service';
 import { LiveQuote, MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
 import { FlashDirective } from '../../shared/directives/flash.directive';
+import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 
 const toCandle = (c: StreamCandle): CandlestickData => ({
   time: c[0] as UTCTimestamp, open: c[1], high: c[2], low: c[3], close: c[4],
@@ -44,7 +45,6 @@ const toCandle = (c: StreamCandle): CandlestickData => ({
 
 type ChartDisplayType = 'candlestick' | 'line' | 'bar' | 'area' | 'baseline';
 
-import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 @Component({
   selector: 'app-stock-detail',
   standalone: true,
@@ -1026,8 +1026,13 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.applyCandlesToChart(msg.candles.map(toCandle), this.liveTimeframe, false);
       this.showRecentBars();
       this.liveChartLoading = false;
-      this.liveTransportStatus = msg.market === 'open' ? 'ws' : 'closed';
-      this.sessionNotice = msg.market === 'open' ? '' : 'Market closed · showing the latest sessions';
+      if (msg.source === 'rest') {
+        this.liveTransportStatus = 'polling';
+        this.sessionNotice = 'Live feed unavailable · refreshing every minute';
+      } else {
+        this.liveTransportStatus = msg.market === 'open' ? 'ws' : 'closed';
+        this.sessionNotice = msg.market === 'open' ? '' : 'Market closed · showing the latest sessions';
+      }
       if (msg.last) this.liveChartUpdatedAt = new Date(msg.last.ts * 1000);
       return;
     }

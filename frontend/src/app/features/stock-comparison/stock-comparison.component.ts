@@ -6,8 +6,8 @@ import { StockService, StockComparison, ComparisonItem, SymbolSearchResult } fro
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { LucideAngularModule } from 'lucide-angular';
-
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
+
 @Component({
   selector: 'app-stock-comparison',
   standalone: true,

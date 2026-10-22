@@ -10,8 +10,8 @@ import { StockService, SymbolSearchResult } from '../../../core/services/stock.s
 import { LucideAngularModule } from 'lucide-angular';
 import { Observable, Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
-
 import { CompanyLogoComponent } from '../company-logo/company-logo.component';
+
 @Component({
   selector: 'app-header',
   standalone: true,

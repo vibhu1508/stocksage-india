@@ -1,12 +1,14 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, Subject, filter, firstValueFrom } from 'rxjs';
+import { Observable, Subject, Subscription, filter, firstValueFrom } from 'rxjs';
+
+import { DhanChartBootstrapResponse, DhanLiveChartService } from './dhan-live-chart.service';
 
 /** [open time (UTC epoch s), open, high, low, close, volume] */
 export type StreamCandle = [number, number, number, number, number, number];
 
 export type MarketStreamMessage =
-  | { op: 'snapshot'; key: string; symbol: string; tf: string; candles: StreamCandle[]; last: { price: number; ts: number } | null; market: 'open' | 'closed' }
+  | { op: 'snapshot'; key: string; symbol: string; tf: string; candles: StreamCandle[]; last: { price: number; ts: number } | null; market: 'open' | 'closed'; source?: 'rest' }
   | { op: 'delta'; key: string; seq: number; candle: StreamCandle; last: { price: number; ts: number } }
   | { op: 'error'; key: string; detail: string };
 
@@ -33,6 +35,19 @@ export interface MarketStreamRequest {
   instrument?: string;
 }
 
+const REST_FALLBACK_AFTER_MS = 6000;
+const REST_POLL_MS = 60_000;
+
+function restSnapshot(key: string, req: MarketStreamRequest, res: DhanChartBootstrapResponse): MarketStreamMessage {
+  const candles: StreamCandle[] = (res.candles || []).map((c) => [c.time, c.open, c.high, c.low, c.close, 0]);
+  const last = candles[candles.length - 1];
+  return {
+    op: 'snapshot', key, symbol: req.symbol, tf: req.tf, candles, source: 'rest',
+    last: last ? { price: last[4], ts: last[0] } : null,
+    market: 'closed',  // unknown without the stream; pages show the REST state instead
+  };
+}
+
 /**
  * One socket per tab to the market service (backend/market/service.py), shared by every
  * chart. Each watch() gets a snapshot (about a week of candles) and then live deltas.
@@ -48,14 +63,55 @@ export class MarketStreamService {
   private retryMs = 1000;
   private readonly streams = new Map<string, { sub: Record<string, unknown>; out: Subject<MarketStreamMessage | LiveQuote>; refs: number }>();
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private charts: DhanLiveChartService) {}
 
-  /** Candles for a chart: a snapshot, then deltas for the forming bar. */
+  /**
+   * Candles for a chart: a snapshot, then deltas for the forming bar. If the market service
+   * hasn't answered within a few seconds (down, restarting, unreachable), the same candles are
+   * fetched over REST and re-fetched every minute until the stream takes over, so a chart is
+   * never left empty. Those snapshots carry source: 'rest'.
+   */
   watch(req: MarketStreamRequest): Observable<MarketStreamMessage> {
     const key = `${req.symbol.trim().toUpperCase()}:${req.tf}`;
-    return this.open(key, { op: 'sub', key, ...req }).pipe(
+    const live$ = this.open(key, { op: 'sub', key, ...req }).pipe(
       filter((m): m is MarketStreamMessage => m.op !== 'quote'),
     );
+
+    return new Observable<MarketStreamMessage>((observer) => {
+      let streamAnswered = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let rest: Subscription | undefined;
+
+      const fetchOverRest = () => {
+        rest?.unsubscribe();
+        rest = this.charts.getBootstrap({ ...req, timeframe: req.tf }).subscribe({
+          next: (res) => {
+            if (!streamAnswered) observer.next(restSnapshot(key, req, res));
+          },
+          error: () => {},  // keep the last candles shown; the next poll or the stream retries
+        });
+        timer = setTimeout(fetchOverRest, REST_POLL_MS);
+      };
+      timer = setTimeout(fetchOverRest, REST_FALLBACK_AFTER_MS);
+
+      const sub = live$.subscribe({
+        next: (msg) => {
+          if (!streamAnswered) {
+            streamAnswered = true;
+            clearTimeout(timer);
+            rest?.unsubscribe();
+          }
+          observer.next(msg);
+        },
+        error: (err) => observer.error(err),
+      });
+
+      return () => {
+        sub.unsubscribe();
+        rest?.unsubscribe();
+        clearTimeout(timer);
+      };
+    });
   }
 
   /** Live price and day change for any symbol or index (e.g. 'NIFTY', 'SENSEX', 'RELIANCE'). */
