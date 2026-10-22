@@ -42,10 +42,11 @@ const toCandle = (c: StreamCandle): CandlestickData => ({
 type ChartDisplayType = 'candlestick' | 'line' | 'bar' | 'area' | 'baseline';
 type FocusPanel = 'chart' | 'depth';
 
+import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 @Component({
   selector: 'app-watchlist',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, CompanyLogoComponent],
   templateUrl: './watchlist.component.html',
   styleUrl: './watchlist.component.scss',
 })
@@ -660,11 +661,6 @@ export class WatchlistComponent implements OnInit, AfterViewInit, OnDestroy {
 
   isSelected(symbol: string): boolean {
     return this.selectedSymbol === symbol;
-  }
-
-  symbolBadge(symbol: string): string {
-    const normalized = this.normalizeWatchSymbol(symbol);
-    return normalized ? normalized.charAt(0) : '?';
   }
 
   private getChartCacheKey(symbol: string, timeframe: ChartTimeframe): string {

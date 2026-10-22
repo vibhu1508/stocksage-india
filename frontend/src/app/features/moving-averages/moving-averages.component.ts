@@ -19,10 +19,11 @@ interface MAScreenerRow {
   error?: string;
 }
 
+import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 @Component({
   selector: 'app-moving-averages',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, CompanyLogoComponent],
   templateUrl: './moving-averages.component.html',
   styleUrl: './moving-averages.component.scss',
 })

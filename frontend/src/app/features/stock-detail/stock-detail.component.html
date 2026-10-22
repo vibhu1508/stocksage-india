@@ -16,10 +16,20 @@
 
   @if (!loading && !error) {
   <section class="hero">
-    <div>
-      <p class="symbol-pill">{{ symbol }}</p>
-      <h1>{{ displayName }}</h1>
-      <p class="meta">As on {{ quoteTime }}</p>
+    <div class="hero-id">
+      <app-company-logo [symbol]="symbol" [size]="72"></app-company-logo>
+      <div class="hero-text">
+        <h1>{{ displayName }}</h1>
+        <div class="hero-sub">
+          <span class="symbol-pill">{{ symbol }}</span>
+          @if (industryLabel) {
+          <span class="meta industry" [title]="industryPath">
+            <lucide-icon name="building-2" [size]="16" aria-hidden="true"></lucide-icon>
+            {{ industryLabel }}
+          </span>
+          }
+        </div>
+      </div>
     </div>
     <div class="price-wrap">
       <p class="label">Last Price</p>
@@ -28,6 +38,7 @@
         {{ isPositive ? '+' : '' }}{{ priceChange | number:'1.2-2' }}
         ({{ isPositive ? '+' : '' }}{{ pctChange | number:'1.2-2' }}%)
       </p>
+      <p class="meta as-of">As on {{ quoteTime }}</p>
     </div>
   </section>
 

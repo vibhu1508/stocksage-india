@@ -37,6 +37,45 @@
   flex-wrap: wrap;
 }
 
+// Logo beside a two-line block (name; symbol + time), so the logo spans exactly the text height.
+.hero-id {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.hero-text {
+  min-width: 0;
+}
+
+.hero-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+
+.hero-sub .symbol-pill {
+  padding: 0.25rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+.hero-sub .industry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.price-wrap .as-of {
+  margin: 0.4rem 0 0;
+  font-size: 0.8rem;
+}
+
 .symbol-pill {
   display: inline-block;
   background: hsl(var(--primary));
@@ -49,8 +88,9 @@
 }
 
 .hero h1 {
-  margin: 0.55rem 0 0;
-  font-size: 1.7rem;
+  margin: 0;
+  line-height: 1.15;
+  font-size: clamp(1.45rem, 3.2vw, 2.15rem);  /* long names still fit beside the logo on phones */
   color: #0f172a;
 }
 

@@ -25,9 +25,12 @@
       @if (showSuggestions && suggestions.length > 0) {
       <div class="absolute top-[calc(100%+6px)] left-0 right-0 rounded-md border border-border bg-popover text-popover-foreground shadow-md max-h-72 overflow-y-auto z-50">
         @for (s of suggestions; track s.symbol) {
-        <button type="button" (mousedown)="selectSuggestion(s.symbol)" class="w-full text-left px-3 py-2 border-b border-border/50 last:border-b-0 hover:bg-accent/70 transition-colors">
-          <div class="text-xs font-bold text-primary">{{ s.symbol }}</div>
-          <div class="text-[11px] text-muted-foreground truncate">{{ s.name }}</div>
+        <button type="button" (mousedown)="selectSuggestion(s.symbol)" class="w-full text-left px-3 py-2 border-b border-border/50 last:border-b-0 hover:bg-accent/70 transition-colors flex items-center gap-2.5">
+          <app-company-logo [symbol]="s.symbol" [size]="26"></app-company-logo>
+          <span class="min-w-0">
+            <span class="block text-xs font-bold text-primary">{{ s.symbol }}</span>
+            <span class="block text-[11px] text-muted-foreground truncate">{{ s.name }}</span>
+          </span>
         </button>
         }
       </div>

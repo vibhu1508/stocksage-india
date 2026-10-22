@@ -34,6 +34,7 @@
           <div class="add-suggestions">
             @for (s of watchSuggestions; track s.symbol) {
             <button (mousedown)="selectWatchSuggestion(s.symbol)">
+              <app-company-logo [symbol]="s.symbol" [size]="22"></app-company-logo>
               <span>{{ s.symbol }}</span>
               <small>{{ s.name }}</small>
             </button>
@@ -46,12 +47,12 @@
           }
         </div>
 
-        <p class="selected-hint">Selected: <strong>{{ selectedSymbol }}</strong></p>
+        <p class="selected-hint">Selected: <app-company-logo [symbol]="selectedSymbol" [size]="20"></app-company-logo> <strong>{{ selectedSymbol }}</strong></p>
         <div class="symbol-list">
           @for (symbol of pagedWatchSymbols; track trackBySymbol($index, symbol)) {
           <div class="symbol-row" [class.selected]="isSelected(symbol)" (click)="selectSymbol(symbol, focusPanel)">
             <button class="symbol-btn" type="button">
-              <span class="symbol-logo">{{ symbolBadge(symbol) }}</span>
+              <app-company-logo [symbol]="symbol" [size]="22"></app-company-logo>
               <span>{{ symbol }}</span>
             </button>
             <button class="remove-btn" type="button" (click)="removeWatchSymbol(symbol, $event)">Remove</button>
@@ -72,7 +73,7 @@
           @for (symbol of portfolioSymbols; track trackBySymbol($index, symbol)) {
           <div class="symbol-row" [class.selected]="isSelected(symbol)" (click)="selectSymbol(symbol, focusPanel)">
             <button class="symbol-btn" type="button">
-              <span class="symbol-logo">{{ symbolBadge(symbol) }}</span>
+              <app-company-logo [symbol]="symbol" [size]="22"></app-company-logo>
               <span>{{ symbol }}</span>
             </button>
           </div>

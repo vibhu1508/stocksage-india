@@ -11,6 +11,7 @@
         <lucide-icon name="search" [size]="18" class="picker-icon" aria-hidden="true"></lucide-icon>
         @for (symbol of symbols; track symbol) {
         <span class="chip">
+          <app-company-logo [symbol]="symbol" [size]="18"></app-company-logo>
           {{ symbol }}
           <button type="button" (click)="removeSymbol(symbol)" [attr.aria-label]="'Remove ' + symbol">&times;</button>
         </span>
@@ -45,6 +46,7 @@
           (mouseenter)="activeIndex = i"
           (mousedown)="$event.preventDefault(); addSymbol(s.symbol)"
         >
+          <app-company-logo [symbol]="s.symbol" [size]="24"></app-company-logo>
           <strong>{{ s.symbol }}</strong>
           <span>{{ s.name }}</span>
         </li>

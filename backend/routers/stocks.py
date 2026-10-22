@@ -2,7 +2,7 @@
 Stock Comparison Router - BhavCopy download and stock price comparison
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 from datetime import date, datetime, timedelta
 from typing import Optional, List, Dict, Any, Literal
@@ -17,6 +17,7 @@ import time
 from database import get_db
 from routers.auth import get_current_user
 from models import User
+from services.instruments import get_instruments
 
 router = APIRouter()
 
@@ -285,6 +286,17 @@ async def search_symbols(
         "count": len(results),
         "results": results.to_dict(orient='records')
     }
+
+
+@router.get("/isin-map")
+async def isin_map(response: Response):
+    """{symbol key: ISIN} for every NSE and BSE company and ETF, used to show company logos.
+    Public and cached a day: it is the same for everyone and changes only with listings."""
+    instruments = await get_instruments()
+    if not instruments:
+        raise HTTPException(status_code=503, detail="Company list is not available yet")
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return {key: entry["isin"] for key, entry in instruments.items()}
 
 
 @router.get("/nse-global-search")

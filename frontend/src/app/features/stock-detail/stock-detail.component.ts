@@ -44,10 +44,11 @@ const toCandle = (c: StreamCandle): CandlestickData => ({
 
 type ChartDisplayType = 'candlestick' | 'line' | 'bar' | 'area' | 'baseline';
 
+import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 @Component({
   selector: 'app-stock-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, FlashDirective],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, FlashDirective, CompanyLogoComponent],
   templateUrl: './stock-detail.component.html',
   styleUrl: './stock-detail.component.scss',
 })
@@ -496,6 +497,18 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
 
   get isPositive(): boolean {
     return this.priceChange >= 0;
+  }
+
+  /** NSE's classification, e.g. "Financial Services · Banks" (sector · industry). */
+  get industryLabel(): string {
+    const sec = this.quote?.securityInfo || {};
+    return [...new Set([sec.sector, sec.industryInfo].filter(Boolean))].join(' · ');
+  }
+
+  /** The full NSE path, macro to basic industry, shown on hover. */
+  get industryPath(): string {
+    const sec = this.quote?.securityInfo || {};
+    return [...new Set([sec.macro, sec.sector, sec.industryInfo, sec.basicIndustry].filter(Boolean))].join(' › ');
   }
 
   get quoteTime(): string {

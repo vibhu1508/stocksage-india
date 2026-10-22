@@ -29,6 +29,7 @@
         <div class="absolute top-[calc(100%+4px)] left-0 right-0 rounded-md border border-border bg-popover text-popover-foreground shadow-md outline-none max-h-48 overflow-y-auto">
           @for (suggestion of suggestions; track suggestion.symbol) {
           <div class="relative flex w-full cursor-default select-none items-center rounded-sm py-2 px-3 text-sm outline-none hover:bg-accent hover:text-accent-foreground cursor-pointer border-b border-border/40 last:border-0" (mousedown)="selectSuggestion(suggestion)">
+            <app-company-logo class="mr-2" [symbol]="suggestion.symbol" [size]="24"></app-company-logo>
             <span class="font-semibold text-foreground bg-primary/20 text-primary px-2 py-0.5 rounded-md mr-3 text-xs w-20 text-center">{{ suggestion.symbol }}</span>
             <span class="text-muted-foreground flex-1 truncate">{{ suggestion.name }}</span>
           </div>
