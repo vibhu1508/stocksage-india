@@ -261,6 +261,17 @@ def test_chart_survives_a_history_outage_and_gets_history_when_it_returns():
     asyncio.run(run())
 
 
+def test_only_market_hours_ticks_make_candles():
+    from datetime import datetime, timezone
+    from market.service import in_trading_hours
+
+    assert not in_trading_hours(datetime(2026, 10, 23, 1, 15, tzinfo=timezone.utc).timestamp())  # 06:45 IST
+    assert not in_trading_hours(datetime(2026, 10, 23, 3, 35, tzinfo=timezone.utc).timestamp())  # 09:05 pre-open
+    assert in_trading_hours(datetime(2026, 10, 23, 3, 45, tzinfo=timezone.utc).timestamp())      # 09:15
+    assert in_trading_hours(datetime(2026, 10, 23, 9, 59, tzinfo=timezone.utc).timestamp())      # 15:29
+    assert not in_trading_hours(datetime(2026, 10, 23, 10, 0, tzinfo=timezone.utc).timestamp())  # 15:30
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

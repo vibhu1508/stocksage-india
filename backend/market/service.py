@@ -18,7 +18,7 @@ import os
 import random
 import time
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, time as dtime, timedelta
 from typing import Optional
 from urllib.parse import parse_qs, urlsplit
 
@@ -103,6 +103,13 @@ async def feed_quote(redis, ident: dict) -> Optional[dict]:
     if not (quote.get("ts") and float(quote.get("price") or 0) > 0):
         return None
     return {"price": float(quote["price"]), "ts": int(quote["ts"])}
+
+
+def in_trading_hours(ltt: float) -> bool:
+    """09:15-15:30 IST, the continuous session. Before the open the feed repeats yesterday's close
+    from about 06:45 and sends pre-open prices from 09:00; neither is trading, so neither is charted.
+    shortcut: special sessions (Muhurat trading) fall outside these hours; add their window when needed."""
+    return dtime(9, 15) <= datetime.fromtimestamp(ltt, IST).time() < dtime(15, 30)
 
 
 def session_date(ltt: float) -> str:
@@ -280,8 +287,8 @@ class Ingest:
             if new_session:
                 pipe.hdel(rkey(f"quote:{ikey}"), "prev_close")
             pipe.hset(rkey(f"quote:{ikey}"), mapping=quote)
-            # ...but only a fresh trade belongs in a candle; an old one would overwrite history.
-            if tick["ltt"] >= t_recv - STALE_TICK_SECONDS:
+            # ...but only a fresh trade in market hours belongs in a candle; an old one would overwrite history.
+            if tick["ltt"] >= t_recv - STALE_TICK_SECONDS and in_trading_hours(tick["ltt"]):
                 builder.update(tick["ltt"], tick["ltp"], tick.get("volume"))
                 m1 = builder.current
                 pipe.hset(_m1_key(ikey), str(m1[0]), json.dumps(m1))
