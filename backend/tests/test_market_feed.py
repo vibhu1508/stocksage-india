@@ -183,6 +183,12 @@ def test_same_security_id_in_two_segments_stays_separate():
         assert redis.hashes[rkey("quote:NSE_EQ:13")]["price"] == 5321.5
         assert redis.published == [rkey("tick:IDX_I:13"), rkey("tick:NSE_EQ:13")]
 
+        # After a restart before the open (no ticks), a stored price without a previous close is
+        # queued for one straight away, for the session of its last trade.
+        redis.hashes[rkey("quote:NSE_EQ:2885")] = {"price": "1184.5", "ts": "1792663200"}
+        await ingest.add("NSE_EQ:2885")
+        assert ingest.prev_close_pending["NSE_EQ:2885"] == "2026-10-22"
+
         # A stock with no trade yet arrives as price 0 at midnight (BSE FOCUS, 22 Oct); it is not a price.
         await ingest.add("BSE_EQ:543312")
         await ingest.on_tick({"type": "quote", "segment": "BSE_EQ", "security_id": "543312", "ltp": 0.0, "ltt": 1792607400,

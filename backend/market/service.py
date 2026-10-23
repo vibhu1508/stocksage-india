@@ -190,11 +190,13 @@ class Ingest:
         this_minute = int(time.time()) // 60 * 60
         # Resume the in-progress minute from seeded history so it isn't restarted.
         self.builders[ikey] = CandleBuilder(current=m1[-1] if m1 and m1[-1][0] == this_minute else None)
-        stored = await self.redis.hmget(rkey(f"quote:{ikey}"), "prev_close", "prev_close_session")
+        stored = await self.redis.hmget(rkey(f"quote:{ikey}"), "prev_close", "prev_close_session", "ts")
         if stored[0] and stored[1]:
             self.prev_close[ikey], self.prev_close_session[ikey] = float(stored[0]), stored[1]
         else:  # untagged values came from the quote API and may be the session's own close
             await self.redis.hdel(rkey(f"quote:{ikey}"), "prev_close", "prev_close_date")
+            if stored[2]:  # a known last trade: work out its previous close now, not on the next tick
+                self.prev_close_pending[ikey] = session_date(float(stored[2]))
         if self.ws is not None:
             try:
                 for frame in subscribe_frames([(segment, sid)]):
