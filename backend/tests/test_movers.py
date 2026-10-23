@@ -105,7 +105,6 @@ def test_rank_groups_uses_members_prices_and_drops_flat_stocks():
     groups = md.rank_groups(rows, [ROW("TCS", 2.0, 2500)], {"NIFTY": {"TCS", "INFY", "FLAT"}})
     assert [r["symbol"] for r in groups["NIFTY"]["gainers"]] == ["TCS"]
     assert [r["symbol"] for r in groups["NIFTY"]["losers"]] == ["INFY"]
-    assert [r["symbol"] for r in groups["SecLwr20"]["gainers"]] == ["PENNY"]
     assert [r["symbol"] for r in groups["allSec"]["gainers"]] == ["PENNY", "TCS"]
     assert groups["FOSec"]["gainers"][0]["symbol"] == "TCS" and groups["BANKNIFTY"]["gainers"] == []
 
@@ -114,6 +113,45 @@ def test_downsample_keeps_the_last_price():
     line = [float(i) for i in range(400)]
     small = md.downsample(line, 60)
     assert len(small) == 60 and small[0] == 0.0 and small[-1] == 399.0
+
+
+def test_all_nifty_uses_the_right_previous_close_in_every_phase():
+    from routers import dhan_market as dm
+    from routers import stocks
+
+    async def members(csv):
+        return [{"symbol": "TCS"}, {"symbol": "INFY"}]
+
+    async def instruments():
+        return {"TCS": {"nse": {"sid": "11536"}}, "INFY": {"nse": {"sid": "1594"}}}
+
+    async def quote(endpoint, payload):
+        return {"data": {"NSE_EQ": {
+            "11536": {"last_price": 2530, "ohlc": {"close": 2506.9}, "volume": 10, "last_trade_time": "23/10/2026 15:59:04"},
+            "1594": {"last_price": 1153.8, "ohlc": {"close": 1153.35}, "volume": 5, "last_trade_time": "23/10/2026 15:59:30"},
+        }}}
+
+    bhav = {"day": "2026-10-22", "prices": {"TCS": (2506.9, 2529.0), "INFY": (1153.35, 1160.0)}}
+
+    async def latest_bhav():
+        return bhav["day"], bhav["prices"]
+
+    stocks._index_members, stocks._latest_bhav_prices = members, latest_bhav
+    md.get_instruments, dm._dhan_post = instruments, quote
+
+    def pct(symbol, result):
+        rows = result["groups"]["TotalMarket"]["gainers"] + result["groups"]["TotalMarket"]["losers"]
+        return next(r["pct_change"] for r in rows if r["symbol"] == symbol)
+
+    md.get_ist_now = lambda: datetime(2026, 10, 23, 17, 0, tzinfo=IST)  # after hours, before the bhavcopy
+    after_close = asyncio.run(md._dhan_total_market())
+    assert pct("TCS", after_close) == 0.92 and after_close["asOf"].startswith("2026-10-23T15:59:30")  # as NSE shows
+
+    bhav.update(day="2026-10-23", prices={"TCS": (2530.0, 2506.9), "INFY": (1153.8, 1153.35)})
+    assert pct("TCS", asyncio.run(md._dhan_total_market())) == 0.92  # the evening bhavcopy is today's
+
+    md.get_ist_now = lambda: datetime(2026, 10, 23, 11, 0, tzinfo=IST)  # in session: Dhan's base price
+    assert pct("TCS", asyncio.run(md._dhan_total_market())) == 0.92
 
 
 if __name__ == "__main__":

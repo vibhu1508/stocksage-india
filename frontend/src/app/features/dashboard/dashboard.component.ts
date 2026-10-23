@@ -95,6 +95,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.moversReq = this.marketService.getMovers(group).pipe(finalize(() => (this.moversLoading = false))).subscribe({
       next: (res) => {
         if (group !== this.moversGroup) return;
+        if (res.group !== group) {  // a retired group was remembered: the server sent NIFTY 50
+          this.moversGroup = res.group;
+          try { localStorage.setItem(MOVERS_GROUP_KEY, res.group); } catch { /* private mode */ }
+        }
         this.topGainers = res.gainers;
         this.topLosers = res.losers;
         const firstLoad = this.moversGroups.length < res.groups.length;

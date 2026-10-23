@@ -2,7 +2,7 @@
 Market Data Router - Live SENSEX & NIFTY data proxy
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 import asyncio
 import httpx
 import logging
@@ -347,12 +347,15 @@ async def get_indices():
 
 NSE_HEADERS = {**BROWSER_HEADERS, "Referer": "https://www.nseindia.com/", "Origin": "https://www.nseindia.com"}
 NSE_API = "https://www.nseindia.com/api"
-# NSE's own movers groups (live-analysis-variations), in its order; NIFTY 50 is NSE's default.
+# Movers groups. All but TotalMarket are NSE's own lists (live-analysis-variations); NIFTY 50 is
+# NSE's default. TotalMarket ("All NIFTY", the ~750-stock Nifty Total Market) is ranked by us.
 MOVER_GROUPS = {
-    "NIFTY": "NIFTY 50", "BANKNIFTY": "Bank Nifty", "NIFTYNEXT50": "NIFTY Next 50", "FOSec": "F&O stocks",
-    "SecGtr20": "Above ₹20", "SecLwr20": "Below ₹20", "allSec": "All stocks",
+    "NIFTY": "NIFTY 50", "BANKNIFTY": "Bank Nifty", "NIFTYNEXT50": "NIFTY Next 50", "TotalMarket": "All NIFTY",
+    "FOSec": "F&O stocks", "allSec": "All stocks",
 }
-_GROUP_INDEX_CSV = {"NIFTY": "nifty50", "BANKNIFTY": "niftybank", "NIFTYNEXT50": "niftynext50"}
+# Member lists (nsearchives ind_<name>list.csv); Total Market's file name has an extra underscore.
+_GROUP_INDEX_CSV = {"NIFTY": "nifty50", "BANKNIFTY": "niftybank", "NIFTYNEXT50": "niftynext50",
+                    "TotalMarket": "niftytotalmarket_"}
 MOVERS_FRESH_LIVE = 20        # pre-open, session and closing: everyone shares one NSE call every 20 seconds
 MOVERS_FRESH_CLOSED = 1800    # after NSE's 16:00 final values the lists don't change
 MOVERS_KEEP = 3 * 86400       # the last good copy outlives an NSE outage
@@ -395,8 +398,7 @@ def rank_groups(rows: list[dict], fno: Optional[list[dict]], members: dict[str, 
     """Top 10 gainers and losers of every NSE group from one market-wide list (pre-open, bhavcopy).
     Index groups use their member lists; F&O uses its own list, when there is one."""
     pools = {g: [r for r in rows if r["symbol"] in members.get(g, ())] for g in _GROUP_INDEX_CSV}
-    pools.update(FOSec=fno or [], SecGtr20=[r for r in rows if r["price"] > 20],
-                 SecLwr20=[r for r in rows if r["price"] < 20], allSec=rows)
+    pools.update(FOSec=fno or [], allSec=rows)
     out = {}
     for group, pool in pools.items():
         ranked = sorted(pool, key=lambda r: r["pct_change"], reverse=True)
@@ -453,6 +455,48 @@ async def _nse_pre_open() -> dict:
     return {"asOf": stamp.isoformat(), "groups": rank_groups(lists["ALL"], lists["FO"], await _group_members())}
 
 
+async def _dhan_total_market() -> dict:
+    """All NIFTY (Nifty Total Market) ranked from one batched Dhan quote for every member.
+    After the close Dhan's last price is NSE's official closing price. The previous close is Dhan's
+    during the session (the exchange's base price); otherwise the bhavcopy's: the latest one's close,
+    or its previous close once it is the quote's own session."""
+    from routers import dhan_market as dm
+    from routers.stocks import _index_members, _latest_bhav_prices
+
+    members = await _index_members(_GROUP_INDEX_CSV["TotalMarket"])
+    instruments = await get_instruments()
+    sids = {m["symbol"]: e["nse"]["sid"] for m in members if (e := instruments.get(m["symbol"])) and e["nse"]}
+    async with dm._dhan_slot("/marketfeed/quote"):
+        resp = await dm._dhan_post("/marketfeed/quote", {"NSE_EQ": [int(sid) for sid in sids.values()]})
+    quotes = (resp.get("data") or {}).get("NSE_EQ") or {}
+    bhav_day, bhav = await _latest_bhav_prices()
+    live = market_phase() == "open"
+    rows, latest = [], None
+    for symbol, sid in sids.items():
+        q = quotes.get(str(sid)) or {}
+        price, traded = float(q.get("last_price") or 0), _dhan_time(q.get("last_trade_time"))
+        if price <= 0 or not traded:
+            continue
+        close, prev = bhav.get(symbol, (None, None))
+        base = float((q.get("ohlc") or {}).get("close") or 0) if live else 0.0
+        base = base or (prev if bhav_day == traded.date().isoformat() else close)
+        if not base:
+            continue
+        rows.append(_mover(symbol, price, base, (price - base) / base * 100, q.get("volume")))
+        latest = max(latest, traded) if latest else traded
+    if not rows:
+        raise ValueError("no Total Market quotes")
+    return {"asOf": latest.isoformat(), "groups": {"TotalMarket": rank_groups(rows, None, {"TotalMarket": set(sids)})["TotalMarket"]}}
+
+
+def _dhan_time(text: Optional[str]) -> Optional[datetime]:
+    """Dhan's "23/10/2026 15:59:04" (IST) as an aware datetime."""
+    try:
+        return datetime.strptime(str(text), "%d/%m/%Y %H:%M:%S").replace(tzinfo=IST)
+    except ValueError:
+        return None
+
+
 async def _bhavcopy_snapshot() -> dict:
     """Last resort: the latest session's movers from the NSE bhavcopy (no F&O group)."""
     from routers.stocks import _latest_bhav_prices
@@ -494,10 +538,12 @@ async def market_movers(group: str = "NIFTY") -> dict:
     - closed: the last session's final lists, as NSE published them.
     A list from an earlier session is always labelled closed, whatever the clock says."""
     phase = market_phase()
+    fresh = MOVERS_FRESH_CLOSED if phase == "closed" else MOVERS_FRESH_LIVE
     snapshot = await _shared("movers:preopen", _nse_pre_open, MOVERS_FRESH_LIVE) if phase == "pre_open" else None
+    if snapshot is None and group == "TotalMarket" and phase != "pre_open":
+        snapshot = await _shared("movers:totalmarket", _dhan_total_market, fresh)
     if snapshot is None:
-        snapshot = await _shared("movers:variations", _nse_variations,
-                                 MOVERS_FRESH_CLOSED if phase == "closed" else MOVERS_FRESH_LIVE)
+        snapshot = await _shared("movers:variations", _nse_variations, fresh)
         if phase == "pre_open":
             phase = "closed"  # no pre-open list: yesterday's final lists, labelled as such
     if snapshot is None:
@@ -524,9 +570,10 @@ async def _with_names(items: list[dict]) -> list[dict]:
 
 @router.get("/movers")
 async def get_movers(group: str = "NIFTY"):
-    """Top gainers and losers for one NSE group, with the market phase (see market_movers)."""
+    """Top gainers and losers for one group, with the market phase (see market_movers). An unknown or
+    retired group (such as a remembered "Above ₹20") gets NIFTY 50, and says so in `group`."""
     if group not in MOVER_GROUPS:
-        raise HTTPException(status_code=404, detail="Unknown movers group")
+        group = "NIFTY"
     movers = await market_movers(group)
     return {**movers, "groups": [{"key": k, "label": v} for k, v in MOVER_GROUPS.items()],
             "gainers": await _with_names(movers["gainers"]), "losers": await _with_names(movers["losers"])}
