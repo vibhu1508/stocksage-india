@@ -1,26 +1,68 @@
-import { Component, Input, OnChanges } from '@angular/core';
+import { Component, Input, OnChanges, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 
+import { LiveQuote, MarketStreamService } from '../../../core/services/market-stream.service';
 import { IndexAnalysis, IndexConstituent } from '../../../core/services/stock.service';
 import { CompanyLogoComponent } from '../../../shared/components/company-logo/company-logo.component';
+import { FlashDirective } from '../../../shared/directives/flash.directive';
 import { ShortNamePipe } from '../../../shared/pipes/short-name.pipe';
+
+const LIVE_ROWS = 50;  // live quotes for at most this many rows at once (each one is a feed subscription)
 
 /** The index-only sections of the stock page: overview, breadth, movers, industries, constituents. */
 @Component({
   selector: 'app-index-overview',
   standalone: true,
-  imports: [CommonModule, RouterLink, CompanyLogoComponent, ShortNamePipe],
+  imports: [CommonModule, RouterLink, CompanyLogoComponent, ShortNamePipe, FlashDirective],
   templateUrl: './index-overview.component.html',
   styleUrl: './index-overview.component.scss',
 })
-export class IndexOverviewComponent implements OnChanges {
+export class IndexOverviewComponent implements OnChanges, OnDestroy {
   @Input({ required: true }) data!: IndexAnalysis;
 
+  private stream = inject(MarketStreamService);
   showAllConstituents = false;
+  live: Record<string, LiveQuote> = {};
+  private liveSubs = new Map<string, Subscription>();
 
   ngOnChanges(): void {
     this.showAllConstituents = false;  // a different index starts on its top 10 again
+    this.syncLive();
+  }
+
+  ngOnDestroy(): void {
+    this.liveSubs.forEach((s) => s.unsubscribe());
+  }
+
+  toggleAll(): void {
+    this.showAllConstituents = !this.showAllConstituents;
+    this.syncLive();
+  }
+
+  /** A member's last price, previous close and day change: live while quotes arrive, else the bhavcopy's. */
+  move(r: IndexConstituent): { price: number | null; prev: number | null; pct: number | null } {
+    const q = this.live[r.symbol];
+    if (q?.prev_close) return { price: q.price, prev: q.prev_close, pct: q.pct };
+    const prev = r.close != null && r.change != null ? r.close - r.change : null;
+    return { price: r.close, prev, pct: r.pct };
+  }
+
+  /** Watch live quotes for the rows on screen only. */
+  private syncLive(): void {
+    const want = new Set(this.visibleConstituents.slice(0, LIVE_ROWS).map((r) => r.symbol));
+    for (const [symbol, sub] of this.liveSubs) {
+      if (!want.has(symbol)) {
+        sub.unsubscribe();
+        this.liveSubs.delete(symbol);
+      }
+    }
+    for (const symbol of want) {
+      if (!this.liveSubs.has(symbol)) {
+        this.liveSubs.set(symbol, this.stream.watchQuote(symbol).subscribe((q) => (this.live[symbol] = q)));
+      }
+    }
   }
 
   /** 1W / 1M / 1Y index returns from NSE's overview (1W is worked out from the week-ago level). */

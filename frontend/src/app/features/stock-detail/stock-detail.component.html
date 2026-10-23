@@ -197,14 +197,14 @@
           @for (a of t.averages; track a.days) {
           <li>
             <span class="ta-label">{{ a.days }}-day average</span>
-            <span class="ta-value">{{ a.value == null ? '—' : (a.value | number:'1.2-2') }}</span>
+            <span class="ta-value" [appFlash]="a.value">{{ a.value == null ? '—' : (a.value | number:'1.2-2') }}</span>
             <span class="ta-bar" aria-hidden="true">
               <span class="ta-fill" [class.up]="(a.gapPct ?? 0) >= 0" [class.down]="(a.gapPct ?? 0) < 0" [style.width.%]="a.barPct"></span>
             </span>
             @if (a.gapPct == null) {
             <span class="ta-gap muted">Needs {{ a.days }} sessions</span>
             } @else {
-            <span class="ta-gap" [class.up]="a.gapPct >= 0" [class.down]="a.gapPct < 0">
+            <span class="ta-gap" [class.up]="a.gapPct >= 0" [class.down]="a.gapPct < 0" [appFlash]="a.gapPct">
               {{ (a.gapPct >= 0 ? a.gapPct : -a.gapPct) | number:'1.1-1' }}% {{ a.gapPct >= 0 ? 'above' : 'below' }}
             </span>
             }
@@ -220,7 +220,7 @@
         <p class="ta-note">Needs at least 11 sessions of history.</p>
         } @else {
         <p class="ta-momentum" [class.up]="t.momentum >= 0" [class.down]="t.momentum < 0">
-          <span class="ta-mom-value">{{ t.momentum >= 0 ? '▲ +' : '▼ ' }}{{ t.momentum | number:'1.2-2' }}</span>
+          <span class="ta-mom-value" [appFlash]="t.momentum">{{ t.momentum >= 0 ? '▲ +' : '▼ ' }}{{ t.momentum | number:'1.2-2' }}</span>
           <span class="ta-mom-pct">({{ t.momentum >= 0 ? '+' : '' }}{{ t.momentumPct | number:'1.2-2' }}%)</span>
         </p>
         <svg class="ta-spark" [class.up]="t.momentum >= 0" [class.down]="t.momentum < 0" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">

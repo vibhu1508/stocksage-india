@@ -219,6 +219,7 @@
   .ix-movers, .ix-returns { grid-template-columns: minmax(0, 1fr); }
   .ix-industries li { grid-template-columns: 1fr auto; }
   .ix-ind-bar { grid-column: 1 / -1; grid-row: 2; }
-  .ix-table th:nth-child(2), .ix-table td:nth-child(2) { display: none; }
+  .ix-table th:nth-child(2), .ix-table td:nth-child(2),
+  .ix-table th:nth-child(4), .ix-table td:nth-child(4) { display: none; }
 }
 

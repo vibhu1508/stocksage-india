@@ -2,7 +2,7 @@
   <div class="ix-head">
     <h2 id="ix-title">Index Overview</h2>
     @if (data.constituents?.asOf) {
-    <p class="ix-basis">Constituent moves as of the {{ data.constituents!.asOf | date:'d MMM' }} close</p>
+    <p class="ix-basis">Movers and industries as of the {{ data.constituents!.asOf | date:'d MMM' }} close · constituent prices are live</p>
     }
   </div>
 
@@ -87,7 +87,7 @@
   <div class="ix-block">
     <h3>Constituents ({{ c.rows.length }})</h3>
     <table class="ix-table">
-      <thead><tr><th>Company</th><th>Industry</th><th>Close</th><th>Change</th></tr></thead>
+      <thead><tr><th>Company</th><th>Industry</th><th>Last price</th><th>Prev. close</th><th>Change</th></tr></thead>
       <tbody>
         @for (r of visibleConstituents; track r.symbol) {
         <tr>
@@ -98,16 +98,18 @@
             </a>
           </td>
           <td class="muted">{{ r.industry }}</td>
-          <td>{{ r.close == null ? '--' : (r.close | number:'1.2-2') }}</td>
-          <td class="ix-pct" [class.up]="(r.pct ?? 0) > 0" [class.down]="(r.pct ?? 0) < 0">
-            {{ r.pct == null ? '--' : ((r.pct > 0 ? '+' : '') + (r.pct | number:'1.2-2') + '%') }}
+          @let m = move(r);
+          <td><span [appFlash]="m.price">{{ m.price == null ? '--' : (m.price | number:'1.2-2') }}</span></td>
+          <td class="muted">{{ m.prev == null ? '--' : (m.prev | number:'1.2-2') }}</td>
+          <td class="ix-pct" [class.up]="(m.pct ?? 0) > 0" [class.down]="(m.pct ?? 0) < 0">
+            <span [appFlash]="m.pct">{{ m.pct == null ? '--' : ((m.pct > 0 ? '+' : '') + (m.pct | number:'1.2-2') + '%') }}</span>
           </td>
         </tr>
         }
       </tbody>
     </table>
     @if (c.rows.length > 10) {
-    <button type="button" class="ix-more" (click)="showAllConstituents = !showAllConstituents">
+    <button type="button" class="ix-more" (click)="toggleAll()">
       {{ showAllConstituents ? 'Show top 10' : 'Show all ' + c.rows.length }}
     </button>
     }

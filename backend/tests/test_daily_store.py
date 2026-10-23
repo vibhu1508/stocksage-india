@@ -47,7 +47,7 @@ def test_read_path_checks_once_per_session_and_survives_outages():
     calls = []
     replies = []
 
-    async def fake_fetch(identity, start, end):
+    async def fake_fetch(identity, start, end, fallback=True):
         calls.append(start)
         reply = replies.pop(0)
         if isinstance(reply, Exception):
@@ -105,9 +105,10 @@ def test_topup_plan_adds_continuous_days_and_rechecks_the_rest():
 
 
 def test_fallback_history_is_replaced_once_the_provider_answers():
-    replies = []
+    replies, fallbacks = [], []
 
-    async def fake_fetch(identity, start, end):
+    async def fake_fetch(identity, start, end, fallback=True):
+        fallbacks.append(fallback)
         rows, src = replies.pop(0)
         if isinstance(rows, Exception):
             raise rows
@@ -131,6 +132,7 @@ def test_fallback_history_is_replaced_once_the_provider_answers():
         rows = asyncio.run(ds.daily_rows(infy))
         assert len(rows) == 301 and not ds.is_partial("NSE_EQ", "1594")
         assert ds.checked("NSE_EQ", "1594")[0] == session.isoformat()
+        assert fallbacks == [True, False]  # the retry asked only the provider, not NSE's history again
     finally:
         ds.fetch = original
 

@@ -193,8 +193,9 @@ def _listing(entry: dict, seg: str) -> Optional[dict]:
     return entry["nse"] if seg == "NSE_EQ" else entry["bse"]
 
 
-async def fetch(identity: dict, start: date, end: date) -> tuple[list[tuple], str]:
-    """Daily candles from the first source that answers: (rows, source). Raises if none does."""
+async def fetch(identity: dict, start: date, end: date, fallback: bool = True) -> tuple[list[tuple], str]:
+    """Daily candles from the first source that answers: (rows, source). Raises if none does.
+    fallback=False asks only the provider (both listings), not NSE's recent history."""
     from routers.stocks import INDEX_CONSTITUENTS
     from services.instruments import get_indices, get_instruments
 
@@ -220,7 +221,7 @@ async def fetch(identity: dict, start: date, end: date) -> tuple[list[tuple], st
             except HTTPException as exc:
                 errors.append(f"dhan {other_seg}: {exc.detail}")
 
-    if index_name or (entry and entry["nse"]):
+    if fallback and (index_name or (entry and entry["nse"])):
         nse_start = max(start, end - timedelta(days=NSE_FALLBACK_DAYS))
         try:
             rows = await _from_nse(entry, index_name, nse_start, end)
@@ -253,8 +254,10 @@ async def daily_rows(identity: dict) -> list[tuple]:
         if stored and ((done == session and not partial) or time.time() - asked_at < RETRY_SECONDS):
             return stored
         start = HISTORY_START if not stored or partial else datetime.fromtimestamp(stored[-1][0], IST).date() - timedelta(days=10)
+        # Fallback rows that already reach the session gain nothing from NSE again: ask only the provider.
+        current = bool(stored) and stored[-1][0] >= day_stamp(date.fromisoformat(session))
         try:
-            rows, src = await fetch(identity, start, date.fromisoformat(session))
+            rows, src = await fetch(identity, start, date.fromisoformat(session), fallback=not (partial and current))
         except HTTPException:
             if stored:
                 await asyncio.to_thread(mark_checked, seg, sid, done)  # wait RETRY_SECONDS before asking again
