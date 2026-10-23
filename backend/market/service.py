@@ -34,7 +34,7 @@ from market.feed import FATAL_DISCONNECT, feed_url, iter_packets, parse_packet, 
 from routers import dhan_market as dm  # noqa: E402
 from services import daily_store  # noqa: E402
 from services.redis_store import _key as rkey, get_redis_client  # noqa: E402
-from utils.market_utils import is_market_holiday  # noqa: E402
+from utils.market_utils import get_latest_market_date, is_market_holiday  # noqa: E402
 
 logger = logging.getLogger("market.service")
 
@@ -190,13 +190,17 @@ class Ingest:
         this_minute = int(time.time()) // 60 * 60
         # Resume the in-progress minute from seeded history so it isn't restarted.
         self.builders[ikey] = CandleBuilder(current=m1[-1] if m1 and m1[-1][0] == this_minute else None)
-        stored = await self.redis.hmget(rkey(f"quote:{ikey}"), "prev_close", "prev_close_session", "ts")
+        stored = await self.redis.hmget(rkey(f"quote:{ikey}"), "prev_close", "prev_close_session", "ts", "price")
+        last_trade = float(stored[2] or 0)
+        if stored[2] and last_trade <= 0:  # written by a pre-open placeholder before those were dropped
+            await self.redis.hdel(rkey(f"quote:{ikey}"), "ts")
         if stored[0] and stored[1]:
             self.prev_close[ikey], self.prev_close_session[ikey] = float(stored[0]), stored[1]
         else:  # untagged values came from the quote API and may be the session's own close
             await self.redis.hdel(rkey(f"quote:{ikey}"), "prev_close", "prev_close_date")
-            if stored[2]:  # a known last trade: work out its previous close now, not on the next tick
-                self.prev_close_pending[ikey] = session_date(float(stored[2]))
+            if stored[3]:  # a known last price: work out its previous close now, not on the next tick
+                self.prev_close_pending[ikey] = session_date(last_trade) if last_trade > 0 else \
+                    get_latest_market_date(datetime.now(IST)).isoformat()
         if self.ws is not None:
             try:
                 for frame in subscribe_frames([(segment, sid)]):
@@ -252,7 +256,9 @@ class Ingest:
             raise ConnectionError(f"feed disconnect code {tick['reason']}")
         if tick["type"] not in ("quote", "ticker"):
             return
-        if tick["ltp"] <= 0:  # Dhan's placeholder for a stock with no trade yet (ltt at midnight), not a price
+        # Placeholders, not trades: price 0 for a stock that hasn't traded, or (before the open) a real
+        # last price with last-trade time 0, which would stamp the quote 1970 and break the session.
+        if tick["ltp"] <= 0 or tick["ltt"] <= 0:
             return
         ikey = instrument_key(tick["segment"], tick["security_id"])
         builder = self.builders.get(ikey)

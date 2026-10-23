@@ -189,6 +189,17 @@ def test_same_security_id_in_two_segments_stays_separate():
         await ingest.add("NSE_EQ:2885")
         assert ingest.prev_close_pending["NSE_EQ:2885"] == "2026-10-22"
 
+        # Before the open Dhan sends a real last price with last-trade time 0 (TCS, 23 Oct 08:35 IST).
+        # It is dropped, and a quote it stamped 1970 earlier is repaired at startup.
+        redis.hashes[rkey("quote:NSE_EQ:11536")] = {"price": "2506.9", "ts": "-19800"}
+        await ingest.add("NSE_EQ:11536")
+        assert "ts" not in redis.hashes[rkey("quote:NSE_EQ:11536")]
+        assert ingest.prev_close_pending["NSE_EQ:11536"] >= "2026-10-22"  # the latest completed session
+        published = len(redis.published)
+        await ingest.on_tick({"type": "quote", "segment": "NSE_EQ", "security_id": "11536", "ltp": 2506.9, "ltt": -19800,
+                              "open": 0.0, "high": 0.0, "low": 0.0, "volume": 0}, 1792683000)
+        assert len(redis.published) == published and "ts" not in redis.hashes[rkey("quote:NSE_EQ:11536")]
+
         # A stock with no trade yet arrives as price 0 at midnight (BSE FOCUS, 22 Oct); it is not a price.
         await ingest.add("BSE_EQ:543312")
         await ingest.on_tick({"type": "quote", "segment": "BSE_EQ", "security_id": "543312", "ltp": 0.0, "ltt": 1792607400,
