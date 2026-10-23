@@ -43,6 +43,7 @@ CANDLE_TTL = 9 * 86400
 MAX_SNAPSHOT = 3000
 STALE_TICK_SECONDS = 120  # ignore quotes whose last trade is older: a resend of an old trade, not a new one
 TIMEFRAMES = {"1": 1, "5": 5, "15": 15, "25": 25, "60": 60}
+SEED_RETRY_SECONDS = 120  # the provider rejects history requests for a while most mornings
 INSTRUMENTS = "market:instruments"
 SUBSCRIBE_CHANNEL = "market:subscribe"
 FEED_SEEN = "market:feed_seen"  # last time ingest received any packet
@@ -348,6 +349,7 @@ class Gateway:
         self.watchers: dict[tuple[str, int], dict] = defaultdict(dict)
         self.recent: dict[str, dict[int, list]] = {}  # ikey -> recent 1m candles, to roll up the current bar
         self.quote_sent: dict[str, float] = {}  # ikey -> last live-quote broadcast time
+        self.seed_retries: dict[str, asyncio.Task] = {}  # ikey -> background history retry
 
     async def handler(self, ws) -> None:
         ticket = parse_qs(urlsplit(ws.request.path).query).get("ticket", [""])[0]
@@ -389,27 +391,61 @@ class Gateway:
             ident = await dm._resolve_chart_identity(
                 str(req.get("symbol", "")), req.get("securityId"), req.get("exchangeSegment"), req.get("instrument")
             )
-            await ensure_seeded(self.redis, ident)
         except HTTPException as exc:
             logger.warning("subscribe %s failed: %s", req.get("symbol"), exc.detail)
             await ws.send(json.dumps({"op": "error", "key": key, "detail": "Chart data is unavailable for this symbol right now."}))
             return
-
         ikey = _ident_key(ident)
-        await request_feed(self.redis, ident)
+        try:
+            await ensure_seeded(self.redis, ident)
+        except HTTPException as exc:
+            # No history from the provider right now: chart what we hold plus live ticks, and keep
+            # retrying the history in the background; open charts get a fresh snapshot once it lands.
+            logger.warning("history for %s unavailable (%s); retrying in the background", ident["symbol"], exc.detail)
+            if ikey not in self.seed_retries:
+                self.seed_retries[ikey] = asyncio.create_task(self._retry_seed(ident))
 
-        m1 = await load_m1(self.redis, ikey)
-        if m1:
-            self.recent[ikey] = {c[0]: c for c in m1 if c[0] >= m1[-1][0] - 7200}
-        await ws.send(json.dumps({
-            "op": "snapshot", "key": key, "symbol": ident["symbol"], "tf": str(req.get("tf")),
-            "candles": aggregate(m1, minutes)[-MAX_SNAPSHOT:],
-            "last": await feed_quote(self.redis, ident),
-            "market": await market_state(),
-        }))
+        await request_feed(self.redis, ident)
+        await ws.send(json.dumps(await self._snapshot(ident, key, minutes)))
         # Register after the snapshot so no delta can arrive before it; the next tick carries the full bar.
         self.watchers[(ikey, minutes)][ws] = key
         watching.add((ikey, minutes))
+
+    async def _snapshot(self, ident: dict, key: str, minutes: int) -> dict:
+        ikey = _ident_key(ident)
+        m1 = await load_m1(self.redis, ikey)
+        if m1:
+            self.recent[ikey] = {c[0]: c for c in m1 if c[0] >= m1[-1][0] - 7200}
+        return {
+            "op": "snapshot", "key": key, "symbol": ident["symbol"],
+            "tf": next(tf for tf, m in TIMEFRAMES.items() if m == minutes),
+            "candles": aggregate(m1, minutes)[-MAX_SNAPSHOT:],
+            "last": await feed_quote(self.redis, ident),
+            "market": await market_state(),
+        }
+
+    async def _retry_seed(self, ident: dict) -> None:
+        """Retry an instrument's history while anyone is charting it, then re-send their snapshots."""
+        ikey = _ident_key(ident)
+        try:
+            while True:
+                await asyncio.sleep(SEED_RETRY_SECONDS)
+                charts = [(m, ws, key) for (k, m), sockets in list(self.watchers.items()) if k == ikey and m
+                          for ws, key in list(sockets.items())]
+                if not charts:
+                    return
+                try:
+                    await ensure_seeded(self.redis, ident)
+                except HTTPException:
+                    continue
+                for minutes, ws, key in charts:
+                    try:
+                        await ws.send(json.dumps(await self._snapshot(ident, key, minutes)))
+                    except websockets.ConnectionClosed:
+                        pass
+                return
+        finally:
+            self.seed_retries.pop(ikey, None)
 
     async def subscribe_quote(self, ws, req: dict, watching: set) -> None:
         """Live price and day change for one instrument (dashboard indices, stock header, movers)."""

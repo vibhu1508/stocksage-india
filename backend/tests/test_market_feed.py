@@ -209,6 +209,58 @@ def test_same_security_id_in_two_segments_stays_separate():
     asyncio.run(run())
 
 
+def test_chart_survives_a_history_outage_and_gets_history_when_it_returns():
+    import asyncio
+    import json
+    from fastapi import HTTPException
+    from market import service
+    from routers import dhan_market as dm
+
+    state = {"history_up": False, "m1": [[1792640100, 10, 11, 9, 10.5, 100]]}
+
+    async def seed(redis, ident):
+        if not state["history_up"]:
+            raise HTTPException(502, "Market data request failed")
+        state["m1"] = [[1792553700 + 60 * i, 10, 11, 9, 10, 1] for i in range(3)] + state["m1"]
+
+    async def resolve(*_):
+        return {"symbol": "REPL", "securityId": "17963", "exchangeSegment": "NSE_EQ", "instrument": "EQUITY"}
+
+    async def nothing(*_):
+        return None
+
+    async def m1(*_):
+        return state["m1"]
+
+    async def closed():
+        return "closed"
+
+    service.ensure_seeded, service.request_feed, service.load_m1 = seed, nothing, m1
+    service.feed_quote, service.market_state, dm._resolve_chart_identity = nothing, closed, resolve
+    service.SEED_RETRY_SECONDS = 0.01
+
+    class Socket:
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, text):
+            self.sent.append(json.loads(text))
+
+    async def run():
+        gw, ws = service.Gateway(redis=None), Socket()
+        await gw.subscribe(ws, {"key": "c1", "symbol": "REPL", "tf": "5"}, set())
+        assert [m["op"] for m in ws.sent] == ["snapshot"] and len(ws.sent[0]["candles"]) == 1
+        assert ws.sent[0]["tf"] == "5"
+        await asyncio.sleep(0.05)  # still failing: retries keep going, nothing new is sent
+        assert len(ws.sent) == 1
+        state["history_up"] = True
+        await asyncio.sleep(0.05)
+        assert len(ws.sent) == 2 and len(ws.sent[1]["candles"]) == 2  # a week of history arrived
+        assert not gw.seed_retries
+
+    asyncio.run(run())
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
