@@ -19,6 +19,7 @@ from routers import market_data as md
 from routers import dhan_market as dm
 from routers.announcements import fetch_nse_announcements
 from routers.strategy_builder import nse_session
+from services import daily_store
 from services import portfolio_actions as pa
 from services import news as news_service
 
@@ -267,9 +268,7 @@ async def _stock_quote(symbol: str) -> Dict[str, Any]:
 async def _daily_candles(symbol: str) -> list[dict]:
     """Full daily-candle history for a symbol via Dhan (ascending by time)."""
     identity = await dm._resolve_chart_identity(symbol.upper(), None, None, None)
-    payload = dm._build_daily_historical_payload(identity)
-    resp = await dm._cached_dhan_post("/charts/historical", payload, "history")
-    return dm._to_lightweight_candles(resp.get("data") or {})
+    return daily_store.as_chart_candles(await daily_store.daily_rows(identity))
 
 
 async def _52_week_range(symbol: str) -> Dict[str, Any]:

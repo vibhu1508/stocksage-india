@@ -18,7 +18,7 @@ import os
 import random
 import time
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import parse_qs, urlsplit
 
@@ -32,6 +32,7 @@ from fastapi import HTTPException  # noqa: E402
 from market.candles import IST, CandleBuilder, aggregate, bucket_start  # noqa: E402
 from market.feed import FATAL_DISCONNECT, feed_url, iter_packets, parse_packet, subscribe_frames  # noqa: E402
 from routers import dhan_market as dm  # noqa: E402
+from services import daily_store  # noqa: E402
 from services.redis_store import _key as rkey, get_redis_client  # noqa: E402
 from utils.market_utils import is_market_holiday  # noqa: E402
 
@@ -211,34 +212,32 @@ class Ingest:
                 await self.add(str(req["key"]))
 
     async def prev_close_loop(self) -> None:
-        """Previous close for each instrument's session from Dhan's daily candles, one call
-        per instrument per session (the /charts/ gate keeps it within Dhan's rate limit)."""
+        """Previous close for each instrument's session from the daily store (services/daily_store.py),
+        which refreshes from the providers at most once per session per instrument."""
+        retry_at: dict[str, float] = {}  # instruments whose daily candles are unavailable everywhere
         while True:
             await asyncio.sleep(2)
             for ikey, session in list(self.prev_close_pending.items()):
+                if retry_at.get(ikey, 0) > time.time():
+                    continue
                 segment, sid = self.instruments[ikey]
                 if segment not in DAILY_INSTRUMENT:
                     # shortcut: no day change for F&O/currency/commodity (daily candles need the contract type); add when those stream live
                     self.prev_close_session[ikey] = self.prev_close_pending.pop(ikey)  # don't re-queue on every tick
                     continue
-                day = date.fromisoformat(session)
-                payload = {
-                    "securityId": sid, "exchangeSegment": segment, "instrument": DAILY_INSTRUMENT[segment],
-                    "expiryCode": 0, "oi": False,
-                    "fromDate": (day - timedelta(days=14)).isoformat(), "toDate": (day + timedelta(days=1)).isoformat(),
-                }
                 try:
-                    resp = await dm._cached_dhan_post("/charts/historical", payload, "history")
-                    await asyncio.sleep(1)  # Dhan answers 429 to back-to-back daily-candle calls at 5/s
+                    rows = await daily_store.daily_rows(
+                        {"exchangeSegment": segment, "securityId": sid, "instrument": DAILY_INSTRUMENT[segment]})
+                    await asyncio.sleep(1)  # a refresh may have called the provider: keep a gentle pace
                 except HTTPException as exc:
-                    logger.warning("previous close fetch failed for %s: %s; retrying", ikey, exc.detail)
-                    await asyncio.sleep(10)
-                    break  # the instrument stays pending
+                    logger.warning("previous close unavailable for %s: %s; retrying in 15 min", ikey, exc.detail)
+                    retry_at[ikey] = time.time() + 900
+                    continue  # the instrument stays pending
                 if self.prev_close_pending.get(ikey) != session:
                     continue  # a newer session began while fetching
                 del self.prev_close_pending[ikey]
                 self.prev_close_session[ikey] = session
-                close = prev_close_from_daily(resp.get("data") or {}, session)
+                close = prev_close_from_daily({"timestamp": [r[0] for r in rows], "close": [r[4] for r in rows]}, session)
                 if close is None:  # e.g. listed this session
                     continue
                 self.prev_close[ikey] = close

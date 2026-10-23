@@ -132,6 +132,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
   private chartLoadSub: Subscription | null = null;
   private indicatorSub: Subscription | null = null;
   indicatorsLoading = false;
+  indicatorsError = false;  // daily candles failed: say so instead of hiding the panel
   /** Live last price and day change from the Dhan feed; drives the header and the day stats. */
   liveQuote: LiveQuote | null = null;
   private quoteSub: Subscription | null = null;
@@ -919,6 +920,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     const symbol = this.symbol;
     const cacheKey = this.getChartCacheKey(symbol, 'D');
     this.indicatorSub?.unsubscribe();
+    this.indicatorsError = false;
     if (this.candleCache.get(cacheKey)?.candles.length) return;
     this.indicatorsLoading = true;
     this.indicatorSub = this.dhanLiveChartService.getBootstrap({ ...this.getLiveChartRequest(), timeframe: 'D' }).subscribe({
@@ -933,7 +935,10 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
         });
         this.indicatorsLoading = false;
       },
-      error: () => (this.indicatorsLoading = false),
+      error: () => {
+        this.indicatorsLoading = false;
+        this.indicatorsError = symbol === this.symbol;
+      },
     });
   }
 
@@ -1236,6 +1241,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private resolveChartErrorMessage(err: HttpErrorResponse): string {
     const detail = err?.error?.detail;
+    if (err?.status >= 500) return 'Live chart unavailable right now. Please try again shortly.';
     if (typeof detail === 'string' && detail.length > 0) {
       if (detail.includes('Security ID is required')) {
         return 'Live chart unavailable: market data mapping is missing for this stock symbol.';

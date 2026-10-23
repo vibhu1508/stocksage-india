@@ -231,6 +231,10 @@
       </div>
     </div>
   </section>
+  } @else if (indicatorsError) {
+  <section class="ta-card">
+    <p class="chart-state">Trend &amp; Momentum is unavailable right now. Please try again shortly.</p>
+  </section>
   } @else if (indicatorsLoading) {
   <section class="ta-card">
     <p class="chart-state">Loading trend and momentum…</p>

@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from routers.auth import authenticate_websocket, get_current_user
 from models import User
 from utils.market_utils import IST, get_latest_market_date, is_market_holiday
+from services import daily_store
 from services.instruments import get_indices, get_instruments
 from services.redis_store import (
     _key as redis_key,
@@ -180,16 +181,16 @@ async def _dhan_post(endpoint: str, payload: dict) -> dict:
             resp.raise_for_status()
             return resp.json()
     except httpx.HTTPStatusError as exc:
-        detail = "Dhan API request failed"
+        # Logged for us (status, error code, message; never the token); users get a neutral error.
         try:
             body = exc.response.json()
-            if isinstance(body, dict) and body.get("remarks"):
-                detail = str(body.get("remarks"))
-        except Exception:
-            pass
-        raise HTTPException(status_code=502, detail=detail)
-    except httpx.RequestError:
-        raise HTTPException(status_code=502, detail="Unable to reach the market data service")
+        except ValueError:
+            body = exc.response.text[:200]
+        logger.warning("market data %s failed: HTTP %s %s", endpoint, exc.response.status_code, body)
+        raise HTTPException(status_code=502, detail="Market data request failed")
+    except httpx.RequestError as exc:
+        logger.warning("market data %s unreachable: %s", endpoint, type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Market data service unreachable")
 
 
 def _cache_key(prefix: str, endpoint: str, payload: dict) -> str:
@@ -1483,7 +1484,8 @@ async def dhan_market_depth(
                 "sell": full_depth["sell"][:limit],
             }
         except HTTPException as exc:
-            full_depth_error = exc.detail if isinstance(exc.detail, str) else "Full depth feed unavailable"
+            logger.warning("full depth for %s failed: %s", identity["symbol"], exc.detail)
+            full_depth_error = "Full depth unavailable"
 
     quote_payload = {
         identity["exchangeSegment"]: [_security_id_for_quote_payload(identity["securityId"])],
@@ -1593,8 +1595,9 @@ async def dhan_chart_bootstrap(
     is_fallback_session = False
 
     if requested_timeframe == CHART_DAILY_TIMEFRAME:
-        payload = _build_daily_historical_payload(identity)
-        response = await _cached_dhan_post("/charts/historical", payload, "history")
+        # From our daily store, refreshed from the providers at most once per session.
+        response = {"source": "store", "data": None}
+        daily = daily_store.as_chart_candles(await daily_store.daily_rows(identity))
     else:
         payload = _build_intraday_payload(identity, resolved_timeframe)
         try:
@@ -1609,7 +1612,7 @@ async def dhan_chart_bootstrap(
             else:
                 raise
 
-    candles = _to_lightweight_candles(response.get("data") or {})
+    candles = daily if requested_timeframe == CHART_DAILY_TIMEFRAME else _to_lightweight_candles(response.get("data") or {})
 
     if requested_timeframe == CHART_DAILY_TIMEFRAME:
         try:
@@ -1688,12 +1691,10 @@ async def dhan_chart_history(
     to_date = min(to_date, today)
 
     if requested_timeframe == CHART_DAILY_TIMEFRAME:
-        # Dhan treats the daily toDate as non-inclusive; nudge so the user's
-        # chosen end date is actually part of the result.
-        payload = _build_daily_historical_payload(identity, from_date, to_date + timedelta(days=1))
-        response = await _cached_dhan_post("/charts/historical", payload, "history")
-        candles = _to_lightweight_candles(response.get("data") or {})
-        source = response.get("source")
+        rows = await daily_store.daily_rows(identity)
+        start, end = daily_store.day_stamp(from_date), daily_store.day_stamp(to_date)
+        candles = daily_store.as_chart_candles([r for r in rows if start <= r[0] <= end])
+        source = "store"
     else:
         interval_min = _resolve_timeframe(requested_timeframe)
 

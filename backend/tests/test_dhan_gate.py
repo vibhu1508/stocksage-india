@@ -29,6 +29,30 @@ def test_quote_calls_are_spaced_and_other_classes_are_not_blocked():
     assert max(starts["charts"]) - t0 < 0.1             # a different class doesn't queue behind quotes
 
 
+def test_server_errors_never_show_their_detail():
+    from fastapi import FastAPI, HTTPException
+    from fastapi.testclient import TestClient
+    import main
+
+    app = FastAPI()
+    app.add_exception_handler(main.StarletteHTTPException, main.hide_server_error_details)
+
+    @app.get("/boom")
+    def boom():
+        raise HTTPException(status_code=502, detail="NSE API Error: https://www.nseindia.com/api/x 404")
+
+    @app.get("/missing")
+    def missing():
+        raise HTTPException(status_code=404, detail="Unknown index")
+
+    client = TestClient(app)
+    r = client.get("/boom")
+    assert (r.status_code, r.json()) == (502, {"detail": "Internal server error. Please try again shortly."})
+    assert client.get("/missing").json() == {"detail": "Unknown index"}  # client errors keep their message
+
+
 if __name__ == "__main__":
-    test_quote_calls_are_spaced_and_other_classes_are_not_blocked()
-    print("ok test_quote_calls_are_spaced_and_other_classes_are_not_blocked")
+    for name, fn in list(globals().items()):
+        if name.startswith("test_"):
+            fn()
+            print("ok", name)

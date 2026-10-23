@@ -3,7 +3,12 @@ NSE Platform Backend - Main Application
 FastAPI server with Google OAuth and SQLite database
 """
 
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from sqlalchemy import inspect, text
@@ -60,6 +65,17 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Server-side failures (5xx) never show their detail to users: it can name a data provider, carry an
+# upstream URL or an exception message. The full detail is logged; the client gets a neutral message
+# with the same status code. Client errors (4xx) keep their message.
+@app.exception_handler(StarletteHTTPException)
+async def hide_server_error_details(request: Request, exc: StarletteHTTPException):
+    if exc.status_code >= 500:
+        logging.getLogger("api.errors").warning("%s %s -> %s: %s", request.method, request.url.path, exc.status_code, exc.detail)
+        return JSONResponse({"detail": "Internal server error. Please try again shortly."}, status_code=exc.status_code, headers=exc.headers)
+    return await http_exception_handler(request, exc)
+
 
 # CORS configuration
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4200").rstrip("/")
