@@ -156,6 +156,7 @@ export interface StockMover {
   change: number;
   pct_change: number;
   volume: number;
+  name?: string;
 }
 
 export interface LearnVideo {

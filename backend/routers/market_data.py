@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta, time as dtime
 from models import User
 from routers.auth import require_admin
 from services.nse_mcp import SERVERS as NSE_MCP_SERVERS, McpSession
+from services.instruments import get_instruments
 from services.redis_store import cache_get_json, cache_set_json
 from utils.market_utils import is_market_holiday
 
@@ -432,13 +433,19 @@ async def shared_movers(kind: str) -> list[dict]:
         return items
 
 
+async def _with_names(items: list[dict]) -> list[dict]:
+    """Company names for the dashboard list, from the in-memory instrument list."""
+    instruments = await get_instruments()
+    return [{**m, "name": (instruments.get(m["symbol"]) or {}).get("name", "")} for m in items]
+
+
 @router.get("/top-stocks")
 async def get_top_stocks():
     """Top 10 gainers (shared cache, see shared_movers)."""
-    return {"gainers": await shared_movers("gainers")}
+    return {"gainers": await _with_names(await shared_movers("gainers"))}
 
 
 @router.get("/top-losers")
 async def get_top_losers():
     """Top 10 NIFTY losers (shared cache, see shared_movers)."""
-    return {"losers": await shared_movers("losers")}
+    return {"losers": await _with_names(await shared_movers("losers"))}

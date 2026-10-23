@@ -1,7 +1,6 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { trigger, transition, style, animate } from '@angular/animations';
 import { Subscription } from 'rxjs';
 import { AuthService, User } from '../../core/services/auth.service';
 import { MarketService, MarketData, StockMover } from '../../core/services/market.service';
@@ -9,24 +8,14 @@ import { LucideAngularModule } from 'lucide-angular';
 import { LiveQuote, MarketStreamService } from '../../core/services/market-stream.service';
 import { FlashDirective } from '../../shared/directives/flash.directive';
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
+import { ShortNamePipe } from '../../shared/pipes/short-name.pipe';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, LucideAngularModule, FlashDirective, CompanyLogoComponent],
+  imports: [CommonModule, RouterLink, LucideAngularModule, FlashDirective, CompanyLogoComponent, ShortNamePipe],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
-  animations: [
-    trigger('slideUp', [
-      transition(':enter', [
-        style({ opacity: 0, transform: 'translateY(15px)' }),
-        animate('350ms ease-out', style({ opacity: 1, transform: 'translateY(0)' }))
-      ]),
-      transition(':leave', [
-        animate('200ms ease-in', style({ opacity: 0, transform: 'translateY(-10px)' }))
-      ])
-    ])
-  ]
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   user: User | null = null;
@@ -36,13 +25,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private marketSub?: Subscription;
 
-  // Top gainers/losers carousel
+  // Top gainers/losers lists
   topGainers: StockMover[] = [];
   topLosers: StockMover[] = [];
-  gainerIndex = 0;
-  loserIndex = 0;
-  private gainerTimer?: any;
-  private loserTimer?: any;
   private moversTimer?: any;
 
   // Live quotes from the Dhan feed (market service): indices and the movers on screen.
@@ -81,12 +66,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.liveSubs.add(this.marketStream.watchQuote('NIFTY').subscribe(q => (this.liveNifty = q)));
     this.liveSubs.add(this.marketStream.watchQuote('SENSEX').subscribe(q => (this.liveSensex = q)));
 
-    this.gainerTimer = setInterval(() => {
-      if (this.topGainers.length) this.gainerIndex = (this.gainerIndex + 1) % this.topGainers.length;
-    }, 3000);
-    this.loserTimer = setInterval(() => {
-      if (this.topLosers.length) this.loserIndex = (this.loserIndex + 1) % this.topLosers.length;
-    }, 3000);
     this.loadMovers();
     // The ranking is an NSE snapshot (refreshed each minute); prices on screen stream live.
     this.moversTimer = setInterval(() => this.loadMovers(), 60_000);
@@ -95,12 +74,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private loadMovers(): void {
     this.marketService.getTopGainers().subscribe(data => {
       this.topGainers = data.gainers || [];
-      this.gainerIndex = Math.min(this.gainerIndex, Math.max(0, this.topGainers.length - 1));
       this.watchMovers();
     });
     this.marketService.getTopLosers().subscribe(data => {
       this.topLosers = data.losers || [];
-      this.loserIndex = Math.min(this.loserIndex, Math.max(0, this.topLosers.length - 1));
       this.watchMovers();
     });
   }
@@ -136,8 +113,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.marketSub?.unsubscribe();
-    if (this.gainerTimer) clearInterval(this.gainerTimer);
-    if (this.loserTimer) clearInterval(this.loserTimer);
     if (this.moversTimer) clearInterval(this.moversTimer);
     this.liveSubs.unsubscribe();
     this.moverSubs.forEach(sub => sub.unsubscribe());
@@ -208,12 +183,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return parseFloat(this.marketData.sensex.pct_change) >= 0;
   }
 
-  get currentGainer(): StockMover | null {
-    return this.topGainers.length > 0 ? this.topGainers[this.gainerIndex] : null;
+  get moverCards() {
+    return [
+      { title: 'Top Gainers', icon: 'arrow-up-right', up: true, rows: this.topGainers },
+      { title: 'Top Losers', icon: 'arrow-down-right', up: false, rows: this.topLosers },
+    ];
   }
 
-  get currentLoser(): StockMover | null {
-    return this.topLosers.length > 0 ? this.topLosers[this.loserIndex] : null;
+  /** 12,34,567 shares -> "12.3L"; Indian lakh/crore units. */
+  compactVolume(volume: number): string {
+    const v = Number(volume) || 0;
+    if (v >= 1e7) return `${(v / 1e7).toFixed(1)}Cr`;
+    if (v >= 1e5) return `${(v / 1e5).toFixed(1)}L`;
+    if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
+    return String(v);
   }
 
   get stats() {
