@@ -49,7 +49,8 @@ def test_nse_failure_serves_last_copy_then_bhavcopy_and_retries_in_a_minute():
     assert asyncio.run(md.shared_movers("gainers")) == [{"symbol": "OLD"}]
     assert asyncio.run(md.shared_movers("gainers")) == [{"symbol": "OLD"}]
     assert calls["nse"] == 1  # the stale copy was re-stamped: NSE is asked again only after a minute
-    assert 0 < time.time() - store["movers:gainers"]["at"] <= md.MOVERS_FRESH_LIVE
+    age = time.time() - store["movers:gainers"]["at"]
+    assert md.MOVERS_FRESH_LIVE - 61 < age < md.MOVERS_FRESH_LIVE  # served as fresh for about a minute
 
     store.clear()
     assert asyncio.run(md.shared_movers("gainers")) == [{"symbol": "BHAV"}]

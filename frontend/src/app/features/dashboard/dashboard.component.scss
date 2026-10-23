@@ -1,1 +1,16 @@
 /* Overwritten completely seamlessly by Tailwind utilities directly targeting application DOM elements inside the framework template tree natively */
+// Movers that newly enter a list slide in; the ones that drop out slide away (animate.enter/leave).
+.mover-in { animation: mover-in 0.45s ease-out both; }
+.mover-out { animation: mover-out 0.25s ease-in both; }
+
+@keyframes mover-in {
+  from { opacity: 0; transform: translateX(-18px); }
+}
+
+@keyframes mover-out {
+  to { opacity: 0; transform: translateX(18px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mover-in, .mover-out { animation: none; }
+}

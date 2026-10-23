@@ -344,7 +344,7 @@ async def get_indices():
 
 
 NSE_HEADERS = {**BROWSER_HEADERS, "Referer": "https://www.nseindia.com/", "Origin": "https://www.nseindia.com"}
-MOVERS_FRESH_LIVE = 60        # market hours: everyone shares one NSE call a minute
+MOVERS_FRESH_LIVE = 20        # market hours: everyone shares one NSE call every 20 seconds
 MOVERS_FRESH_CLOSED = 1800    # after the close the lists don't change
 MOVERS_KEEP = 3 * 86400       # the last good copy outlives an NSE outage
 _movers_locks = {"gainers": asyncio.Lock(), "losers": asyncio.Lock()}
@@ -400,7 +400,7 @@ async def _bhavcopy_movers(kind: str) -> list[dict]:
 
 async def shared_movers(kind: str) -> list[dict]:
     """Top gainers or losers for every user from one shared copy in Redis: NSE is asked at most once
-    a minute in market hours (every 30 min after the close). If NSE fails, the last good copy is
+    every 20 seconds in market hours (every 30 min after the close). If NSE fails, the last good copy is
     served, or the bhavcopy's movers when there is none; either way NSE is retried a minute later."""
     key = f"movers:{kind}"
     fresh = MOVERS_FRESH_LIVE if _market_hours_now() else MOVERS_FRESH_CLOSED

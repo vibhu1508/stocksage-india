@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, finalize, map } from 'rxjs';
 import { AuthService, User } from '../../core/services/auth.service';
 import { MarketService, MarketData, StockMover } from '../../core/services/market.service';
 import { LucideAngularModule } from 'lucide-angular';
@@ -25,9 +25,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private marketSub?: Subscription;
 
-  // Top gainers/losers lists
+  // Top gainers/losers lists, re-ranked every 20 s (the server refreshes NSE's lists as often)
   topGainers: StockMover[] = [];
   topLosers: StockMover[] = [];
+  moversLoading = { gainers: false, losers: false };
+  moversUpdatedAt: { gainers: Date | null; losers: Date | null } = { gainers: null, losers: null };
   private moversTimer?: any;
 
   // Live quotes from the Dhan feed (market service): indices and the movers on screen.
@@ -67,17 +69,27 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.liveSubs.add(this.marketStream.watchQuote('SENSEX').subscribe(q => (this.liveSensex = q)));
 
     this.loadMovers();
-    // The ranking is an NSE snapshot (refreshed each minute); prices on screen stream live.
-    this.moversTimer = setInterval(() => this.loadMovers(), 60_000);
+    // The ranking is an NSE snapshot refreshed every 20 s; prices on screen stream live.
+    this.moversTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') this.loadMovers();
+    }, 20_000);
   }
 
   private loadMovers(): void {
-    this.marketService.getTopGainers().subscribe(data => {
-      this.topGainers = data.gainers || [];
-      this.watchMovers();
-    });
-    this.marketService.getTopLosers().subscribe(data => {
-      this.topLosers = data.losers || [];
+    this.refreshMovers('gainers');
+    this.refreshMovers('losers');
+  }
+
+  refreshMovers(kind: 'gainers' | 'losers'): void {
+    if (this.moversLoading[kind]) return;
+    this.moversLoading[kind] = true;
+    const request = kind === 'gainers'
+      ? this.marketService.getTopGainers().pipe(map(d => d.gainers))
+      : this.marketService.getTopLosers().pipe(map(d => d.losers));
+    request.pipe(finalize(() => (this.moversLoading[kind] = false))).subscribe(rows => {
+      if (!rows?.length) return;  // keep the last list rather than blanking the card
+      if (kind === 'gainers') this.topGainers = rows; else this.topLosers = rows;
+      this.moversUpdatedAt[kind] = new Date();
       this.watchMovers();
     });
   }
@@ -185,8 +197,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   get moverCards() {
     return [
-      { title: 'Top Gainers', icon: 'arrow-up-right', up: true, rows: this.topGainers },
-      { title: 'Top Losers', icon: 'arrow-down-right', up: false, rows: this.topLosers },
+      { kind: 'gainers' as const, title: 'Top Gainers', icon: 'arrow-up-right', up: true, rows: this.topGainers },
+      { kind: 'losers' as const, title: 'Top Losers', icon: 'arrow-down-right', up: false, rows: this.topLosers },
     ];
   }
 

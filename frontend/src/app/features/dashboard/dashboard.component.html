@@ -53,10 +53,18 @@
           <span class="w-1.5 h-1.5 rounded-full animate-pulse" [class]="card.up ? 'bg-green-500' : 'bg-red-500'"></span>
           Live
         </span>
+        <button type="button" class="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-60"
+          (click)="refreshMovers(card.kind)" [disabled]="moversLoading[card.kind]"
+          [attr.aria-label]="'Refresh ' + card.title" [title]="'Refresh ' + card.title">
+          <lucide-icon name="refresh-cw" [size]="14" [class.animate-spin]="moversLoading[card.kind]"></lucide-icon>
+        </button>
       </div>
+      @if (moversUpdatedAt[card.kind]; as at) {
+      <p class="text-[11px] text-muted-foreground pt-2">Updated {{ at | date:'h:mm:ss a' }} · refreshes every 20 s</p>
+      }
       <ol class="divide-y divide-border">
         @for (m of card.rows; track m.symbol; let i = $index) {
-        <li>
+        <li animate.enter="mover-in" animate.leave="mover-out">
           <a class="flex items-center gap-3 py-2.5 -mx-2 px-2 rounded-lg hover:bg-muted/50 transition-colors" [routerLink]="['/stocks', m.symbol]">
             <span class="w-4 text-xs font-semibold text-muted-foreground tabular-nums">{{ i + 1 }}</span>
             <app-company-logo [symbol]="m.symbol" [size]="32"></app-company-logo>

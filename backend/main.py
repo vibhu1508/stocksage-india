@@ -90,8 +90,8 @@ async def hide_server_error_details(request: Request, exc: StarletteHTTPExceptio
 # it). "private": only the user's own browser keeps it. Data about a date that has passed never
 # changes, so it is kept a day. Personal data (portfolio, account, chat) is never stored.
 _CACHE_RULES = (  # (path prefix, seconds, seconds when every date asked for is in the past)
-    ("/api/market/top-stocks", 30, 30),
-    ("/api/market/top-losers", 30, 30),
+    ("/api/market/top-stocks", 10, 10),  # the dashboard polls every 20 s
+    ("/api/market/top-losers", 10, 10),
     ("/api/stocks/search", 300, 300),
     ("/api/stocks/index/", 60, 60),
     ("/api/strategy/yearwise-data/", 3600, 3600),
