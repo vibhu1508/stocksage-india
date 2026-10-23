@@ -104,6 +104,37 @@ def test_topup_plan_adds_continuous_days_and_rechecks_the_rest():
     assert sorted(recheck) == ["2", "3"]  # 2: a 1:2 split halved the previous close; 3: a gap
 
 
+def test_fallback_history_is_replaced_once_the_provider_answers():
+    replies = []
+
+    async def fake_fetch(identity, start, end):
+        rows, src = replies.pop(0)
+        if isinstance(rows, Exception):
+            raise rows
+        return rows, src
+
+    original, ds.fetch = ds.fetch, fake_fetch
+    session = ds.get_latest_market_date(ds.datetime.now(ds.IST))
+    today = ds.day_stamp(session)
+    infy = {"exchangeSegment": "NSE_EQ", "securityId": "1594", "instrument": "EQUITY", "symbol": "INFY"}
+    try:
+        # The provider is down on the first view: NSE's recent history is stored, but not as complete.
+        replies.append(([(today - 86400, 1, 2, 0.5, 100, 5), (today, 1, 2, 0.5, 101, 5)], "nse"))
+        assert len(asyncio.run(ds.daily_rows(infy))) == 2
+        assert ds.is_partial("NSE_EQ", "1594") and ds.checked("NSE_EQ", "1594")[0] != session.isoformat()
+
+        # Half an hour later the provider answers with the full (adjusted) history: it replaces the fallback.
+        with ds._connect() as conn:
+            conn.execute("UPDATE checked SET at = 0")
+        full = [(today - 86400 * d, 1, 2, 0.5, 90 + d, 5) for d in range(300, -1, -1)]
+        replies.append((full, "dhan"))
+        rows = asyncio.run(ds.daily_rows(infy))
+        assert len(rows) == 301 and not ds.is_partial("NSE_EQ", "1594")
+        assert ds.checked("NSE_EQ", "1594")[0] == session.isoformat()
+    finally:
+        ds.fetch = original
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

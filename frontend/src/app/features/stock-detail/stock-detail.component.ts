@@ -43,6 +43,8 @@ import { shortCompanyName } from '../../shared/pipes/short-name.pipe';
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 import { TrendSignal, momentum, movingAverage, trendSignal } from '../../core/utils/moving-averages';
 
+const IST_OFFSET_SECONDS = 19800;
+
 const toCandle = (c: StreamCandle): CandlestickData => ({
   time: c[0] as UTCTimestamp, open: c[1], high: c[2], low: c[3], close: c[4],
 });
@@ -507,7 +509,31 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     const { securityId, exchangeSegment, instrument } = this.getLiveChartRequest();
     this.quoteSub = this.marketStream
       .watchQuote(this.symbol, { securityId, exchangeSegment, instrument })
-      .subscribe((q) => (this.liveQuote = q));
+      .subscribe((q) => {
+        this.liveQuote = q;
+        this.updateTodayCandle();
+      });
+  }
+
+  /** 1D: today's candle from the live quote (the day's open/high/low and last price), so it moves while
+   *  the market is open and doesn't wait for the provider's daily history. */
+  private updateTodayCandle(): void {
+    const q = this.liveQuote;
+    if (!q || this.liveTimeframe !== 'D' || this.historyMode || !this.mainSeries || !q.open || !q.high || !q.low) return;
+    const day = Math.floor((q.ts + IST_OFFSET_SECONDS) / 86400) * 86400 - IST_OFFSET_SECONDS;  // IST midnight
+    const last = this.liveCandles[this.liveCandles.length - 1];
+    if (!last || Number(last.time) > day) return;
+    const candle: CandlestickData = {
+      time: day as UTCTimestamp, open: q.open, high: Math.max(q.high, q.price), low: Math.min(q.low, q.price), close: q.price,
+    };
+    if (Number(last.time) === day) {
+      this.liveCandles[this.liveCandles.length - 1] = candle;
+    } else {
+      this.liveCandles.push(candle);
+    }
+    this.mainSeries.update(this.toSeriesPoint(candle) as any);
+    this.lastVisibleCandle = candle;
+    this.liveCandleCount = this.liveCandles.length;
   }
 
   get lastPrice(): number {
@@ -989,6 +1015,7 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       this.chartApi?.timeScale().fitContent();
     }
     this.liveChartUpdatedAt = new Date();
+    if (resolved === 'D') this.updateTodayCandle();
   }
 
   private loadMarketDepth(limit: 20 | 200): void {

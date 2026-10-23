@@ -113,6 +113,14 @@ def latest_closes(seg: str) -> dict[str, tuple[int, float]]:
     return {sid: (day, c) for sid, day, c in rows}
 
 
+def is_partial(seg: str, sid: str) -> bool:
+    """True when nothing stored came from the primary provider: only the NSE fallback's last ~400
+    days (raw, and limited to the listing's current series) or bhavcopy days on top of them."""
+    with _connect() as conn:
+        return conn.execute("SELECT 1 FROM candles WHERE seg=? AND sid=? AND src LIKE 'dhan%' LIMIT 1",
+                            (seg, str(sid))).fetchone() is None
+
+
 def needs_refill(stored: list[tuple], fetched: list[tuple]) -> bool:
     """True when a day we hold closes differently in the provider's data: a split or bonus adjusted it."""
     mine = {d: c for d, _, _, _, c, _ in stored}
@@ -240,16 +248,22 @@ async def daily_rows(identity: dict) -> list[tuple]:
     async with lock:
         stored = await asyncio.to_thread(read, seg, sid)
         done, asked_at = await asyncio.to_thread(checked, seg, sid)
-        if stored and (done == session or time.time() - asked_at < RETRY_SECONDS):
+        # Fallback-only history stays incomplete until the primary provider answers with the full one.
+        partial = bool(stored) and await asyncio.to_thread(is_partial, seg, sid)
+        if stored and ((done == session and not partial) or time.time() - asked_at < RETRY_SECONDS):
             return stored
-        start = (datetime.fromtimestamp(stored[-1][0], IST).date() - timedelta(days=10)) if stored else HISTORY_START
+        start = HISTORY_START if not stored or partial else datetime.fromtimestamp(stored[-1][0], IST).date() - timedelta(days=10)
         try:
             rows, src = await fetch(identity, start, date.fromisoformat(session))
         except HTTPException:
             if stored:
+                await asyncio.to_thread(mark_checked, seg, sid, done)  # wait RETRY_SECONDS before asking again
                 return stored
             raise
-        if stored and needs_refill(stored, rows):
+        if partial and src.startswith("dhan"):
+            logger.info("full history for %s:%s from %s replaces the fallback's", seg, sid, src)
+            await asyncio.to_thread(replace_all, seg, sid, rows, src)
+        elif stored and needs_refill(stored, rows):
             logger.warning("history of %s:%s changed (split or bonus); refetching all", seg, sid)
             try:
                 rows, src = await fetch(identity, HISTORY_START, date.fromisoformat(session))
@@ -262,7 +276,8 @@ async def daily_rows(identity: dict) -> list[tuple]:
         # Complete only once the session's own candle is in; until then retry every RETRY_SECONDS
         # (illiquid stocks with no trade that day simply keep that gentle retry).
         has_session = bool(latest) and latest[-1][0] >= day_stamp(date.fromisoformat(session))
-        await asyncio.to_thread(mark_checked, seg, sid, session if has_session else done)
+        complete = has_session and src.startswith("dhan")
+        await asyncio.to_thread(mark_checked, seg, sid, session if complete else done)
         return latest
 
 
