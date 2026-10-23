@@ -2,17 +2,19 @@
 Market Data Router - Live SENSEX & NIFTY data proxy
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 import asyncio
 import httpx
 import logging
 import time
 from datetime import datetime, timezone, timedelta, time as dtime
+from typing import Optional
+from urllib.parse import quote
 from models import User
 from routers.auth import require_admin
 from services.nse_mcp import SERVERS as NSE_MCP_SERVERS, McpSession
 from services.instruments import get_instruments
-from services.redis_store import cache_get_json, cache_set_json
+from services.redis_store import cache_get_json, cache_get_many, cache_set_json
 from utils.market_utils import is_market_holiday
 
 router = APIRouter()
@@ -344,93 +346,174 @@ async def get_indices():
 
 
 NSE_HEADERS = {**BROWSER_HEADERS, "Referer": "https://www.nseindia.com/", "Origin": "https://www.nseindia.com"}
-MOVERS_FRESH_LIVE = 20        # market hours: everyone shares one NSE call every 20 seconds
-MOVERS_FRESH_CLOSED = 1800    # after the close the lists don't change
+NSE_API = "https://www.nseindia.com/api"
+# NSE's own movers groups (live-analysis-variations), in its order; NIFTY 50 is NSE's default.
+MOVER_GROUPS = {
+    "NIFTY": "NIFTY 50", "BANKNIFTY": "Bank Nifty", "NIFTYNEXT50": "NIFTY Next 50", "FOSec": "F&O stocks",
+    "SecGtr20": "Above ₹20", "SecLwr20": "Below ₹20", "allSec": "All stocks",
+}
+_GROUP_INDEX_CSV = {"NIFTY": "nifty50", "BANKNIFTY": "niftybank", "NIFTYNEXT50": "niftynext50"}
+MOVERS_FRESH_LIVE = 20        # pre-open, session and closing: everyone shares one NSE call every 20 seconds
+MOVERS_FRESH_CLOSED = 1800    # after NSE's 16:00 final values the lists don't change
 MOVERS_KEEP = 3 * 86400       # the last good copy outlives an NSE outage
-_movers_locks = {"gainers": asyncio.Lock(), "losers": asyncio.Lock()}
+SPARK_POINTS = 60
+_movers_locks: dict[str, asyncio.Lock] = {}
+_spark_gate = asyncio.Semaphore(4)
 
 
-def _market_hours_now() -> bool:
-    now = get_ist_now()
-    return now.weekday() < 5 and not is_market_holiday(now.date()) and dtime(9, 0) <= now.time() <= dtime(15, 45)
+def market_phase(now: Optional[datetime] = None) -> str:
+    """pre_open 09:00-09:15, open 09:15-15:30, closing 15:30-16:05 (NSE publishes its final, VWAP-based
+    closing prices at 16:00), else closed. Weekends and NSE holidays are closed."""
+    now = now or get_ist_now()
+    if now.weekday() >= 5 or is_market_holiday(now.date()):
+        return "closed"
+    t = now.time()
+    if dtime(9, 0) <= t < dtime(9, 15):
+        return "pre_open"
+    if dtime(9, 15) <= t < dtime(15, 30):
+        return "open"
+    if dtime(15, 30) <= t < dtime(16, 5):
+        return "closing"
+    return "closed"
 
 
-async def _nse_gainers() -> list[dict]:
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get("https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getTopTenStock", headers=NSE_HEADERS)
-        resp.raise_for_status()
-    return [{
-        "symbol": g.get("symbol", ""),
-        "price": g.get("lastPrice", 0),
-        "change": round(float(g.get("change", 0)), 2),
-        "pct_change": round(float(g.get("pchange", 0)), 2),
-        "volume": g.get("totalTradedVolume", 0),
-    } for g in resp.json().get("topGainers", [])]
+def _nse_time(text: Optional[str]) -> Optional[datetime]:
+    """NSE's "23-Oct-2026 16:00:00" (IST) as an aware datetime."""
+    try:
+        return datetime.strptime(str(text).strip().title(), "%d-%b-%Y %H:%M:%S").replace(tzinfo=IST)
+    except ValueError:
+        return None
 
 
-async def _nse_losers() -> list[dict]:
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get("https://www.nseindia.com/api/live-analysis-variations?index=loosers", headers=NSE_HEADERS)
-        resp.raise_for_status()
-    results = []
-    for item in resp.json().get("NIFTY", {}).get("data", [])[:10]:
-        price = float(item.get("ltp", 0))
-        prev = float(item.get("prev_price", 0))
-        results.append({
-            "symbol": item.get("symbol", ""),
-            "price": price,
-            "change": round(price - prev, 2),
-            "pct_change": round(float(item.get("perChange", 0)), 2),
-            "volume": item.get("trade_quantity", 0),
-        })
-    return results
+def _mover(symbol: str, price, prev, pct, volume) -> dict:
+    price, prev = float(price or 0), float(prev or 0)
+    return {"symbol": symbol, "price": price, "prev_close": prev, "change": round(price - prev, 2),
+            "pct_change": round(float(pct or 0), 2), "volume": int(float(volume or 0))}
 
 
-async def _bhavcopy_movers(kind: str) -> list[dict]:
-    """Last resort: the latest session's biggest moves from the NSE bhavcopy, over the same stocks
-    NSE's lists use (gainers: the whole market; losers: NIFTY 50)."""
-    from routers.stocks import _index_members, _latest_bhav_prices, constituent_moves
+def rank_groups(rows: list[dict], fno: Optional[list[dict]], members: dict[str, set]) -> dict:
+    """Top 10 gainers and losers of every NSE group from one market-wide list (pre-open, bhavcopy).
+    Index groups use their member lists; F&O uses its own list, when there is one."""
+    pools = {g: [r for r in rows if r["symbol"] in members.get(g, ())] for g in _GROUP_INDEX_CSV}
+    pools.update(FOSec=fno or [], SecGtr20=[r for r in rows if r["price"] > 20],
+                 SecLwr20=[r for r in rows if r["price"] < 20], allSec=rows)
+    out = {}
+    for group, pool in pools.items():
+        ranked = sorted(pool, key=lambda r: r["pct_change"], reverse=True)
+        out[group] = {"gainers": [r for r in ranked if r["pct_change"] > 0][:10],
+                      "losers": [r for r in reversed(ranked) if r["pct_change"] < 0][:10]}
+    return out
 
-    _, prices = await _latest_bhav_prices()
-    members = [{"symbol": s, "industry": ""} for s in prices] if kind == "gainers" else await _index_members("nifty50")
-    rows = [r for r in constituent_moves(members, prices)["rows"] if r["pct"] is not None]
-    picked = [r for r in rows if r["pct"] > 0] if kind == "gainers" else [r for r in reversed(rows) if r["pct"] < 0]
-    return [{"symbol": r["symbol"], "price": r["close"], "change": r["change"], "pct_change": r["pct"], "volume": 0} for r in picked[:10]]
+
+async def _group_members() -> dict[str, set]:
+    from routers.stocks import _index_members
+
+    return {g: {m["symbol"] for m in await _index_members(csv)} for g, csv in _GROUP_INDEX_CSV.items()}
 
 
-async def shared_movers(kind: str) -> list[dict]:
-    """Top gainers or losers for every user from one shared copy in Redis: NSE is asked at most once
-    every 20 seconds in market hours (every 30 min after the close). If NSE fails, the last good copy is
-    served, or the bhavcopy's movers when there is none; either way NSE is retried a minute later."""
-    key = f"movers:{kind}"
-    fresh = MOVERS_FRESH_LIVE if _market_hours_now() else MOVERS_FRESH_CLOSED
+async def _nse_variations() -> dict:
+    """NSE's session movers for every group: two calls (gainers, losers) carry all seven groups."""
+    groups, as_of = {}, None
+    async with httpx.AsyncClient(timeout=10.0, headers=NSE_HEADERS) as client:
+        for kind, param in (("gainers", "gainers"), ("losers", "loosers")):
+            resp = await client.get(f"{NSE_API}/live-analysis-variations?index={param}")
+            resp.raise_for_status()
+            data = resp.json()
+            for group in MOVER_GROUPS:
+                block = data.get(group) or {}
+                as_of = as_of or block.get("timestamp")
+                groups.setdefault(group, {})[kind] = [
+                    _mover(r.get("symbol", ""), r.get("ltp"), r.get("prev_price"), r.get("perChange"), r.get("trade_quantity"))
+                    for r in (block.get("data") or [])[:10]
+                ]
+    stamp = _nse_time(as_of)
+    if not stamp:
+        raise ValueError("variations without a timestamp")
+    return {"asOf": stamp.isoformat(), "groups": groups}
+
+
+async def _nse_pre_open() -> dict:
+    """Pre-open movers by indicative opening price (IEP), from NSE's ALL and F&O pre-open lists.
+    Stocks with no discovered price yet (IEP or quantity 0) are left out."""
+    lists, stamp = {}, None
+    async with httpx.AsyncClient(timeout=15.0, headers=NSE_HEADERS) as client:
+        for key in ("ALL", "FO"):
+            resp = await client.get(f"{NSE_API}/market-data-pre-open?key={key}")
+            resp.raise_for_status()
+            data = resp.json()
+            stamp = stamp or _nse_time(data.get("timestamp"))
+            lists[key] = [
+                _mover(md["symbol"], md.get("iep"), md.get("previousClose"), md.get("pChange"), md.get("finalQuantity"))
+                for md in ((item.get("metadata") or {}) for item in data.get("data") or [])
+                if md.get("symbol") and float(md.get("iep") or 0) > 0 and float(md.get("previousClose") or 0) > 0
+                and float(md.get("finalQuantity") or 0) > 0
+            ]
+    if not stamp or stamp.date() != get_ist_now().date():
+        raise ValueError("no pre-open session today yet")  # before 09:00 the list is yesterday's
+    return {"asOf": stamp.isoformat(), "groups": rank_groups(lists["ALL"], lists["FO"], await _group_members())}
+
+
+async def _bhavcopy_snapshot() -> dict:
+    """Last resort: the latest session's movers from the NSE bhavcopy (no F&O group)."""
+    from routers.stocks import _latest_bhav_prices
+
+    day, prices = await _latest_bhav_prices()
+    rows = [_mover(s, c, p, (c - p) / p * 100, 0) for s, (c, p) in prices.items() if c and p]
+    as_of = datetime.fromisoformat(day).replace(hour=15, minute=30, tzinfo=IST).isoformat() if day else None
+    return {"asOf": as_of, "groups": rank_groups(rows, None, await _group_members())}
+
+
+async def _shared(key: str, fetch, fresh: int) -> Optional[dict]:
+    """One copy in Redis for every user, refreshed at most every `fresh` seconds. If the source fails,
+    the last good copy is served and the source is asked again in a minute."""
     cached = await cache_get_json(key)
     if cached and time.time() - cached["at"] < fresh:
-        return cached["items"]
-    async with _movers_locks[kind]:
+        return cached["data"]
+    async with _movers_locks.setdefault(key, asyncio.Lock()):
         cached = await cache_get_json(key)  # another request may have refreshed it meanwhile
         if cached and time.time() - cached["at"] < fresh:
-            return cached["items"]
+            return cached["data"]
         try:
-            items = await (_nse_gainers() if kind == "gainers" else _nse_losers())
+            data = await fetch()
         except Exception as exc:
-            logger.warning("NSE %s failed: %s", kind, exc)
-            items = []
-        retry_at = time.time() - fresh + 60  # stamp a fallback so NSE is asked again in a minute
-        if items:
-            await cache_set_json(key, {"at": time.time(), "items": items}, MOVERS_KEEP)
-            return items
+            logger.warning("%s refresh failed: %s", key, exc)
+            data = None
+        if data:
+            await cache_set_json(key, {"at": time.time(), "data": data}, MOVERS_KEEP)
+            return data
         if cached:
-            await cache_set_json(key, {"at": retry_at, "items": cached["items"]}, MOVERS_KEEP)
-            return cached["items"]
+            await cache_set_json(key, {"at": time.time() - fresh + 60, "data": cached["data"]}, MOVERS_KEEP)
+            return cached["data"]
+        return None
+
+
+async def market_movers(group: str = "NIFTY") -> dict:
+    """Top 10 gainers and losers of one NSE group, with the market phase they belong to.
+    - pre_open: NSE's indicative opening prices for today.
+    - open / closing: NSE's session lists (closing: NSE's final prices land at 16:00).
+    - closed: the last session's final lists, as NSE published them.
+    A list from an earlier session is always labelled closed, whatever the clock says."""
+    phase = market_phase()
+    snapshot = await _shared("movers:preopen", _nse_pre_open, MOVERS_FRESH_LIVE) if phase == "pre_open" else None
+    if snapshot is None:
+        snapshot = await _shared("movers:variations", _nse_variations,
+                                 MOVERS_FRESH_CLOSED if phase == "closed" else MOVERS_FRESH_LIVE)
+        if phase == "pre_open":
+            phase = "closed"  # no pre-open list: yesterday's final lists, labelled as such
+    if snapshot is None:
         try:
-            items = await _bhavcopy_movers(kind)
+            snapshot = await _bhavcopy_snapshot()
         except Exception as exc:
-            logger.warning("bhavcopy %s failed: %s", kind, exc)
-            return []
-        if items:
-            await cache_set_json(key, {"at": retry_at, "items": items}, MOVERS_KEEP)
-        return items
+            logger.warning("bhavcopy movers failed: %s", exc)
+            snapshot = {"asOf": None, "groups": {}}
+    stamp = datetime.fromisoformat(snapshot["asOf"]) if snapshot.get("asOf") else None
+    if phase in ("open", "closing") and (not stamp or stamp.date() != get_ist_now().date()):
+        phase = "closed"
+    elif phase == "closing" and stamp and stamp.time() >= dtime(16, 0):
+        phase = "closed"  # NSE's final values are in
+    lists = snapshot["groups"].get(group) or {"gainers": [], "losers": []}
+    return {"group": group, "label": MOVER_GROUPS.get(group, group), "phase": phase, "asOf": snapshot.get("asOf"),
+            "gainers": lists.get("gainers", []), "losers": lists.get("losers", [])}
 
 
 async def _with_names(items: list[dict]) -> list[dict]:
@@ -439,13 +522,63 @@ async def _with_names(items: list[dict]) -> list[dict]:
     return [{**m, "name": (instruments.get(m["symbol"]) or {}).get("name", "")} for m in items]
 
 
+@router.get("/movers")
+async def get_movers(group: str = "NIFTY"):
+    """Top gainers and losers for one NSE group, with the market phase (see market_movers)."""
+    if group not in MOVER_GROUPS:
+        raise HTTPException(status_code=404, detail="Unknown movers group")
+    movers = await market_movers(group)
+    return {**movers, "groups": [{"key": k, "label": v} for k, v in MOVER_GROUPS.items()],
+            "gainers": await _with_names(movers["gainers"]), "losers": await _with_names(movers["losers"])}
+
+
 @router.get("/top-stocks")
 async def get_top_stocks():
-    """Top 10 gainers (shared cache, see shared_movers)."""
-    return {"gainers": await _with_names(await shared_movers("gainers"))}
+    """Top 10 NIFTY 50 gainers (the same lists as /movers; kept for the mobile app and the assistant)."""
+    return {"gainers": await _with_names((await market_movers("NIFTY"))["gainers"])}
 
 
 @router.get("/top-losers")
 async def get_top_losers():
-    """Top 10 NIFTY losers (shared cache, see shared_movers)."""
-    return {"losers": await _with_names(await shared_movers("losers"))}
+    """Top 10 NIFTY 50 losers (the same lists as /movers)."""
+    return {"losers": await _with_names((await market_movers("NIFTY"))["losers"])}
+
+
+def downsample(points: list[float], n: int = SPARK_POINTS) -> list[float]:
+    """At most n evenly spaced points, always keeping the last one (the latest price)."""
+    if len(points) <= n:
+        return points
+    step = (len(points) - 1) / (n - 1)
+    return [points[round(i * step)] for i in range(n)]
+
+
+async def _nse_spark(symbol: str) -> list[float]:
+    """The day's price line for one stock from NSE's 1-minute chart, normal market only (no pre-open)."""
+    url = f"{NSE_API}/NextApi/apiClient/GetQuoteApi?functionName=getSymbolChartData&symbol={quote(symbol)}EQN&days=1D"
+    async with _spark_gate, httpx.AsyncClient(timeout=10.0, headers=NSE_HEADERS) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+    return downsample([float(p[1]) for p in resp.json().get("grapthData") or [] if len(p) > 2 and p[2] == "NM"])
+
+
+@router.get("/sparklines")
+async def get_sparklines(symbols: str):
+    """Intraday price lines for up to 30 symbols, one shared copy per symbol: about a minute old while
+    the market is open, kept until the next session once it closes."""
+    wanted = [s.strip().upper() for s in symbols.split(",") if s.strip()][:30]
+    ttl = 21600 if market_phase() == "closed" else 60
+    out: dict[str, list[float]] = {}
+    for symbol, cached in zip(wanted, await cache_get_many([f"spark:{s}" for s in wanted])):
+        if cached is not None:
+            out[symbol] = cached
+
+    async def fill(symbol: str) -> None:
+        try:
+            out[symbol] = await _nse_spark(symbol)
+        except Exception as exc:
+            logger.warning("sparkline %s failed: %s", symbol, exc)
+            out[symbol] = []
+        await cache_set_json(f"spark:{symbol}", out[symbol], ttl if out[symbol] else 300)
+
+    await asyncio.gather(*(fill(s) for s in wanted if s not in out))
+    return {"sparklines": out}

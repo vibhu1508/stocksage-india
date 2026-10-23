@@ -87,6 +87,15 @@ export class MarketService {
     );
   }
 
+  getMovers(group: string): Observable<MoversResponse> {
+    return this.http.get<MoversResponse>(`${this.apiUrl}/movers`, { params: { group } });
+  }
+
+  /** The day's price line per symbol (about 60 points), for the movers' sparklines. */
+  getSparklines(symbols: string[]): Observable<{ sparklines: Record<string, number[]> }> {
+    return this.http.get<{ sparklines: Record<string, number[]> }>(`${this.apiUrl}/sparklines`, { params: { symbols: symbols.join(',') } });
+  }
+
   getTopGainers(): Observable<{ gainers: StockMover[] }> {
     return this.http.get<{ gainers: StockMover[] }>(`${this.apiUrl}/top-stocks`).pipe(
       catchError(() => of({ gainers: [] }))
@@ -156,7 +165,22 @@ export interface StockMover {
   change: number;
   pct_change: number;
   volume: number;
+  prev_close?: number;
   name?: string;
+}
+
+/** pre_open 09:00–09:15, open 09:15–15:30, closing until NSE's 16:00 final prices, else closed. */
+export type MarketPhase = 'pre_open' | 'open' | 'closing' | 'closed';
+
+/** /api/market/movers: one NSE group's top gainers and losers (NSE's own lists and values). */
+export interface MoversResponse {
+  group: string;
+  label: string;
+  phase: MarketPhase;
+  asOf: string | null;
+  groups: Array<{ key: string; label: string }>;
+  gainers: StockMover[];
+  losers: StockMover[];
 }
 
 export interface LearnVideo {

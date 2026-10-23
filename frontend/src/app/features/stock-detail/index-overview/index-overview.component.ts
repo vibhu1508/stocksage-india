@@ -31,6 +31,8 @@ export class IndexOverviewComponent implements OnChanges, OnDestroy {
   private liveSubs = new Map<string, Subscription>();
   /** Movers, breadth, industries and prices from the live feed during the session; null = end-of-day. */
   liveMoves: IndexConstituents | null = null;
+  /** After 15:30 the live moves use last-trade prices; NSE's official closes come with the bhavcopy. */
+  liveIsFinalSession = false;
   private liveRows = new Map<string, IndexConstituent>();
   private pollTimer?: ReturnType<typeof setTimeout>;
   private pollReq?: Subscription;
@@ -65,6 +67,7 @@ export class IndexOverviewComponent implements OnChanges, OnDestroy {
     this.pollReq = this.stocks.getIndexLive(key).subscribe({
       next: (res) => {
         this.setLiveMoves(res.live ? res : null);
+        this.liveIsFinalSession = res.live && !!res.phase && res.phase !== 'open';
         this.pollTimer = setTimeout(() => this.pollLive(), res.live ? LIVE_POLL_MS : IDLE_POLL_MS);
       },
       error: () => (this.pollTimer = setTimeout(() => this.pollLive(), IDLE_POLL_MS)),

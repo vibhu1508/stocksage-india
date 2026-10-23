@@ -39,39 +39,76 @@
     }
   </div>
 
-  <!-- Top Movers Grid -->
-  <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2 mt-2">
-    
+  <!-- Top Movers: one NSE group, as NSE publishes it -->
+  <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mt-2">
+    <h2 class="text-lg font-extrabold tracking-tight text-foreground" style="font-family: 'Plus Jakarta Sans', sans-serif;">Top movers</h2>
+    <select class="h-8 rounded-md border border-border bg-card px-2 text-sm font-medium text-foreground" aria-label="Stocks to rank"
+      (change)="setMoversGroup($any($event.target).value)">
+      @for (g of moversGroups; track g.key) {
+      <option [value]="g.key" [selected]="g.key === moversGroup">{{ g.label }}</option>
+      }
+    </select>
+    @switch (moversPhase) {
+    @case ('open') {
+    <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-green-500/10 text-green-500">
+      <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>Live
+    </span>
+    <span class="text-xs text-muted-foreground">Updated {{ moversUpdatedAt | date:'h:mm:ss a' }} · every 20 s</span>
+    }
+    @case ('pre_open') {
+    <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-amber-500/10 text-amber-500">
+      <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>Pre-open
+    </span>
+    <span class="text-xs text-muted-foreground">Indicative opening prices · {{ moversAsOf | date:'h:mm:ss a' }}</span>
+    }
+    @case ('closing') {
+    <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-amber-500/10 text-amber-500">
+      <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Closing
+    </span>
+    <span class="text-xs text-muted-foreground">NSE's final closing prices arrive at 4:00 PM</span>
+    }
+    @default {
+    <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-muted text-muted-foreground">
+      <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground"></span>Closed
+    </span>
+    @if (moversAsOf) {
+    <span class="text-xs text-muted-foreground">As of {{ moversAsOf | date:'d MMM, h:mm a' }}</span>
+    }
+    }
+    }
+    <button type="button" class="ml-auto p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-60"
+      (click)="loadMovers()" [disabled]="moversLoading" aria-label="Refresh top movers" title="Refresh top movers">
+      <lucide-icon name="refresh-cw" [size]="15" [class.animate-spin]="moversLoading"></lucide-icon>
+    </button>
+  </div>
+
+  <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
     @for (card of moverCards; track card.title) {
-    @if (card.rows.length) {
     <div class="rounded-xl border border-border bg-card text-card-foreground shadow-sm flex flex-col p-5">
       <div class="flex flex-row items-center gap-2 border-b border-border pb-3 mb-1">
         <lucide-icon [name]="card.icon" [size]="18" [class]="card.up ? 'text-green-500' : 'text-red-500'"></lucide-icon>
         <h3 class="font-semibold text-sm uppercase tracking-wider text-muted-foreground">{{ card.title }}</h3>
-        <span class="ml-auto flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest"
-          [class]="card.up ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'">
-          <span class="w-1.5 h-1.5 rounded-full animate-pulse" [class]="card.up ? 'bg-green-500' : 'bg-red-500'"></span>
-          Live
-        </span>
-        <button type="button" class="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-60"
-          (click)="refreshMovers(card.kind)" [disabled]="moversLoading[card.kind]"
-          [attr.aria-label]="'Refresh ' + card.title" [title]="'Refresh ' + card.title">
-          <lucide-icon name="refresh-cw" [size]="14" [class.animate-spin]="moversLoading[card.kind]"></lucide-icon>
-        </button>
+        <span class="ml-auto text-xs text-muted-foreground">{{ moversLabel }}</span>
       </div>
-      @if (moversUpdatedAt[card.kind]; as at) {
-      <p class="text-[11px] text-muted-foreground pt-2">Updated {{ at | date:'h:mm:ss a' }} · refreshes every 20 s</p>
-      }
       <ol class="divide-y divide-border">
         @for (m of card.rows; track m.symbol; let i = $index) {
         <li animate.enter="mover-in" animate.leave="mover-out">
-          <a class="flex items-center gap-3 py-2.5 -mx-2 px-2 rounded-lg hover:bg-muted/50 transition-colors" [routerLink]="['/stocks', m.symbol]">
+          <a class="flex items-center gap-3 py-2.5 -mx-2 px-2 rounded-lg hover:bg-muted/50 transition-colors" [routerLink]="['/stocks', m.symbol]"
+            [attr.aria-label]="m.symbol + ', open chart'">
             <span class="w-4 text-xs font-semibold text-muted-foreground tabular-nums">{{ i + 1 }}</span>
             <app-company-logo [symbol]="m.symbol" [size]="32"></app-company-logo>
             <span class="flex flex-col min-w-0 flex-1">
               <span class="font-bold text-foreground truncate">{{ m.symbol }}</span>
               <span class="text-xs text-muted-foreground truncate">{{ (m.name | shortName) || '—' }}</span>
             </span>
+            @if (sparkShapes[m.symbol]; as spark) {
+            <svg class="w-12 sm:w-16 h-7 shrink-0" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">
+              <line x1="0" x2="100" [attr.y1]="spark.base" [attr.y2]="spark.base" stroke="currentColor" class="text-muted-foreground/40"
+                stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
+              <polyline [attr.points]="spark.line" fill="none" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"
+                [attr.stroke]="moverPct(m) >= 0 ? '#22c55e' : '#ef4444'" />
+            </svg>
+            }
             <span class="flex flex-col items-end shrink-0">
               <span class="text-sm font-semibold text-foreground tabular-nums" [appFlash]="moverPrice(m)">₹{{ moverPrice(m) | number:'1.2-2' }}</span>
               <span class="text-[11px] text-muted-foreground tabular-nums">Vol {{ compactVolume(m.volume) }}</span>
@@ -82,12 +119,14 @@
             </span>
           </a>
         </li>
+        } @empty {
+        <li class="py-6 text-sm text-muted-foreground text-center">
+          {{ moversLoading ? 'Loading…' : 'No ' + moversLabel + ' stock is ' + (card.up ? 'up' : 'down') + (moversPhase === 'pre_open' ? ' in pre-open' : ' today') + '.' }}
+        </li>
         }
       </ol>
     </div>
     }
-    }
-
   </div>
 
   <!-- Quick Actions Network -->

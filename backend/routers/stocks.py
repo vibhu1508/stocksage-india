@@ -699,7 +699,10 @@ async def _live_constituents(csv_file: str) -> dict:
     if not prices:
         return {"live": False}
     latest = max(quotes[s][1] for s in prices)
-    return {"live": True, "asOf": datetime.fromtimestamp(latest, IST).isoformat(), **constituent_moves(members, prices)}
+    from routers.market_data import market_phase
+    # After 15:30 these are last-trade prices; NSE's official (VWAP) closes arrive with the bhavcopy.
+    return {"live": True, "phase": market_phase(), "asOf": datetime.fromtimestamp(latest, IST).isoformat(),
+            **constituent_moves(members, prices)}
 
 
 @router.get("/index/{key}/live")

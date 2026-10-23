@@ -77,7 +77,7 @@ export interface IndexAnalysis {
 export type IndexConstituents = NonNullable<IndexAnalysis['constituents']>;
 
 /** /api/stocks/index/{key}/live: constituent moves from the live feed during the session. */
-export type IndexLive = ({ live: true } & IndexConstituents) | { live: false };
+export type IndexLive = ({ live: true; phase?: 'pre_open' | 'open' | 'closing' | 'closed' } & IndexConstituents) | { live: false };
 
 export interface SearchResponse {
   query: string;

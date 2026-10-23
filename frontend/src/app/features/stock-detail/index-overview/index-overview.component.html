@@ -2,7 +2,11 @@
   <div class="ix-head">
     <h2 id="ix-title">Index Overview</h2>
     @if (liveMoves) {
+    @if (liveIsFinalSession) {
+    <p class="ix-basis">Last-trade prices as of {{ liveMoves.asOf | date:'h:mm a' }} · NSE's official closing prices arrive with the bhavcopy (about 7:30 PM)</p>
+    } @else {
     <p class="ix-basis"><span class="ix-live-dot" aria-hidden="true"></span>Live · updated {{ liveMoves.asOf | date:'h:mm:ss a' }}</p>
+    }
     } @else if (data.constituents?.asOf) {
     <p class="ix-basis">Constituent moves as of the {{ data.constituents!.asOf | date:'d MMM' }} close</p>
     }

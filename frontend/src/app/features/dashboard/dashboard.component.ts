@@ -1,14 +1,20 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { Subscription, finalize, map } from 'rxjs';
+import { Subscription, finalize } from 'rxjs';
 import { AuthService, User } from '../../core/services/auth.service';
-import { MarketService, MarketData, StockMover } from '../../core/services/market.service';
+import { MarketPhase, MarketService, MarketData, StockMover } from '../../core/services/market.service';
 import { LucideAngularModule } from 'lucide-angular';
 import { LiveQuote, MarketStreamService } from '../../core/services/market-stream.service';
 import { FlashDirective } from '../../shared/directives/flash.directive';
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 import { ShortNamePipe } from '../../shared/pipes/short-name.pipe';
+
+const MOVERS_GROUP_KEY = 'stocksage.moversGroup';
+
+function readMoversGroup(): string {
+  try { return localStorage.getItem(MOVERS_GROUP_KEY) || 'NIFTY'; } catch { return 'NIFTY'; }
+}
 
 @Component({
   selector: 'app-dashboard',
@@ -25,12 +31,21 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private marketSub?: Subscription;
 
-  // Top gainers/losers lists, re-ranked every 20 s (the server refreshes NSE's lists as often)
+  // Top gainers/losers of one NSE group, as NSE publishes them; re-ranked every 20 s while the market
+  // is in session (the server refreshes NSE's lists as often), every minute otherwise.
   topGainers: StockMover[] = [];
   topLosers: StockMover[] = [];
-  moversLoading = { gainers: false, losers: false };
-  moversUpdatedAt: { gainers: Date | null; losers: Date | null } = { gainers: null, losers: null };
-  private moversTimer?: any;
+  moversGroup = readMoversGroup();
+  moversGroups: Array<{ key: string; label: string }> = [{ key: 'NIFTY', label: 'NIFTY 50' }];
+  moversPhase: MarketPhase = 'closed';
+  moversAsOf: string | null = null;
+  moversLoading = false;
+  moversUpdatedAt: Date | null = null;
+  sparkShapes: Record<string, { line: string; base: number }> = {};
+  private sparks: Record<string, number[]> = {};
+  private sparksAt = 0;
+  private moversTimer?: ReturnType<typeof setTimeout>;
+  private moversReq?: Subscription;
 
   // Live quotes from the Dhan feed (market service): indices and the movers on screen.
   liveNifty: LiveQuote | null = null;
@@ -69,34 +84,88 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.liveSubs.add(this.marketStream.watchQuote('SENSEX').subscribe(q => (this.liveSensex = q)));
 
     this.loadMovers();
-    // The ranking is an NSE snapshot refreshed every 20 s; prices on screen stream live.
-    this.moversTimer = setInterval(() => {
-      if (document.visibilityState === 'visible') this.loadMovers();
-    }, 20_000);
   }
 
-  private loadMovers(): void {
-    this.refreshMovers('gainers');
-    this.refreshMovers('losers');
-  }
-
-  refreshMovers(kind: 'gainers' | 'losers'): void {
-    if (this.moversLoading[kind]) return;
-    this.moversLoading[kind] = true;
-    const request = kind === 'gainers'
-      ? this.marketService.getTopGainers().pipe(map(d => d.gainers))
-      : this.marketService.getTopLosers().pipe(map(d => d.losers));
-    request.pipe(finalize(() => (this.moversLoading[kind] = false))).subscribe(rows => {
-      if (!rows?.length) return;  // keep the last list rather than blanking the card
-      if (kind === 'gainers') this.topGainers = rows; else this.topLosers = rows;
-      this.moversUpdatedAt[kind] = new Date();
-      this.watchMovers();
+  loadMovers(): void {
+    clearTimeout(this.moversTimer);
+    this.moversReq?.unsubscribe();
+    this.moversLoading = true;
+    const group = this.moversGroup;
+    this.moversReq = this.marketService.getMovers(group).pipe(finalize(() => (this.moversLoading = false))).subscribe({
+      next: (res) => {
+        if (group !== this.moversGroup) return;
+        this.topGainers = res.gainers;
+        this.topLosers = res.losers;
+        this.moversGroups = res.groups;
+        this.moversPhase = res.phase;
+        this.moversAsOf = res.asOf;
+        this.moversUpdatedAt = new Date();
+        this.watchMovers();
+        this.loadSparklines();
+        this.scheduleMovers();
+      },
+      error: () => this.scheduleMovers(),  // keep the last lists on screen
     });
   }
 
-  /** Keep one live quote per mover on screen; drop the ones that left the lists. */
+  setMoversGroup(group: string): void {
+    if (group === this.moversGroup) return;
+    this.moversGroup = group;
+    try { localStorage.setItem(MOVERS_GROUP_KEY, group); } catch { /* private mode: not remembered */ }
+    this.topGainers = [];  // never show the previous group's stocks under the new group's name
+    this.topLosers = [];
+    this.loadMovers();
+  }
+
+  get moversLabel(): string {
+    return this.moversGroups.find(g => g.key === this.moversGroup)?.label ?? this.moversGroup;
+  }
+
+  private scheduleMovers(): void {
+    clearTimeout(this.moversTimer);
+    const wait = this.moversPhase === 'closed' ? 60_000 : 20_000;
+    this.moversTimer = setTimeout(() => (document.visibilityState === 'visible' ? this.loadMovers() : this.scheduleMovers()), wait);
+  }
+
+  /** Sparklines for the stocks on screen: new ones at once, the rest about once a minute in session. */
+  private loadSparklines(): void {
+    const symbols = [...this.topGainers, ...this.topLosers].map(m => m.symbol);
+    const refreshAll = this.moversPhase !== 'closed' && Date.now() - this.sparksAt > 60_000;
+    const wanted = refreshAll ? symbols : symbols.filter(s => !(s in this.sparks));
+    this.buildSparkShapes();
+    if (!wanted.length) return;
+    if (refreshAll) this.sparksAt = Date.now();
+    this.marketService.getSparklines(wanted).subscribe({
+      next: (res) => {
+        this.sparks = { ...this.sparks, ...res.sparklines };
+        this.buildSparkShapes();
+      },
+      error: () => {},
+    });
+  }
+
+  /** SVG polyline points (viewBox 100 x 30) per stock, with the previous close as a dashed baseline. */
+  private buildSparkShapes(): void {
+    const shapes: Record<string, { line: string; base: number }> = {};
+    for (const m of [...this.topGainers, ...this.topLosers]) {
+      const points = this.sparks[m.symbol];
+      if (!points || points.length < 2) continue;
+      const prev = m.prev_close || points[0];
+      const lo = Math.min(prev, ...points);
+      const span = Math.max(Math.max(prev, ...points) - lo, 1e-9);
+      const y = (v: number) => +(28 - ((v - lo) / span) * 26).toFixed(2);
+      shapes[m.symbol] = {
+        line: points.map((v, i) => `${+(i / (points.length - 1) * 100).toFixed(2)},${y(v)}`).join(' '),
+        base: y(prev),
+      };
+    }
+    this.sparkShapes = shapes;
+  }
+
+  /** Keep one live quote per mover on screen while the market is open; drop the rest. After 15:30
+   *  NSE's official close (a VWAP) is the right number, not the last trade. */
   private watchMovers(): void {
-    const wanted = new Set([...this.topGainers, ...this.topLosers].map(m => m.symbol));
+    const wanted = new Set(this.moversPhase === 'open' ? [...this.topGainers, ...this.topLosers].map(m => m.symbol) : []);
     for (const [symbol, sub] of this.moverSubs) {
       if (!wanted.has(symbol)) {
         sub.unsubscribe();
@@ -111,21 +180,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** NSE's value, or while the market is open the live price, measured against NSE's previous close
+   *  (adjusted on corporate-action days, unlike a stored close). */
   moverPrice(m: StockMover): number {
     return this.liveMovers.get(m.symbol)?.price ?? m.price;
   }
 
-  moverPct(m: StockMover): number {
-    return this.liveMovers.get(m.symbol)?.pct ?? m.pct_change;
+  moverChange(m: StockMover): number {
+    const live = this.liveMovers.get(m.symbol);
+    return live && m.prev_close ? live.price - m.prev_close : m.change;
   }
 
-  moverChange(m: StockMover): number {
-    return this.liveMovers.get(m.symbol)?.change ?? m.change;
+  moverPct(m: StockMover): number {
+    const live = this.liveMovers.get(m.symbol);
+    return live && m.prev_close ? ((live.price - m.prev_close) / m.prev_close) * 100 : m.pct_change;
   }
 
   ngOnDestroy(): void {
     this.marketSub?.unsubscribe();
-    if (this.moversTimer) clearInterval(this.moversTimer);
+    clearTimeout(this.moversTimer);
+    this.moversReq?.unsubscribe();
     this.liveSubs.unsubscribe();
     this.moverSubs.forEach(sub => sub.unsubscribe());
   }

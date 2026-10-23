@@ -76,6 +76,24 @@ async def cache_get_json(raw_key: str) -> Optional[Any]:
         return None
 
 
+async def cache_get_many(raw_keys: list[str]) -> list[Optional[Any]]:
+    """Several JSON values in one round trip (MGET); None for missing keys, or all None without Redis."""
+    client = get_redis_client()
+    if client is None or not raw_keys:
+        return [None] * len(raw_keys)
+    try:
+        values = await client.mget([_key(k) for k in raw_keys])
+    except RedisError:
+        return [None] * len(raw_keys)
+    out = []
+    for value in values:
+        try:
+            out.append(json.loads(value) if value is not None else None)
+        except json.JSONDecodeError:
+            out.append(None)
+    return out
+
+
 async def cache_set_json(raw_key: str, value: Any, ttl_seconds: int) -> None:
     client = get_redis_client()
     if client is None:

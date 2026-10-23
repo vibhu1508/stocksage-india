@@ -12,6 +12,7 @@ TODAY = "2026-10-23"
 
 def test_rules():
     assert cache_control_for("/api/market/top-stocks", "", TODAY) == "private, max-age=10"
+    assert cache_control_for("/api/market/movers", "group=NIFTY", TODAY) == "private, max-age=10"
     assert cache_control_for("/api/stocks/bhavcopy/2026-10-22", "", TODAY) == "private, max-age=86400"
     assert cache_control_for("/api/stocks/bhavcopy/2026-10-23", "", TODAY) == "private, max-age=300"
     assert cache_control_for("/api/stocks/compare", "date1=2026-01-02&date2=2026-10-22", TODAY) == "private, max-age=86400"
