@@ -3,7 +3,12 @@ NSE Platform Backend - Main Application
 FastAPI server with Google OAuth and SQLite database
 """
 
+import asyncio
 import logging
+import re
+from datetime import datetime
+from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
@@ -21,6 +26,7 @@ load_dotenv()
 
 # Import routers
 from routers import auth, stocks, fo_analysis, announcements, market_data, learn, strategy_builder, portfolio, dhan_market, chat
+from services.instruments import get_instruments
 from database import engine, Base
 
 
@@ -55,6 +61,8 @@ async def lifespan(app: FastAPI):
     # Startup: Create database tables
     Base.metadata.create_all(bind=engine)
     _ensure_user_onboarding_columns()
+    # Load the stock list now, so the first search after a restart doesn't wait for it.
+    app.state.instruments_warmup = asyncio.create_task(get_instruments())
     yield
     # Shutdown: cleanup if needed
     await close_redis()
@@ -75,6 +83,46 @@ async def hide_server_error_details(request: Request, exc: StarletteHTTPExceptio
         logging.getLogger("api.errors").warning("%s %s -> %s: %s", request.method, request.url.path, exc.status_code, exc.detail)
         return JSONResponse({"detail": "Internal server error. Please try again shortly."}, status_code=exc.status_code, headers=exc.headers)
     return await http_exception_handler(request, exc)
+
+
+
+# Browser caching for shared market data (the same for every user, so a reload needn't re-download
+# it). "private": only the user's own browser keeps it. Data about a date that has passed never
+# changes, so it is kept a day. Personal data (portfolio, account, chat) is never stored.
+_CACHE_RULES = (  # (path prefix, seconds, seconds when every date asked for is in the past)
+    ("/api/market/top-stocks", 30, 30),
+    ("/api/market/top-losers", 30, 30),
+    ("/api/stocks/search", 300, 300),
+    ("/api/stocks/index/", 60, 60),
+    ("/api/strategy/yearwise-data/", 3600, 3600),
+    ("/api/stocks/bhavcopy/", 300, 86400),
+    ("/api/stocks/compare", 300, 86400),
+    ("/api/fo/data/", 300, 86400),
+)
+_NO_STORE = ("/api/portfolio", "/api/auth", "/api/chat")
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def cache_control_for(path: str, query: str, today: str) -> Optional[str]:
+    if path.startswith(_NO_STORE):
+        return "no-store"
+    for prefix, seconds, past_seconds in _CACHE_RULES:
+        if path.startswith(prefix):
+            dates = _DATE.findall(path + "?" + query)
+            return f"private, max-age={past_seconds if dates and max(dates) < today else seconds}"
+    return None
+
+
+@app.middleware("http")
+async def browser_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    if (request.method == "GET" and response.status_code == 200 and "cache-control" not in response.headers
+            and "set-cookie" not in response.headers):
+        today = datetime.now(ZoneInfo("Asia/Kolkata")).date().isoformat()
+        value = cache_control_for(request.url.path, request.url.query, today)
+        if value:
+            response.headers["Cache-Control"] = value
+    return response
 
 
 # CORS configuration

@@ -1,0 +1,11 @@
+[Unit]
+Description=StockSage evening daily-candle top-up from the NSE bhavcopy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/stocksage-india/backend
+EnvironmentFile=/etc/stocksage.env
+ExecStart=/home/ubuntu/stocksage-india/.venv/bin/python -m scripts.daily_topup

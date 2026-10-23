@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the daily-candle top-up on weekday evenings (bhavcopy is out around 19:30 IST)
+
+[Timer]
+# The second run catches a late bhavcopy; it skips stocks the first run already added.
+OnCalendar=Mon..Fri 19:45 Asia/Kolkata
+OnCalendar=Mon..Fri 21:30 Asia/Kolkata
+Persistent=true
+
+[Install]
+WantedBy=timers.target

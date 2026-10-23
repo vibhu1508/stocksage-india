@@ -89,6 +89,21 @@ def test_read_path_checks_once_per_session_and_survives_outages():
         ds.fetch = original
 
 
+def test_topup_plan_adds_continuous_days_and_rechecks_the_rest():
+    from datetime import date
+    from scripts.daily_topup import plan
+    from services.daily_store import day_stamp
+
+    prev, today = date(2026, 10, 21), date(2026, 10, 22)
+    stored = {"1": (day_stamp(prev), 100.0), "2": (day_stamp(prev), 100.0), "3": (day_stamp(date(2026, 10, 1)), 100.0),
+              "4": (day_stamp(today), 100.0)}
+    row = lambda sid, pc: {"FinInstrmId": sid, "TradDt": "2026-10-22", "OpnPric": "101", "HghPric": "103",
+                           "LwPric": "99", "ClsPric": "102", "PrvsClsgPric": pc, "TtlTradgVol": "500"}
+    add, recheck = plan([row("1", "100.4"), row("2", "50"), row("3", "100"), row("4", "100"), row("9", "1")], stored, today, prev)
+    assert add == {"1": (day_stamp(today), 101.0, 103.0, 99.0, 102.0, 500)}
+    assert sorted(recheck) == ["2", "3"]  # 2: a 1:2 split halved the previous close; 3: a gap
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

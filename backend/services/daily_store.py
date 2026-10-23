@@ -9,8 +9,8 @@ screener, indicators and previous closes don't depend on the provider answering 
   Dhan's daily history is adjusted for splits and bonuses; NSE's is raw, so its rows are marked.
 - If a refetch disagrees with what we stored, a corporate action happened: the whole history is
   replaced with the provider's adjusted one.
-- The evening job (scripts/daily_topup.py) adds each day from the NSE bhavcopy; the backfill job
-  (scripts/daily_backfill.py) fills full history ahead of time.
+- The evening job (scripts/daily_topup.py) adds each day from the NSE bhavcopy for NSE stocks
+  already stored; indices and BSE-only stocks stay lazy.
 """
 
 import asyncio
@@ -96,6 +96,21 @@ def checked(seg: str, sid: str) -> tuple[str, float]:
 def mark_checked(seg: str, sid: str, session: str) -> None:
     with _connect() as conn:
         conn.execute("INSERT OR REPLACE INTO checked VALUES (?,?,?,?)", (seg, str(sid), session, time.time()))
+
+
+def clear_checked(seg: str, sid: str) -> None:
+    """Forget the instrument's last check, so its next read asks the provider again."""
+    with _connect() as conn:
+        conn.execute("DELETE FROM checked WHERE seg=? AND sid=?", (seg, str(sid)))
+
+
+def latest_closes(seg: str) -> dict[str, tuple[int, float]]:
+    """{sid: (last stored day, its close)} for every stored instrument of a segment."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT sid, day, c FROM candles WHERE seg=? AND (sid, day) IN "
+            "(SELECT sid, MAX(day) FROM candles WHERE seg=? GROUP BY sid)", (seg, seg)).fetchall()
+    return {sid: (day, c) for sid, day, c in rows}
 
 
 def needs_refill(stored: list[tuple], fetched: list[tuple]) -> bool:

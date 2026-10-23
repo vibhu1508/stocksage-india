@@ -17,25 +17,18 @@ from datetime import date, datetime, timedelta
 from typing import Optional, List, Tuple
 import numpy as np
 import pandas as pd
-import requests
 import zipfile
 import io
-import time
 
 from routers.auth import get_current_user
 from models import User
+from services import bhavcopy_archive
 from utils.market_utils import get_latest_market_date
 
 router = APIRouter()
 
 # Configuration
 FO_BASE_URL = "https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{date}_F_0000.csv.zip"
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-    "Accept": "application/zip",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Connection": "keep-alive",
-}
 
 # Instrument type codes. The UDiFF bhavcopy uses IDF/STF/IDO/STO; the older
 # bhavcopy format used FUTIDX/FUTSTK/OPTIDX/OPTSTK. Accept both.
@@ -81,25 +74,12 @@ def download_fo_bhavcopy(target_date: date) -> Optional[pd.DataFrame]:
         now - _fo_cache["timestamp"][date_str] < CACHE_DURATION):
         return _fo_cache["data"][date_str]
 
-    url_date_str = target_date.strftime("%Y%m%d")
-    url = FO_BASE_URL.format(date=url_date_str)
-
     try:
-        session = requests.Session()
-        session.headers.update(HEADERS)
-
-        # First request to get cookies
-        session.get("https://www.nseindia.com", timeout=10)
-        time.sleep(0.5)
-
-        response = session.get(url, timeout=30)
-
-        if response.status_code == 404:
+        content = bhavcopy_archive.get_zip("fo", FO_BASE_URL, target_date)
+        if content is None:
             return None
 
-        response.raise_for_status()
-
-        with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
             csv_filename = next((name for name in z.namelist() if name.endswith('.csv')), None)
             if not csv_filename:
                 return None

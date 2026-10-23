@@ -10,7 +10,6 @@ import asyncio
 import csv
 import logging
 import pandas as pd
-import requests
 import httpx
 import zipfile
 import io
@@ -20,6 +19,7 @@ from database import get_db
 from routers.auth import get_current_user
 from models import User
 from routers.strategy_builder import nse_session
+from services import bhavcopy_archive
 from services.instruments import get_indices, get_instruments
 
 router = APIRouter()
@@ -41,27 +41,13 @@ def download_bhavcopy(target_date: date) -> Optional[pd.DataFrame]:
     Downloads the NSE BhavCopy for a specific date and returns as DataFrame.
     Optimized for memory usage.
     """
-    date_str = target_date.strftime("%Y%m%d")
-    url = BASE_URL.format(date=date_str)
-    
     try:
-        session = requests.Session()
-        session.headers.update(HEADERS)
-        
-        # First request to get cookies
-        session.get("https://www.nseindia.com", timeout=10)
-        time.sleep(0.5)
-        
-        # Download the zip file
-        response = session.get(url, timeout=30)
-        
-        if response.status_code == 404:
+        content = bhavcopy_archive.get_zip("cm", BASE_URL, target_date)
+        if content is None:
             return None
-        
-        response.raise_for_status()
-        
+
         # Extract CSV from zip
-        with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+        with zipfile.ZipFile(io.BytesIO(content)) as z:
             csv_filename = z.namelist()[0]
             with z.open(csv_filename) as f:
                 # OPTIMIZATION: Only load necessary columns
@@ -214,6 +200,27 @@ def _squash(text: str) -> str:
     return text.replace(" ", "").upper()
 
 
+_search_index: tuple = (None, None, [])  # (companies, indices, prepared rows) for the current lists
+
+
+def _prepared(instruments: dict, indices: Optional[dict]) -> list[tuple]:
+    """Space-free, upper-case match keys, built once per list instead of on every keystroke."""
+    global _search_index
+    if _search_index[0] is instruments and _search_index[1] is indices:
+        return _search_index[2]
+    rows = [
+        (key, _squash(e["symbol"]), _squash(e["name"]), _squash(key), len(e["symbol"]), 1 if e["nse"] else 2,
+         {"symbol": key, "name": e["name"], "exchanges": [x for x in ("NSE", "BSE") if e[x.lower()]]})
+        for key, e in instruments.items()
+    ] + [
+        (key, _squash(e["symbol"]), _squash(e["name"]), _squash(key), len(e["symbol"]), 0,
+         {"symbol": key, "name": e["name"], "exchanges": [e["exchange"]], "kind": "index"})
+        for key, e in (indices or {}).items()
+    ]
+    _search_index = (instruments, indices, rows)
+    return rows
+
+
 def rank_search(instruments: dict, query: str, limit: int, indices: Optional[dict] = None) -> list[dict]:
     """Best matches first: exact symbol or name, symbol prefix, name prefix, then anywhere; spaces are
     ignored ("nifty50" finds Nifty 50). Ties: indices, then NSE-listed, then shorter symbols.
@@ -221,18 +228,9 @@ def rank_search(instruments: dict, query: str, limit: int, indices: Optional[dic
     q = _squash(query)
     if not q:
         return []
-    candidates = [
-        (key, e["symbol"], e["name"], 1 if e["nse"] else 2,
-         {"symbol": key, "name": e["name"], "exchanges": [x for x in ("NSE", "BSE") if e[x.lower()]]})
-        for key, e in instruments.items()
-    ] + [
-        (key, e["symbol"], e["name"], 0, {"symbol": key, "name": e["name"], "exchanges": [e["exchange"]], "kind": "index"})
-        for key, e in (indices or {}).items()
-    ]
     ranked = []
-    for key, symbol, name, tie, result in candidates:
-        sym, nm = _squash(symbol), _squash(name)
-        if q in (sym, nm, _squash(key)):
+    for key, sym, nm, key_sq, sym_len, tie, result in _prepared(instruments, indices):
+        if q in (sym, nm, key_sq):
             rank = 0
         elif sym.startswith(q):
             rank = 1
@@ -244,7 +242,7 @@ def rank_search(instruments: dict, query: str, limit: int, indices: Optional[dic
             rank = 4
         else:
             continue
-        ranked.append((rank, tie, len(symbol), key, result))
+        ranked.append((rank, tie, sym_len, key, result))
     ranked.sort(key=lambda r: r[:4])
     return [r[4] for r in ranked[:limit]]
 

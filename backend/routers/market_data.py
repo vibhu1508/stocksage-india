@@ -3,15 +3,19 @@ Market Data Router - Live SENSEX & NIFTY data proxy
 """
 
 from fastapi import APIRouter, Depends
+import asyncio
 import httpx
+import logging
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, time as dtime
 from models import User
 from routers.auth import require_admin
 from services.nse_mcp import SERVERS as NSE_MCP_SERVERS, McpSession
+from services.redis_store import cache_get_json, cache_set_json
 from utils.market_utils import is_market_holiday
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/nse-mcp/probe")
@@ -338,68 +342,103 @@ async def get_indices():
     }
 
 
+NSE_HEADERS = {**BROWSER_HEADERS, "Referer": "https://www.nseindia.com/", "Origin": "https://www.nseindia.com"}
+MOVERS_FRESH_LIVE = 60        # market hours: everyone shares one NSE call a minute
+MOVERS_FRESH_CLOSED = 1800    # after the close the lists don't change
+MOVERS_KEEP = 3 * 86400       # the last good copy outlives an NSE outage
+_movers_locks = {"gainers": asyncio.Lock(), "losers": asyncio.Lock()}
+
+
+def _market_hours_now() -> bool:
+    now = get_ist_now()
+    return now.weekday() < 5 and not is_market_holiday(now.date()) and dtime(9, 0) <= now.time() <= dtime(15, 45)
+
+
+async def _nse_gainers() -> list[dict]:
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get("https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getTopTenStock", headers=NSE_HEADERS)
+        resp.raise_for_status()
+    return [{
+        "symbol": g.get("symbol", ""),
+        "price": g.get("lastPrice", 0),
+        "change": round(float(g.get("change", 0)), 2),
+        "pct_change": round(float(g.get("pchange", 0)), 2),
+        "volume": g.get("totalTradedVolume", 0),
+    } for g in resp.json().get("topGainers", [])]
+
+
+async def _nse_losers() -> list[dict]:
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get("https://www.nseindia.com/api/live-analysis-variations?index=loosers", headers=NSE_HEADERS)
+        resp.raise_for_status()
+    results = []
+    for item in resp.json().get("NIFTY", {}).get("data", [])[:10]:
+        price = float(item.get("ltp", 0))
+        prev = float(item.get("prev_price", 0))
+        results.append({
+            "symbol": item.get("symbol", ""),
+            "price": price,
+            "change": round(price - prev, 2),
+            "pct_change": round(float(item.get("perChange", 0)), 2),
+            "volume": item.get("trade_quantity", 0),
+        })
+    return results
+
+
+async def _bhavcopy_movers(kind: str) -> list[dict]:
+    """Last resort: the latest session's biggest moves from the NSE bhavcopy, over the same stocks
+    NSE's lists use (gainers: the whole market; losers: NIFTY 50)."""
+    from routers.stocks import _index_members, _latest_bhav_prices, constituent_moves
+
+    _, prices = await _latest_bhav_prices()
+    members = [{"symbol": s, "industry": ""} for s in prices] if kind == "gainers" else await _index_members("nifty50")
+    rows = [r for r in constituent_moves(members, prices)["rows"] if r["pct"] is not None]
+    picked = [r for r in rows if r["pct"] > 0] if kind == "gainers" else [r for r in reversed(rows) if r["pct"] < 0]
+    return [{"symbol": r["symbol"], "price": r["close"], "change": r["change"], "pct_change": r["pct"], "volume": 0} for r in picked[:10]]
+
+
+async def shared_movers(kind: str) -> list[dict]:
+    """Top gainers or losers for every user from one shared copy in Redis: NSE is asked at most once
+    a minute in market hours (every 30 min after the close). If NSE fails, the last good copy is
+    served, or the bhavcopy's movers when there is none; either way NSE is retried a minute later."""
+    key = f"movers:{kind}"
+    fresh = MOVERS_FRESH_LIVE if _market_hours_now() else MOVERS_FRESH_CLOSED
+    cached = await cache_get_json(key)
+    if cached and time.time() - cached["at"] < fresh:
+        return cached["items"]
+    async with _movers_locks[kind]:
+        cached = await cache_get_json(key)  # another request may have refreshed it meanwhile
+        if cached and time.time() - cached["at"] < fresh:
+            return cached["items"]
+        try:
+            items = await (_nse_gainers() if kind == "gainers" else _nse_losers())
+        except Exception as exc:
+            logger.warning("NSE %s failed: %s", kind, exc)
+            items = []
+        retry_at = time.time() - fresh + 60  # stamp a fallback so NSE is asked again in a minute
+        if items:
+            await cache_set_json(key, {"at": time.time(), "items": items}, MOVERS_KEEP)
+            return items
+        if cached:
+            await cache_set_json(key, {"at": retry_at, "items": cached["items"]}, MOVERS_KEEP)
+            return cached["items"]
+        try:
+            items = await _bhavcopy_movers(kind)
+        except Exception as exc:
+            logger.warning("bhavcopy %s failed: %s", kind, exc)
+            return []
+        if items:
+            await cache_set_json(key, {"at": retry_at, "items": items}, MOVERS_KEEP)
+        return items
+
+
 @router.get("/top-stocks")
 async def get_top_stocks():
-    """Get top 10 gainers from NSE"""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                "https://www.nseindia.com/api/NextApi/apiClient/GetQuoteApi?functionName=getTopTenStock",
-                headers={
-                    **BROWSER_HEADERS,
-                    "Referer": "https://www.nseindia.com/",
-                    "Origin": "https://www.nseindia.com",
-                },
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                gainers = data.get("topGainers", [])
-                results = []
-                for g in gainers:
-                    results.append({
-                        "symbol": g.get("symbol", ""),
-                        "price": g.get("lastPrice", 0),
-                        "change": round(float(g.get("change", 0)), 2),
-                        "pct_change": round(float(g.get("pchange", 0)), 2),
-                        "volume": g.get("totalTradedVolume", 0),
-                    })
-                return {"gainers": results}
-            return {"gainers": []}
-    except Exception as e:
-        return {"gainers": [], "error": str(e)}
+    """Top 10 gainers (shared cache, see shared_movers)."""
+    return {"gainers": await shared_movers("gainers")}
 
 
 @router.get("/top-losers")
 async def get_top_losers():
-    """Get top 10 losers from NSE NIFTY"""
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                "https://www.nseindia.com/api/live-analysis-variations?index=loosers",
-                headers={
-                    **BROWSER_HEADERS,
-                    "Referer": "https://www.nseindia.com/",
-                    "Origin": "https://www.nseindia.com",
-                },
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                nifty = data.get("NIFTY", {})
-                items = nifty.get("data", [])
-                results = []
-                for item in items[:10]:
-                    price = float(item.get("ltp", 0))
-                    prev = float(item.get("prev_price", 0))
-                    change = round(price - prev, 2)
-                    pct = round(float(item.get("perChange", 0)), 2)
-                    results.append({
-                        "symbol": item.get("symbol", ""),
-                        "price": price,
-                        "change": change,
-                        "pct_change": pct,
-                        "volume": item.get("trade_quantity", 0),
-                    })
-                return {"losers": results}
-            return {"losers": []}
-    except Exception as e:
-        return {"losers": [], "error": str(e)}
+    """Top 10 NIFTY losers (shared cache, see shared_movers)."""
+    return {"losers": await shared_movers("losers")}

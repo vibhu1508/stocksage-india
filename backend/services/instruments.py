@@ -9,12 +9,13 @@ No dots in keys: the site's rewrite rule treats dotted paths as files.
 
 import asyncio
 import csv
+import json
 import logging
 import os
 import tempfile
 import time
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 import httpx
 
@@ -23,11 +24,15 @@ logger = logging.getLogger("services.instruments")
 DETAILED_MASTER_URL = os.getenv("DHAN_DETAILED_MASTER_URL", "https://images.dhan.co/api-data/api-scrip-master-detailed.csv")
 LOCAL_PATH = Path(tempfile.gettempdir()) / "stocksage" / "dhan_api_scrip_master_detailed.csv"
 REFRESH_SECONDS = 86400
+# The parsed list (~2 MB), so a restarted process is ready in well under a second instead of
+# downloading and parsing the 36 MB file (5.6 s + 3.9 s measured) before the first search answers.
+PARSED_PATH = Path(os.getenv("STOCKSAGE_DATA_DIR", str(Path.home() / "stocksage-data"))) / "instruments.json"
 
 _cache: dict[str, dict] = {}
 _indices: dict[str, dict] = {}
 _loaded_at = 0.0
 _lock = asyncio.Lock()
+_refreshing: Optional[asyncio.Task] = None  # held so the background refresh isn't garbage-collected
 
 
 def _is_company_or_etf(row: dict) -> bool:
@@ -92,7 +97,7 @@ def _parse_file(path: Path) -> tuple[dict[str, dict], dict[str, dict]]:
 
 async def _download() -> None:
     LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    partial = LOCAL_PATH.with_suffix(".part")
+    partial = LOCAL_PATH.with_name(f"{LOCAL_PATH.name}.{os.getpid()}.part")  # the API and market service may both refresh
     async with httpx.AsyncClient(timeout=120) as client:
         async with client.stream("GET", DETAILED_MASTER_URL) as resp:
             resp.raise_for_status()
@@ -102,28 +107,55 @@ async def _download() -> None:
     partial.replace(LOCAL_PATH)
 
 
-async def get_instruments() -> dict[str, dict]:
-    """The company list, refreshed daily; on a failed refresh the last good copy is kept."""
+def _load_parsed() -> Optional[tuple[dict, dict, float]]:
+    try:
+        saved = json.loads(PARSED_PATH.read_text())
+        return saved["companies"], saved["indices"], saved["built"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def _save_parsed(companies: dict, indices: dict, built: float) -> None:
+    PARSED_PATH.parent.mkdir(parents=True, exist_ok=True)
+    partial = PARSED_PATH.with_name(f"{PARSED_PATH.name}.{os.getpid()}.part")
+    partial.write_text(json.dumps({"companies": companies, "indices": indices, "built": built}))
+    partial.replace(PARSED_PATH)
+
+
+async def _refresh() -> None:
+    """Download and parse the provider's list, then swap it in. Failures keep the current list."""
     global _cache, _indices, _loaded_at
-    if _cache and time.time() - _loaded_at < REFRESH_SECONDS:
-        return _cache
-    async with _lock:
-        if _cache and time.time() - _loaded_at < REFRESH_SECONDS:
-            return _cache
-        try:
-            await _download()
-        except Exception as exc:
-            logger.warning("instrument list download failed (%s); using the saved copy", exc)
-            if not LOCAL_PATH.exists():
-                return _cache
-        try:
-            # Parsing ~200k rows takes a second or two; keep it off the event loop.
-            _cache, _indices = await asyncio.to_thread(_parse_file, LOCAL_PATH)
-            _loaded_at = time.time()
-            logger.info("instrument list: %d companies and ETFs, %d indices", len(_cache), len(_indices))
-        except Exception as exc:
-            logger.warning("instrument list parse failed: %s", exc)
-            _loaded_at = time.time() - REFRESH_SECONDS + 600  # retry in 10 minutes, not on every request
+    try:
+        await _download()
+    except Exception as exc:
+        logger.warning("instrument list download failed (%s); using the saved copy", exc)
+    try:
+        if not LOCAL_PATH.exists():
+            raise FileNotFoundError(LOCAL_PATH)
+        # Parsing ~200k rows takes a few seconds; keep it off the event loop.
+        companies, indices = await asyncio.to_thread(_parse_file, LOCAL_PATH)
+        _cache, _indices, _loaded_at = companies, indices, time.time()
+        await asyncio.to_thread(_save_parsed, companies, indices, _loaded_at)
+        logger.info("instrument list: %d companies and ETFs, %d indices", len(_cache), len(_indices))
+    except Exception as exc:
+        logger.warning("instrument list refresh failed: %s", exc)
+        _loaded_at = time.time() - REFRESH_SECONDS + 600  # retry in 10 minutes, not on every request
+
+
+async def get_instruments() -> dict[str, dict]:
+    """The company list. Requests never wait on the daily download: a new process loads the saved
+    parsed copy, and refreshes run in the background while the current list keeps answering."""
+    global _cache, _indices, _loaded_at, _refreshing
+    if not _cache:
+        async with _lock:
+            if not _cache:
+                saved = await asyncio.to_thread(_load_parsed)
+                if saved:
+                    _cache, _indices, _loaded_at = saved
+                else:
+                    await _refresh()  # first run on this machine: nothing saved yet
+    if time.time() - _loaded_at >= REFRESH_SECONDS and (_refreshing is None or _refreshing.done()):
+        _refreshing = asyncio.create_task(_refresh())
     return _cache
 
 
