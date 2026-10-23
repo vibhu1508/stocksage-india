@@ -78,7 +78,7 @@
             <app-company-logo [symbol]="item.symbol" [size]="26"></app-company-logo>
             <span class="min-w-0">
               <span class="block text-sm font-semibold">{{ item.symbol }} @if (item.series) { <span class="text-xs text-muted-foreground">({{ item.series }})</span> }</span>
-              <span class="block text-xs text-muted-foreground truncate">{{ item.name }}</span>
+              <span class="block text-xs text-muted-foreground truncate">{{ item.name | shortName }}</span>
             </span>
           </button>
           }

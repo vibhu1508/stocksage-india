@@ -48,7 +48,7 @@
         >
           <app-company-logo [symbol]="s.symbol" [size]="24"></app-company-logo>
           <strong>{{ s.symbol }}</strong>
-          <span>{{ s.name }}</span>
+          <span>{{ s.name | shortName }}</span>
           <app-exchange-badges [exchanges]="s.exchanges ?? []" [kind]="s.kind"></app-exchange-badges>
         </li>
         }

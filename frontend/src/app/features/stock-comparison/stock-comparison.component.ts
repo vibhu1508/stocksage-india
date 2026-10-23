@@ -8,11 +8,12 @@ import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { LucideAngularModule } from 'lucide-angular';
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 import { ExchangeBadgesComponent } from '../../shared/components/exchange-badges/exchange-badges.component';
+import { ShortNamePipe } from '../../shared/pipes/short-name.pipe';
 
 @Component({
   selector: 'app-stock-comparison',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule, RouterLink, CompanyLogoComponent, ExchangeBadgesComponent],
+  imports: [CommonModule, FormsModule, LucideAngularModule, RouterLink, CompanyLogoComponent, ExchangeBadgesComponent, ShortNamePipe],
   templateUrl: './stock-comparison.component.html',
   styleUrl: './stock-comparison.component.scss'
 })

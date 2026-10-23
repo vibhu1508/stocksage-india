@@ -12,11 +12,12 @@ import { Observable, Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged, takeUntil } from 'rxjs/operators';
 import { CompanyLogoComponent } from '../company-logo/company-logo.component';
 import { ExchangeBadgesComponent } from '../exchange-badges/exchange-badges.component';
+import { ShortNamePipe } from '../../pipes/short-name.pipe';
 
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule, CompanyLogoComponent, ExchangeBadgesComponent],
+  imports: [CommonModule, FormsModule, LucideAngularModule, CompanyLogoComponent, ExchangeBadgesComponent, ShortNamePipe],
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss'
 })

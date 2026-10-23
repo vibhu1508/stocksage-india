@@ -39,6 +39,7 @@ import {
 } from '../../core/services/dhan-live-chart.service';
 import { LiveQuote, MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
 import { FlashDirective } from '../../shared/directives/flash.directive';
+import { shortCompanyName } from '../../shared/pipes/short-name.pipe';
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 import { TrendSignal, momentum, movingAverage, trendSignal } from '../../core/utils/moving-averages';
 
@@ -492,8 +493,12 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
     return !this.isIndex && this.quote?.exchange === 'BSE';
   }
 
-  get displayName(): string {
+  get fullName(): string {
     return this.quote?.info?.companyName || this.quote?.metadata?.companyName || this.symbol;
+  }
+
+  get displayName(): string {
+    return shortCompanyName(this.fullName);
   }
 
   private watchQuote(): void {

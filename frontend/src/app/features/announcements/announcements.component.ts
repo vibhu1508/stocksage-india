@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AnnouncementService, NSEAnnouncement, BSEAnnouncement } from '../../core/services/announcement.service';
 import { LucideAngularModule } from 'lucide-angular';
+import { ShortNamePipe } from '../../shared/pipes/short-name.pipe';
 
 interface ScripCode {
   'Scrip Code': string;
@@ -12,7 +13,7 @@ interface ScripCode {
 @Component({
   selector: 'app-announcements',
   standalone: true,
-  imports: [CommonModule, FormsModule, LucideAngularModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule, ShortNamePipe],
   templateUrl: './announcements.component.html',
   styleUrl: './announcements.component.scss'
 })

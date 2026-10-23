@@ -8,11 +8,12 @@ import { LucideAngularModule } from 'lucide-angular';
 import { FlashDirective } from '../../shared/directives/flash.directive';
 import { Subject, Subscription, debounceTime, distinctUntilChanged, switchMap } from 'rxjs';
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
+import { ShortNamePipe } from '../../shared/pipes/short-name.pipe';
 
 @Component({
   selector: 'app-portfolio',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, FlashDirective, CompanyLogoComponent],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, FlashDirective, CompanyLogoComponent, ShortNamePipe],
   templateUrl: './portfolio.component.html',
   styleUrl: './portfolio.component.scss'
 })

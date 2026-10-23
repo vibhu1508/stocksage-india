@@ -10,6 +10,7 @@ import { StockService, SymbolSearchResult } from '../../core/services/stock.serv
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 import { TrendSignal, momentum, movingAverage, trendSignal } from '../../core/utils/moving-averages';
 import { ExchangeBadgesComponent } from '../../shared/components/exchange-badges/exchange-badges.component';
+import { ShortNamePipe } from '../../shared/pipes/short-name.pipe';
 
 interface MAScreenerRow {
   symbol: string;
@@ -25,7 +26,7 @@ interface MAScreenerRow {
 @Component({
   selector: 'app-moving-averages',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, CompanyLogoComponent, ExchangeBadgesComponent],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule, CompanyLogoComponent, ExchangeBadgesComponent, ShortNamePipe],
   templateUrl: './moving-averages.component.html',
   styleUrl: './moving-averages.component.scss',
 })

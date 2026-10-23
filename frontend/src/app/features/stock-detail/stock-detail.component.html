@@ -19,7 +19,7 @@
     <div class="hero-id">
       <app-company-logo [symbol]="symbol" [size]="72"></app-company-logo>
       <div class="hero-text">
-        <h1>{{ displayName }}</h1>
+        <h1 [title]="fullName">{{ displayName }}</h1>
         <div class="hero-sub">
           <span class="symbol-pill">{{ symbolLabel }}</span>
           @if (isIndex) {

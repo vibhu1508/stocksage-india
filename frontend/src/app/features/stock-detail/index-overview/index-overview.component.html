@@ -49,7 +49,7 @@
       @for (r of topGainers; track r.symbol) {
       <a class="ix-mover" [routerLink]="['/stocks', r.symbol]">
         <app-company-logo [symbol]="r.symbol" [size]="28"></app-company-logo>
-        <span class="ix-name"><strong>{{ r.symbol }}</strong><small>{{ r.name }}</small></span>
+        <span class="ix-name"><strong>{{ r.symbol }}</strong><small>{{ r.name | shortName }}</small></span>
         <span class="ix-pct up">+{{ r.pct | number:'1.2-2' }}%</span>
       </a>
       } @empty { <p class="ix-note">No member rose.</p> }
@@ -59,7 +59,7 @@
       @for (r of topLosers; track r.symbol) {
       <a class="ix-mover" [routerLink]="['/stocks', r.symbol]">
         <app-company-logo [symbol]="r.symbol" [size]="28"></app-company-logo>
-        <span class="ix-name"><strong>{{ r.symbol }}</strong><small>{{ r.name }}</small></span>
+        <span class="ix-name"><strong>{{ r.symbol }}</strong><small>{{ r.name | shortName }}</small></span>
         <span class="ix-pct down">{{ r.pct | number:'1.2-2' }}%</span>
       </a>
       } @empty { <p class="ix-note">No member fell.</p> }
@@ -94,7 +94,7 @@
           <td>
             <a class="ix-company" [routerLink]="['/stocks', r.symbol]">
               <app-company-logo [symbol]="r.symbol" [size]="24"></app-company-logo>
-              <span class="ix-name"><strong>{{ r.symbol }}</strong><small>{{ r.name }}</small></span>
+              <span class="ix-name"><strong>{{ r.symbol }}</strong><small>{{ r.name | shortName }}</small></span>
             </a>
           </td>
           <td class="muted">{{ r.industry }}</td>

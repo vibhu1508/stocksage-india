@@ -36,6 +36,7 @@ import {
 import { MarketStreamMessage, MarketStreamRequest, MarketStreamService, StreamCandle } from '../../core/services/market-stream.service';
 import { CompanyLogoComponent } from '../../shared/components/company-logo/company-logo.component';
 import { ExchangeBadgesComponent } from '../../shared/components/exchange-badges/exchange-badges.component';
+import { ShortNamePipe } from '../../shared/pipes/short-name.pipe';
 
 const toCandle = (c: StreamCandle): CandlestickData => ({
   time: c[0] as UTCTimestamp, open: c[1], high: c[2], low: c[3], close: c[4],
@@ -47,7 +48,7 @@ type FocusPanel = 'chart' | 'depth';
 @Component({
   selector: 'app-watchlist',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, CompanyLogoComponent, ExchangeBadgesComponent],
+  imports: [CommonModule, FormsModule, RouterLink, CompanyLogoComponent, ExchangeBadgesComponent, ShortNamePipe],
   templateUrl: './watchlist.component.html',
   styleUrl: './watchlist.component.scss',
 })

@@ -4,12 +4,13 @@ import { RouterLink } from '@angular/router';
 
 import { IndexAnalysis, IndexConstituent } from '../../../core/services/stock.service';
 import { CompanyLogoComponent } from '../../../shared/components/company-logo/company-logo.component';
+import { ShortNamePipe } from '../../../shared/pipes/short-name.pipe';
 
 /** The index-only sections of the stock page: overview, breadth, movers, industries, constituents. */
 @Component({
   selector: 'app-index-overview',
   standalone: true,
-  imports: [CommonModule, RouterLink, CompanyLogoComponent],
+  imports: [CommonModule, RouterLink, CompanyLogoComponent, ShortNamePipe],
   templateUrl: './index-overview.component.html',
   styleUrl: './index-overview.component.scss',
 })
