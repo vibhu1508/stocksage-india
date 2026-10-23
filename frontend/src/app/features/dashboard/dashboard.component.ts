@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, ElementRef, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { Subscription, finalize } from 'rxjs';
@@ -65,7 +65,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   constructor(
     private authService: AuthService,
     private marketService: MarketService,
-    private marketStream: MarketStreamService
+    private marketStream: MarketStreamService,
+    private host: ElementRef<HTMLElement>
   ) { }
 
   ngOnInit(): void {
@@ -96,7 +97,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         if (group !== this.moversGroup) return;
         this.topGainers = res.gainers;
         this.topLosers = res.losers;
+        const firstLoad = this.moversGroups.length < res.groups.length;
         this.moversGroups = res.groups;
+        if (firstLoad) setTimeout(() => this.revealActiveChip());
         this.moversPhase = res.phase;
         this.moversAsOf = res.asOf;
         this.moversUpdatedAt = new Date();
@@ -115,6 +118,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.topGainers = [];  // never show the previous group's stocks under the new group's name
     this.topLosers = [];
     this.loadMovers();
+  }
+
+  /** On phones the chips scroll sideways: bring a remembered group's chip into view. */
+  private revealActiveChip(): void {
+    this.host.nativeElement.querySelector('.group-chips [aria-checked="true"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'center' });
   }
 
   get moversLabel(): string {

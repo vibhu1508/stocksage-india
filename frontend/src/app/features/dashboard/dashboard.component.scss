@@ -14,3 +14,17 @@
 @media (prefers-reduced-motion: reduce) {
   .mover-in, .mover-out { animation: none; }
 }
+
+// Group chips: no scrollbar; on phones the row scrolls sideways and fades out at the edge.
+.group-chips {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
+}
+
+@media (max-width: 767px) {
+  .group-chips {
+    mask-image: linear-gradient(to right, #000 85%, transparent);
+    -webkit-mask-image: linear-gradient(to right, #000 85%, transparent);
+  }
+}

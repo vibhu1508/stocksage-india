@@ -42,37 +42,31 @@
   <!-- Top Movers: one NSE group, as NSE publishes it -->
   <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mt-2">
     <h2 class="text-lg font-extrabold tracking-tight text-foreground" style="font-family: 'Plus Jakarta Sans', sans-serif;">Top movers</h2>
-    <select class="h-8 rounded-md border border-border bg-card px-2 text-sm font-medium text-foreground" aria-label="Stocks to rank"
-      (change)="setMoversGroup($any($event.target).value)">
-      @for (g of moversGroups; track g.key) {
-      <option [value]="g.key" [selected]="g.key === moversGroup">{{ g.label }}</option>
-      }
-    </select>
     @switch (moversPhase) {
     @case ('open') {
     <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-green-500/10 text-green-500">
       <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>Live
     </span>
-    <span class="text-xs text-muted-foreground">Updated {{ moversUpdatedAt | date:'h:mm:ss a' }} · every 20 s</span>
+    <span class="order-last w-full text-xs text-muted-foreground sm:order-none sm:w-auto">Updated {{ moversUpdatedAt | date:'h:mm:ss a' }} · every 20 s</span>
     }
     @case ('pre_open') {
     <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-amber-500/10 text-amber-500">
       <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>Pre-open
     </span>
-    <span class="text-xs text-muted-foreground">Indicative opening prices · {{ moversAsOf | date:'h:mm:ss a' }}</span>
+    <span class="order-last w-full text-xs text-muted-foreground sm:order-none sm:w-auto">Indicative opening prices · {{ moversAsOf | date:'h:mm:ss a' }}</span>
     }
     @case ('closing') {
     <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-amber-500/10 text-amber-500">
       <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Closing
     </span>
-    <span class="text-xs text-muted-foreground">NSE's final closing prices arrive at 4:00 PM</span>
+    <span class="order-last w-full text-xs text-muted-foreground sm:order-none sm:w-auto">NSE's final closing prices arrive at 4:00 PM</span>
     }
     @default {
     <span class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest bg-muted text-muted-foreground">
       <span class="w-1.5 h-1.5 rounded-full bg-muted-foreground"></span>Closed
     </span>
     @if (moversAsOf) {
-    <span class="text-xs text-muted-foreground">As of {{ moversAsOf | date:'d MMM, h:mm a' }}</span>
+    <span class="order-last w-full text-xs text-muted-foreground sm:order-none sm:w-auto">As of {{ moversAsOf | date:'d MMM, h:mm a' }}</span>
     }
     }
     }
@@ -80,6 +74,19 @@
       (click)="loadMovers()" [disabled]="moversLoading" aria-label="Refresh top movers" title="Refresh top movers">
       <lucide-icon name="refresh-cw" [size]="15" [class.animate-spin]="moversLoading"></lucide-icon>
     </button>
+  </div>
+
+  <!-- NSE's groups as chips: all visible on desktop, a swipeable row on phones -->
+  <div class="group-chips -mt-2 flex gap-2 overflow-x-auto pb-1" role="radiogroup" aria-label="Stocks to rank">
+    @for (g of moversGroups; track g.key) {
+    <button type="button" role="radio" [attr.aria-checked]="g.key === moversGroup" (click)="setMoversGroup(g.key)"
+      class="h-8 shrink-0 rounded-full border px-3.5 text-xs font-semibold whitespace-nowrap transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      [class]="g.key === moversGroup
+        ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+        : 'border-border bg-card text-muted-foreground hover:border-foreground/30 hover:text-foreground'">
+      {{ g.label }}
+    </button>
+    }
   </div>
 
   <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
