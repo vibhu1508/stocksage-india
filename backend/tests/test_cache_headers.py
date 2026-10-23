@@ -19,6 +19,7 @@ def test_rules():
     assert cache_control_for("/api/fo/data/latest", "", TODAY) == "private, max-age=300"
     assert cache_control_for("/api/portfolio/holdings", "", TODAY) == "no-store"
     assert cache_control_for("/api/market/dhan/chart/history", "", TODAY) is None
+    assert cache_control_for("/api/stocks/index/NIFTY/live", "", TODAY) == "private, max-age=10"
 
 
 def test_middleware_sets_header_only_on_success():

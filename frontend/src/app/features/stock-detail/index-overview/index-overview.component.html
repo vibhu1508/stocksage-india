@@ -1,8 +1,10 @@
 <section class="ix-card" aria-labelledby="ix-title">
   <div class="ix-head">
     <h2 id="ix-title">Index Overview</h2>
-    @if (data.constituents?.asOf) {
-    <p class="ix-basis">Movers and industries as of the {{ data.constituents!.asOf | date:'d MMM' }} close · constituent prices are live</p>
+    @if (liveMoves) {
+    <p class="ix-basis"><span class="ix-live-dot" aria-hidden="true"></span>Live · updated {{ liveMoves.asOf | date:'h:mm:ss a' }}</p>
+    } @else if (data.constituents?.asOf) {
+    <p class="ix-basis">Constituent moves as of the {{ data.constituents!.asOf | date:'d MMM' }} close</p>
     }
   </div>
 
@@ -50,7 +52,7 @@
       <a class="ix-mover" [routerLink]="['/stocks', r.symbol]">
         <app-company-logo [symbol]="r.symbol" [size]="28"></app-company-logo>
         <span class="ix-name"><strong>{{ r.symbol }}</strong><small>{{ r.name | shortName }}</small></span>
-        <span class="ix-pct up">+{{ r.pct | number:'1.2-2' }}%</span>
+        <span class="ix-pct up" [appFlash]="r.pct">+{{ r.pct | number:'1.2-2' }}%</span>
       </a>
       } @empty { <p class="ix-note">No member rose.</p> }
     </div>
@@ -60,23 +62,23 @@
       <a class="ix-mover" [routerLink]="['/stocks', r.symbol]">
         <app-company-logo [symbol]="r.symbol" [size]="28"></app-company-logo>
         <span class="ix-name"><strong>{{ r.symbol }}</strong><small>{{ r.name | shortName }}</small></span>
-        <span class="ix-pct down">{{ r.pct | number:'1.2-2' }}%</span>
+        <span class="ix-pct down" [appFlash]="r.pct">{{ r.pct | number:'1.2-2' }}%</span>
       </a>
       } @empty { <p class="ix-note">No member fell.</p> }
     </div>
   </div>
 
-  @if (c.industries.length > 1) {
+  @if (moves!.industries.length > 1) {
   <div class="ix-block ix-industries">
     <h3>By industry</h3>
     <ul>
-      @for (i of c.industries; track i.industry) {
+      @for (i of moves!.industries; track i.industry) {
       <li>
         <span class="ix-ind-name">{{ i.industry }} <small>({{ i.count }})</small></span>
         <span class="ix-ind-bar" aria-hidden="true">
           <span [class.up]="i.avgPct >= 0" [class.down]="i.avgPct < 0" [style.width.%]="(i.avgPct >= 0 ? i.avgPct : -i.avgPct) / industryScale * 50"></span>
         </span>
-        <span class="ix-pct" [class.up]="i.avgPct >= 0" [class.down]="i.avgPct < 0">{{ i.avgPct >= 0 ? '+' : '' }}{{ i.avgPct | number:'1.2-2' }}%</span>
+        <span class="ix-pct" [class.up]="i.avgPct >= 0" [class.down]="i.avgPct < 0" [appFlash]="i.avgPct">{{ i.avgPct >= 0 ? '+' : '' }}{{ i.avgPct | number:'1.2-2' }}%</span>
       </li>
       }
     </ul>

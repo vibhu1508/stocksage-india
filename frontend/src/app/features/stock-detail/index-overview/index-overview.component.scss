@@ -21,6 +21,19 @@
 
 .ix-head h2 { margin: 0; font-size: 1.15rem; }
 .ix-basis, .ix-note { margin: 0; font-size: 0.78rem; color: hsl(var(--muted-foreground)); }
+
+.ix-live-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: #10b981;
+  animation: ix-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes ix-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .ix-live-dot { animation: none; } }
 .ix-k { font-size: 0.78rem; color: hsl(var(--muted-foreground)); }
 .ix-v { font-weight: 800; font-variant-numeric: tabular-nums; }
 .up { color: #16a34a; }

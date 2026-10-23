@@ -4,12 +4,14 @@ import { RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import { LiveQuote, MarketStreamService } from '../../../core/services/market-stream.service';
-import { IndexAnalysis, IndexConstituent } from '../../../core/services/stock.service';
+import { IndexAnalysis, IndexConstituent, IndexConstituents, StockService } from '../../../core/services/stock.service';
 import { CompanyLogoComponent } from '../../../shared/components/company-logo/company-logo.component';
 import { FlashDirective } from '../../../shared/directives/flash.directive';
 import { ShortNamePipe } from '../../../shared/pipes/short-name.pipe';
 
 const LIVE_ROWS = 50;  // live quotes for at most this many rows at once (each one is a feed subscription)
+const LIVE_POLL_MS = 15_000;  // the server works the moves out once per 10 s for everyone
+const IDLE_POLL_MS = 300_000;  // outside the session: check now and then for the open
 
 /** The index-only sections of the stock page: overview, breadth, movers, industries, constituents. */
 @Component({
@@ -23,17 +25,55 @@ export class IndexOverviewComponent implements OnChanges, OnDestroy {
   @Input({ required: true }) data!: IndexAnalysis;
 
   private stream = inject(MarketStreamService);
+  private stocks = inject(StockService);
   showAllConstituents = false;
   live: Record<string, LiveQuote> = {};
   private liveSubs = new Map<string, Subscription>();
+  /** Movers, breadth, industries and prices from the live feed during the session; null = end-of-day. */
+  liveMoves: IndexConstituents | null = null;
+  private liveRows = new Map<string, IndexConstituent>();
+  private pollTimer?: ReturnType<typeof setTimeout>;
+  private pollReq?: Subscription;
 
   ngOnChanges(): void {
     this.showAllConstituents = false;  // a different index starts on its top 10 again
+    this.setLiveMoves(null);
     this.syncLive();
+    this.pollLive();
   }
 
   ngOnDestroy(): void {
     this.liveSubs.forEach((s) => s.unsubscribe());
+    clearTimeout(this.pollTimer);
+    this.pollReq?.unsubscribe();
+  }
+
+  /** End-of-day constituents, or the live ones while the session's moves are streaming. */
+  get moves(): IndexConstituents | null {
+    return this.liveMoves ?? this.data?.constituents ?? null;
+  }
+
+  private pollLive(): void {
+    clearTimeout(this.pollTimer);
+    this.pollReq?.unsubscribe();
+    const key = this.data?.key;
+    if (!key || !this.data.constituents) return;
+    if (document.visibilityState !== 'visible') {  // a background tab doesn't need the moves
+      this.pollTimer = setTimeout(() => this.pollLive(), LIVE_POLL_MS);
+      return;
+    }
+    this.pollReq = this.stocks.getIndexLive(key).subscribe({
+      next: (res) => {
+        this.setLiveMoves(res.live ? res : null);
+        this.pollTimer = setTimeout(() => this.pollLive(), res.live ? LIVE_POLL_MS : IDLE_POLL_MS);
+      },
+      error: () => (this.pollTimer = setTimeout(() => this.pollLive(), IDLE_POLL_MS)),
+    });
+  }
+
+  private setLiveMoves(moves: IndexConstituents | null): void {
+    this.liveMoves = moves;
+    this.liveRows = new Map((moves?.rows ?? []).map((r) => [r.symbol, r]));
   }
 
   toggleAll(): void {
@@ -41,12 +81,15 @@ export class IndexOverviewComponent implements OnChanges, OnDestroy {
     this.syncLive();
   }
 
-  /** A member's last price, previous close and day change: live while quotes arrive, else the bhavcopy's. */
+  /** A member's last price, previous close and day change: its streaming quote, else the latest live
+   *  moves, else the bhavcopy's. */
   move(r: IndexConstituent): { price: number | null; prev: number | null; pct: number | null } {
     const q = this.live[r.symbol];
     if (q?.prev_close) return { price: q.price, prev: q.prev_close, pct: q.pct };
-    const prev = r.close != null && r.change != null ? r.close - r.change : null;
-    return { price: r.close, prev, pct: r.pct };
+    const liveRow = this.liveRows.get(r.symbol);
+    const row = liveRow?.pct != null ? liveRow : r;
+    const prev = row.close != null && row.change != null ? row.close - row.change : null;
+    return { price: row.close, prev, pct: row.pct };
   }
 
   /** Watch live quotes for the rows on screen only. */
@@ -95,8 +138,8 @@ export class IndexOverviewComponent implements OnChanges, OnDestroy {
 
   /** Rising / unchanged / falling members: NSE's live count when available, else from the bhavcopy. */
   get indexBreadth(): { up: number; flat: number; down: number; total: number } | null {
-    const o = this.data?.overview;
-    const c = this.data?.constituents;
+    const o = this.liveMoves ? null : this.data?.overview;  // NSE's count is from page load; live moves are newer
+    const c = this.moves;
     const up = o?.advances ?? c?.advances;
     const down = o?.declines ?? c?.declines;
     if (up == null || down == null) return null;
@@ -106,11 +149,11 @@ export class IndexOverviewComponent implements OnChanges, OnDestroy {
   }
 
   get topGainers(): IndexConstituent[] {
-    return (this.data?.constituents?.rows ?? []).filter((r) => (r.pct ?? 0) > 0).slice(0, 5);
+    return (this.moves?.rows ?? []).filter((r) => (r.pct ?? 0) > 0).slice(0, 5);
   }
 
   get topLosers(): IndexConstituent[] {
-    return (this.data?.constituents?.rows ?? []).filter((r) => (r.pct ?? 0) < 0).slice(-5).reverse();
+    return (this.moves?.rows ?? []).filter((r) => (r.pct ?? 0) < 0).slice(-5).reverse();
   }
 
   get visibleConstituents(): IndexConstituent[] {
@@ -120,7 +163,7 @@ export class IndexOverviewComponent implements OnChanges, OnDestroy {
 
   /** Widest industry average move, to scale the industry bars. */
   get industryScale(): number {
-    return Math.max(0.5, ...(this.data?.constituents?.industries ?? []).map((i) => Math.abs(i.avgPct)));
+    return Math.max(0.5, ...(this.moves?.industries ?? []).map((i) => Math.abs(i.avgPct)));
   }
 
   private formatNumber(value: unknown): string {

@@ -21,6 +21,8 @@ from models import User
 from routers.strategy_builder import nse_session
 from services import bhavcopy_archive
 from services.instruments import get_indices, get_instruments
+from services.redis_store import _key as rkey, get_redis_client
+from utils.market_utils import IST
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -651,6 +653,79 @@ async def _latest_bhav_prices() -> tuple[Optional[str], dict]:
                 _bhav_cache.update(at=time.time(), date=day.isoformat(), prices=prices)
                 break
     return _bhav_cache["date"], _bhav_cache["prices"]
+
+
+# Live constituent moves. shortcut: only indices with up to this many members go live, since each new
+# member costs one feed subscription and one previous-close lookup; raise it once the daily store holds them.
+LIVE_MEMBERS_MAX = 100
+LIVE_CACHE_SECONDS = 10
+_live_cache: dict[str, tuple[float, dict]] = {}
+_live_locks: dict[str, asyncio.Lock] = {}
+_fed_indices: set[str] = set()  # indices whose members this process has asked into the feed
+
+
+def live_prices(members: list[dict], quotes: dict[str, tuple[float, int]], bhav: dict, today: str) -> dict:
+    """{symbol: (live price, previous close)} for members with a feed price from today's session.
+    The previous close is the latest bhavcopy's close (today's isn't published until the evening)."""
+    out = {}
+    for m in members:
+        quote, close = quotes.get(m["symbol"]), bhav.get(m["symbol"], (None, None))[0]
+        if quote and close and datetime.fromtimestamp(quote[1], IST).date().isoformat() == today:
+            out[m["symbol"]] = (quote[0], close)
+    return out
+
+
+async def _live_constituents(csv_file: str) -> dict:
+    from market import service as market_service  # the feed's request queue
+
+    members = await _index_members(csv_file)
+    bhav_date, bhav = await _latest_bhav_prices()
+    today = datetime.now(IST).date().isoformat()
+    redis = get_redis_client()
+    if len(members) > LIVE_MEMBERS_MAX or redis is None or bhav_date == today:  # today's close is out: that's final
+        return {"live": False}
+    instruments = await get_instruments()
+    sids = {m["symbol"]: e["nse"]["sid"] for m in members if (e := instruments.get(m["symbol"])) and e["nse"]}
+    if csv_file not in _fed_indices:
+        for sid in sids.values():
+            await market_service.request_feed(redis, {"exchangeSegment": "NSE_EQ", "securityId": sid})
+        _fed_indices.add(csv_file)
+    async with redis.pipeline(transaction=False) as pipe:
+        for sid in sids.values():
+            pipe.hmget(rkey(f"quote:NSE_EQ:{sid}"), "price", "ts")
+        raw = await pipe.execute()
+    quotes = {sym: (float(p), int(float(ts))) for sym, (p, ts) in zip(sids, raw) if p and ts}
+    prices = live_prices(members, quotes, bhav, today)
+    if not prices:
+        return {"live": False}
+    latest = max(quotes[s][1] for s in prices)
+    return {"live": True, "asOf": datetime.fromtimestamp(latest, IST).isoformat(), **constituent_moves(members, prices)}
+
+
+@router.get("/index/{key}/live")
+async def index_live(key: str, current_user: User = Depends(get_current_user)):
+    """Constituent moves during the session from the live feed: movers, breadth, industries and rows.
+    Worked out at most once every 10 seconds per index and shared by every viewer; live=false
+    outside the session or for indices too large to stream."""
+    key = key.strip().upper()
+    index = (await get_indices()).get(key)
+    csv_file = INDEX_CONSTITUENTS.get(index["symbol"], (None, None))[1] if index else None
+    if not csv_file:
+        raise HTTPException(status_code=404, detail="No constituent list for this index")
+    cached = _live_cache.get(key)
+    if cached and time.time() - cached[0] < LIVE_CACHE_SECONDS:
+        return cached[1]
+    async with _live_locks.setdefault(key, asyncio.Lock()):
+        cached = _live_cache.get(key)
+        if cached and time.time() - cached[0] < LIVE_CACHE_SECONDS:
+            return cached[1]
+        try:
+            result = await _live_constituents(csv_file)
+        except Exception as exc:  # the page keeps its end-of-day view
+            logger.warning("live constituents for %s failed: %s", key, exc)
+            result = {"live": False}
+        _live_cache[key] = (time.time(), result)
+        return result
 
 
 @router.get("/index/{key}")

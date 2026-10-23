@@ -106,6 +106,8 @@ _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 def cache_control_for(path: str, query: str, today: str) -> Optional[str]:
     if path.startswith(_NO_STORE):
         return "no-store"
+    if path.startswith("/api/stocks/index/") and path.endswith("/live"):
+        return "private, max-age=10"  # polled every 15 s while an index page is open
     for prefix, seconds, past_seconds in _CACHE_RULES:
         if path.startswith(prefix):
             dates = _DATE.findall(path + "?" + query)

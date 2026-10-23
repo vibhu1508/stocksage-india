@@ -80,6 +80,19 @@ def test_index_constituent_moves_and_index_search():
     assert INDEX_CONSTITUENTS["NIFTY PVT BANK"] == ("NIFTY PRIVATE BANK", "nifty_privatebank")
 
 
+def test_live_prices_use_todays_feed_price_against_the_last_close():
+    from datetime import datetime
+    from routers.stocks import live_prices
+    from utils.market_utils import IST
+
+    today = datetime(2026, 10, 23, 10, 0, tzinfo=IST)
+    members = [{"symbol": "TCS"}, {"symbol": "INFY"}, {"symbol": "SBIN"}, {"symbol": "OLD"}]
+    quotes = {"TCS": (2550.0, int(today.timestamp())), "INFY": (1500.0, int(today.timestamp())),
+              "OLD": (99.0, int(today.timestamp()) - 86400)}  # OLD hasn't traded today
+    bhav = {"TCS": (2506.9, 2529.0), "INFY": (1490.0, 1480.0), "SBIN": (970.0, 963.0), "OLD": (100.0, 101.0)}
+    assert live_prices(members, quotes, bhav, "2026-10-23") == {"TCS": (2550.0, 2506.9), "INFY": (1500.0, 1490.0)}
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

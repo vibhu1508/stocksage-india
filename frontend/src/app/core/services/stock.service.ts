@@ -74,6 +74,11 @@ export interface IndexAnalysis {
   } | null;
 }
 
+export type IndexConstituents = NonNullable<IndexAnalysis['constituents']>;
+
+/** /api/stocks/index/{key}/live: constituent moves from the live feed during the session. */
+export type IndexLive = ({ live: true } & IndexConstituents) | { live: false };
+
 export interface SearchResponse {
   query: string;
   count: number;
@@ -103,6 +108,10 @@ export class StockService {
 
   getIndexAnalysis(key: string): Observable<IndexAnalysis> {
     return this.http.get<IndexAnalysis>(`${this.apiUrl}/index/${encodeURIComponent(key)}`);
+  }
+
+  getIndexLive(key: string): Observable<IndexLive> {
+    return this.http.get<IndexLive>(`${this.apiUrl}/index/${encodeURIComponent(key)}/live`);
   }
 
   searchSymbols(query: string, limit: number = 10): Observable<SearchResponse> {
