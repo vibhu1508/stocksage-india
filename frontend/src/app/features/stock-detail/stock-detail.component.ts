@@ -1128,6 +1128,16 @@ export class StockDetailComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     if (msg.op === 'snapshot') {
+      if (msg.history === 'pending') {
+        // The provider's intraday history hasn't loaded yet (it is often down before the open). Stay on
+        // this timeframe: live candles arrive as deltas, and a full snapshot follows once history loads.
+        this.applyCandlesToChart(msg.candles.map(toCandle), this.liveTimeframe, false);
+        this.showRecentBars();
+        this.liveChartLoading = false;
+        this.liveTransportStatus = msg.market === 'open' ? 'ws' : 'closed';
+        this.sessionNotice = 'Intraday history is loading · live candles appear as trades happen';
+        return;
+      }
       if (msg.candles.length === 0) {
         // Thinly traded stocks can go a week without a trade; daily candles still show their history.
         this.setLiveTimeframe('D');

@@ -403,9 +403,11 @@ class Gateway:
             await ws.send(json.dumps({"op": "error", "key": key, "detail": "Chart data is unavailable for this symbol right now."}))
             return
         ikey = _ident_key(ident)
+        pending = False
         try:
             await ensure_seeded(self.redis, ident)
         except HTTPException as exc:
+            pending = True
             # No history from the provider right now: chart what we hold plus live ticks, and keep
             # retrying the history in the background; open charts get a fresh snapshot once it lands.
             logger.warning("history for %s unavailable (%s); retrying in the background", ident["symbol"], exc.detail)
@@ -413,12 +415,13 @@ class Gateway:
                 self.seed_retries[ikey] = asyncio.create_task(self._retry_seed(ident))
 
         await request_feed(self.redis, ident)
-        await ws.send(json.dumps(await self._snapshot(ident, key, minutes)))
+        await ws.send(json.dumps(await self._snapshot(ident, key, minutes, pending)))
         # Register after the snapshot so no delta can arrive before it; the next tick carries the full bar.
         self.watchers[(ikey, minutes)][ws] = key
         watching.add((ikey, minutes))
 
-    async def _snapshot(self, ident: dict, key: str, minutes: int) -> dict:
+    async def _snapshot(self, ident: dict, key: str, minutes: int, pending: bool = False) -> dict:
+        """pending: the provider's history hasn't loaded yet, so few or no candles isn't "no trades"."""
         ikey = _ident_key(ident)
         m1 = await load_m1(self.redis, ikey)
         if m1:
@@ -429,6 +432,7 @@ class Gateway:
             "candles": aggregate(m1, minutes)[-MAX_SNAPSHOT:],
             "last": await feed_quote(self.redis, ident),
             "market": await market_state(),
+            "history": "pending" if pending else "ready",
         }
 
     async def _retry_seed(self, ident: dict) -> None:

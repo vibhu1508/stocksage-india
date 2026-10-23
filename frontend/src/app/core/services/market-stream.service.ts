@@ -8,7 +8,7 @@ import { DhanChartBootstrapResponse, DhanLiveChartService } from './dhan-live-ch
 export type StreamCandle = [number, number, number, number, number, number];
 
 export type MarketStreamMessage =
-  | { op: 'snapshot'; key: string; symbol: string; tf: string; candles: StreamCandle[]; last: { price: number; ts: number } | null; market: 'open' | 'closed'; source?: 'rest' }
+  | { op: 'snapshot'; key: string; symbol: string; tf: string; candles: StreamCandle[]; last: { price: number; ts: number } | null; market: 'open' | 'closed'; source?: 'rest'; history?: 'pending' | 'ready' }
   | { op: 'delta'; key: string; seq: number; candle: StreamCandle; last: { price: number; ts: number } }
   | { op: 'error'; key: string; detail: string };
 

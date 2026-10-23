@@ -250,12 +250,13 @@ def test_chart_survives_a_history_outage_and_gets_history_when_it_returns():
         gw, ws = service.Gateway(redis=None), Socket()
         await gw.subscribe(ws, {"key": "c1", "symbol": "REPL", "tf": "5"}, set())
         assert [m["op"] for m in ws.sent] == ["snapshot"] and len(ws.sent[0]["candles"]) == 1
-        assert ws.sent[0]["tf"] == "5"
+        assert ws.sent[0]["tf"] == "5" and ws.sent[0]["history"] == "pending"
         await asyncio.sleep(0.05)  # still failing: retries keep going, nothing new is sent
         assert len(ws.sent) == 1
         state["history_up"] = True
         await asyncio.sleep(0.05)
         assert len(ws.sent) == 2 and len(ws.sent[1]["candles"]) == 2  # a week of history arrived
+        assert ws.sent[1]["history"] == "ready"
         assert not gw.seed_retries
 
     asyncio.run(run())
