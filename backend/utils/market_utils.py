@@ -61,7 +61,8 @@ def fetch_nse_holidays():
         response.raise_for_status()
         data = response.json()
         
-        trading_holidays = data.get('trading', [])
+        # Holidays per segment ("CM" = the cash market); older responses used "trading".
+        trading_holidays = data.get('CM') or data.get('trading') or []
         new_holidays = set()
         
         for h in trading_holidays:
@@ -82,11 +83,13 @@ def fetch_nse_holidays():
             
     except Exception as e:
         logger.error(f"Failed to fetch holidays from NSE: {e}. Using fallback list.")
-        # Combine fallback with any previously cached data
-        _cached_holidays.update(FALLBACK_HOLIDAYS_2026)
-        return _cached_holidays
 
-    return _cached_holidays or FALLBACK_HOLIDAYS_2026
+    # No usable answer: use the fallback for the rest of the day instead of asking NSE again on every
+    # check (callers run this per request and per day of a look-back).
+    logger.warning("NSE holidays unavailable; using the built-in list until tomorrow.")
+    _cached_holidays = _cached_holidays or set(FALLBACK_HOLIDAYS_2026)
+    _last_fetch_date = current_date
+    return _cached_holidays
 
 def is_market_holiday(target_date: date) -> bool:
     """Check if a date is a weekend or an NSE holiday."""
